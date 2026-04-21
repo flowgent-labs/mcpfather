@@ -7,7 +7,7 @@ import (
 )
 
 // Input Schema for the DeleteTodoById tool
-const DeleteTodoByIdInputSchema = `{
+const deleteTodoByIdInputSchema = `{
   "properties": {
     "todoId": {
       "description": "ID of the todo item to delete.",
@@ -37,12 +37,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
+  - **message**: A human-readable description of the error. (Type: string):
   - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
       - **field** (Type: string):
       - **issue** (Type: string):
-  - **message**: A human-readable description of the error. (Type: string):
 `
 
 // Response Template for the DeleteTodoById tool (Status: 500, Content-Type: application/json)
@@ -61,12 +61,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
+  - **message**: A human-readable description of the error. (Type: string):
   - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
-  - **message**: A human-readable description of the error. (Type: string):
+      - **field** (Type: string):
 `
 
 // NewDeleteTodoByIdMCPTool creates the MCP Tool instance for DeleteTodoById
@@ -74,7 +74,7 @@ func NewDeleteTodoByIdMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"DeleteTodoById",
 		"Delete a todo item - Removes a todo item by its ID.",
-		[]byte(DeleteTodoByIdInputSchema),
+		[]byte(deleteTodoByIdInputSchema),
 	)
 }
 

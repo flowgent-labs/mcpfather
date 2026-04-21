@@ -52,7 +52,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		}
 
 		outputFileName := capitalizedName + ".go"
-		outputFilePath := filepath.Join(g.outputDir+"/mcptools", outputFileName)
+		outputFilePath := filepath.Join(g.outputDir+"/internal/mcptools", outputFileName)
 
 		// Check if file already exists and extract handler implementation if it does
 		existingImplementation := ""
@@ -116,7 +116,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			return fmt.Errorf("failed to format generated code for %s: %w", outputFileName, err)
 		}
 
-		err = writeFileContent(g.outputDir+"/mcptools", outputFileName, func() ([]byte, error) {
+		err = writeFileContent(g.outputDir+"/internal/mcptools", outputFileName, func() ([]byte, error) {
 			return formattedCode, nil
 		})
 

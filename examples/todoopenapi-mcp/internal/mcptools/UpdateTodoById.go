@@ -7,7 +7,7 @@ import (
 )
 
 // Input Schema for the UpdateTodoById tool
-const UpdateTodoByIdInputSchema = `{
+const updateTodoByIdInputSchema = `{
   "properties": {
     "body": {
       "description": "Updated todo item data.",
@@ -76,8 +76,6 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
-  - **title**: The main content of the todo item. (Type: string):
-      - Example: 'Buy groceries'
   - **updatedAt**: Timestamp of when the todo item was last updated. (Type: string, date-time):
       - Example: '2025-05-10T10:00:00Z'
   - **createdAt**: Timestamp of when the todo item was created. (Type: string, date-time):
@@ -88,6 +86,8 @@ The template shows a possible response, including its status code and content ty
       - Default: 'pending'
       - Example: 'pending'
       - Enum: ['pending', 'in-progress', 'completed']
+  - **title**: The main content of the todo item. (Type: string):
+      - Example: 'Buy groceries'
 `
 
 // Response Template for the UpdateTodoById tool (Status: 400, Content-Type: application/json)
@@ -106,12 +106,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
+  - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
+      - **field** (Type: string):
   - **message**: A human-readable description of the error. (Type: string):
-  - **code**: An application-specific error code. (Type: integer, int32):
 `
 
 // Response Template for the UpdateTodoById tool (Status: 404, Content-Type: application/json)
@@ -133,8 +133,8 @@ The template shows a possible response, including its status code and content ty
   - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
+      - **field** (Type: string):
   - **message**: A human-readable description of the error. (Type: string):
 `
 
@@ -154,12 +154,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
-  - **message**: A human-readable description of the error. (Type: string):
   - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
       - **issue** (Type: string):
       - **field** (Type: string):
+  - **message**: A human-readable description of the error. (Type: string):
 `
 
 // Response Template for the UpdateTodoById tool (Status: 500, Content-Type: application/json)
@@ -178,12 +178,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
+  - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
+      - **field** (Type: string):
   - **message**: A human-readable description of the error. (Type: string):
-  - **code**: An application-specific error code. (Type: integer, int32):
 `
 
 // NewUpdateTodoByIdMCPTool creates the MCP Tool instance for UpdateTodoById
@@ -191,7 +191,7 @@ func NewUpdateTodoByIdMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"UpdateTodoById",
 		"Update an existing todo item - Modifies an existing todo item by its ID.",
-		[]byte(UpdateTodoByIdInputSchema),
+		[]byte(updateTodoByIdInputSchema),
 	)
 }
 

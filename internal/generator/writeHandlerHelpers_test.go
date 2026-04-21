@@ -30,7 +30,7 @@ func TestGenerateHelpers_NoErrorOnSuccess(t *testing.T) {
 
 	// Optional: You could still check for the *existence* of the file
 	// to ensure the writeFileContent call was at least attempted.
-	expectedFilePath := filepath.Join(tmpDir, "helpers", "params.go")
+	expectedFilePath := filepath.Join(tmpDir, "internal", "helpers", "params.go")
 	if _, err := os.Stat(expectedFilePath); os.IsNotExist(err) {
 		t.Errorf("expected generated file %s to exist, but it does not", expectedFilePath)
 	}

@@ -51,20 +51,20 @@ func TestGenerateMCP(t *testing.T) {
 		t.Fatalf("GenerateMCP failed: %v", err)
 	}
 
-	// Check that server.go exists
-	serverGoPath := filepath.Join(tmpDir, "server.go")
+	// Check that server.go exists in mcpserver/
+	serverGoPath := filepath.Join(tmpDir, "internal", "mcpserver", "server.go")
 	if _, err := os.Stat(serverGoPath); err != nil {
-		t.Errorf("Expected server.go to be generated, but it does not exist")
+		t.Errorf("Expected mcpserver/server.go to be generated, but it does not exist")
 	}
 
-	// Check that helpers.go exists
-	helpersGoPath := filepath.Join(tmpDir, "helpers", "params.go")
+	// Check that helpers.go exists in mcpserver/helpers/
+	helpersGoPath := filepath.Join(tmpDir, "internal", "helpers", "params.go")
 	if _, err := os.Stat(helpersGoPath); err != nil {
-		t.Errorf("Expected helpers.go to be generated, but it does not exist")
+		t.Errorf("Expected mcpserver/helpers/params.go to be generated, but it does not exist")
 	}
 
-	// Check that the tool file exists
-	toolFilePath := filepath.Join(tmpDir, "mcptools", "Echo.go")
+	// Check that the tool file exists in mcpserver/mcptools/
+	toolFilePath := filepath.Join(tmpDir, "internal", "mcptools", "Echo.go")
 	data, err := os.ReadFile(toolFilePath)
 	if err != nil {
 		t.Fatalf("Failed to read generated tool file: %v", err)

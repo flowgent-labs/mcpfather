@@ -7,7 +7,7 @@ import (
 )
 
 // Input Schema for the CreateTodo tool
-const CreateTodoInputSchema = `{
+const createTodoInputSchema = `{
   "properties": {
     "body": {
       "description": "Todo item to create.",
@@ -117,8 +117,8 @@ The template shows a possible response, including its status code and content ty
   - **Items** (Type: Combinator):
     - **One Of the following structures**:
       - **Option 1** (Type: object):
-        - **id** (Type: integer):
         - **title** (Type: string):
+        - **id** (Type: integer):
       - **Option 2** (Type: object):
         - **error** (Type: string):
 `
@@ -216,7 +216,7 @@ func NewCreateTodoMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"CreateTodo",
 		"Create a new todo item - Adds a new item to the todo list.",
-		[]byte(CreateTodoInputSchema),
+		[]byte(createTodoInputSchema),
 	)
 }
 

@@ -13,32 +13,33 @@ const (
 	goModFile      = "go.mod"
 )
 
-// BuildImportPath finds the module root and builds the import path for mcptools
+// BuildModuleName computes the module name from the output directory basename.
+// e.g. outputDir "mymcpserver" → "mymcpserver.com"
+func BuildModuleName(outputDir string) string {
+	base := filepath.Base(filepath.Clean(outputDir))
+	return base + ".com"
+}
+
+// BuildImportPath returns the import path for the mcptools package within the
+// generated standalone project (e.g. "mymcpserver.com/internal/mcptools").
 func BuildImportPath(outputDir string) (string, error) {
-	// Get current working directory
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", fmt.Errorf("failed to get current directory: %w", err)
-	}
+	moduleName := BuildModuleName(outputDir)
+	return moduleName + "/internal/mcptools", nil
+}
 
-	// Find module info
-	moduleName, moduleRoot, err := findModulePath(cwd)
-	if err != nil {
-		return "", fmt.Errorf("failed to find module: %w", err)
-	}
+// BuildServerImportPath returns the import path for the mcpserver package.
+func BuildServerImportPath(outputDir string) (string, error) {
+	moduleName := BuildModuleName(outputDir)
+	return moduleName + "/internal/mcpserver", nil
+}
 
-	// Get absolute path of mcptools directory
-	mcptoolsPath := filepath.Join(cwd, outputDir, "mcptools")
+// GenerateGoMod creates a go.mod file in the output directory for the standalone project.
+func GenerateGoMod(outputDir string) error {
+	moduleName := BuildModuleName(outputDir)
+	content := fmt.Sprintf("module %s\n\ngo 1.21\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName)
 
-	// Calculate relative path from module root to mcptools
-	relPath, err := filepath.Rel(moduleRoot, mcptoolsPath)
-	if err != nil {
-		return "", fmt.Errorf("failed to calculate relative path: %w", err)
-	}
-
-	// Build the complete import path
-	importPath := filepath.ToSlash(filepath.Join(moduleName, relPath))
-	return importPath, nil
+	goModPath := filepath.Join(outputDir, "go.mod")
+	return os.WriteFile(goModPath, []byte(content), 0644)
 }
 
 // findModulePath searches upward from startDir to find the go.mod file

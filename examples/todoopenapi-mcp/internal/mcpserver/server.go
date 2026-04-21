@@ -1,8 +1,8 @@
-package mcpgen
+package mcpserver
 
 import (
-	"github.com/lyeslabs/mcpgen/examples/todoopenapi-mcp/mcptools"
 	"github.com/mark3labs/mcp-go/server"
+	"todoopenapi-mcp.com/internal/mcptools"
 )
 
 // NewMCPServer creates and returns an MCP server with all tools registered

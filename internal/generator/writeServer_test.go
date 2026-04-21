@@ -76,7 +76,7 @@ func Test_RenderAndWriteServerTemplate(t *testing.T) {
 	strContent := string(content)
 
 	// Check for package declaration and handler names
-	if !strings.Contains(strContent, "package mytools") {
+	if !strings.Contains(strContent, "package mcpserver") {
 		t.Errorf("Generated file missing package declaration")
 	}
 	if !strings.Contains(strContent, "EchoHandler") || !strings.Contains(strContent, "ReverseHandler") {
