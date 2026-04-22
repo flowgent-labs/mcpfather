@@ -37,10 +37,12 @@ func Test_RenderAndWriteServerTemplate(t *testing.T) {
 	data := struct {
 		PackageName        string
 		MCPToolsImportPath string
+		HelpersImportPath  string
 		Tools              []ToolTemplateData
 	}{
 		PackageName:        "mytools",
 		MCPToolsImportPath: "github.com/example/project/mcptools",
+		HelpersImportPath:  "github.com/example/project/internal/helpers",
 		Tools:              tools,
 	}
 
