@@ -200,28 +200,20 @@ func (g *Generator) GenerateMakefile() error {
 // GenerateReadme creates a README.md for the generated MCP server project
 func (g *Generator) GenerateReadme() error {
 	binName := filepath.Base(g.outputDir)
+	n := binName
 
-	readme := fmt.Sprintf(`# %s
-
-## Quick Start
-
-`+"```"+`sh
-make
-`+"```"+`
-
-## Agent Integration
-
-For any MCP-compatible IDE/agent, use **stdio** transport.
-
-### OpenCode
-
-`+"`"+`~/.config/opencode/config.json`+"`"+`:
-
-`+"```"+`json
-{
+	readme := "# " + binName + "\n\n## Quick Start\n\n" +
+		"```sh\nmake\n```\n\n" +
+		"## Agent Integration\n\n" +
+		"### Local Mode (stdio)\n\n" +
+		"Run the MCP server as a child process — recommended for local development.\n\n" +
+		"### OpenCode\n\n" +
+		"`~/.config/opencode/config.json`:\n\n" +
+		"```json\n" +
+		`{
   "mcp": {
-    "%s": {
-      "command": "./%s",
+    "` + n + `": {
+      "command": "./` + n + `",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
@@ -230,17 +222,14 @@ For any MCP-compatible IDE/agent, use **stdio** transport.
     }
   }
 }
-`+"```"+`
-
-### Claude Code
-
-`+"`"+`~/.claude/settings.json`+"`"+`:
-
-`+"```"+`json
-{
+` + "```\n\n" +
+		"### Claude Code\n\n" +
+		"`~/.claude/settings.json`:\n\n" +
+		"```json\n" +
+		`{
   "mcpServers": {
-    "%s": {
-      "command": "./%s",
+    "` + n + `": {
+      "command": "./` + n + `",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
@@ -249,17 +238,14 @@ For any MCP-compatible IDE/agent, use **stdio** transport.
     }
   }
 }
-`+"```"+`
-
-### Claude Desktop
-
-`+"`"+`~/.config/claude-desktop/claude_desktop_config.json`+"`"+`:
-
-`+"```"+`json
-{
+` + "```\n\n" +
+		"### Claude Desktop\n\n" +
+		"`~/.config/claude-desktop/claude_desktop_config.json`:\n\n" +
+		"```json\n" +
+		`{
   "mcpServers": {
-    "%s": {
-      "command": ["./%s"],
+    "` + n + `": {
+      "command": ["./` + n + `"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
@@ -268,32 +254,26 @@ For any MCP-compatible IDE/agent, use **stdio** transport.
     }
   }
 }
-`+"```"+`
-
-### Codex CLI
-
-`+"`"+`~/.codex/config.yaml`+"`"+`:
-
-`+"```"+`yaml
-mcp:
-  servers:
-    %s:
-      command: ./%s
-      args: ["--transport", "stdio"]
-      env:
-        MCP_UPSTREAM_ENDPOINT: https://example.com/api
-        MCP_UPSTREAM_TOKEN: your-token
-`+"```"+`
-
-### Cursor
-
-`+"`"+`~/.cursor/mcp.json`+"`"+`:
-
-`+"```"+`json
-{
+` + "```\n\n" +
+		"### Codex CLI\n\n" +
+		"`~/.codex/config.yaml`:\n\n" +
+		"```yaml\n" +
+		"mcp:\n" +
+		"  servers:\n" +
+		"    " + n + ":\n" +
+		"      command: ./" + n + "\n" +
+		"      args: [\"--transport\", \"stdio\"]\n" +
+		"      env:\n" +
+		"        MCP_UPSTREAM_ENDPOINT: https://example.com/api\n" +
+		"        MCP_UPSTREAM_TOKEN: your-token\n" +
+		"```\n\n" +
+		"### Cursor\n\n" +
+		"`~/.cursor/mcp.json`:\n\n" +
+		"```json\n" +
+		`{
   "mcpServers": {
-    "%s": {
-      "command": "./%s",
+    "` + n + `": {
+      "command": "./` + n + `",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
@@ -302,8 +282,60 @@ mcp:
     }
   }
 }
-`+"```"+`
-`, binName, binName, binName, binName, binName, binName, binName, binName, binName, binName, binName)
+` + "```\n\n" +
+		"### Remote Mode (HTTP)\n\n" +
+		"Run the server separately and connect agents via HTTP transport.\n\n" +
+		"Start the server:\n\n" +
+		"```sh\n" +
+		"./" + n + " --transport http --port 8080\n" +
+		"```\n\n" +
+		"### OpenCode (remote)\n\n" +
+		"`~/.config/opencode/config.json`:\n\n" +
+		"```json\n" +
+		`{
+  "mcp": {
+    "` + n + `": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+` + "```\n\n" +
+		"### Claude Code (remote)\n\n" +
+		"`~/.claude/settings.json`:\n\n" +
+		"```json\n" +
+		`{
+  "mcpServers": {
+    "` + n + `": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+` + "```\n\n" +
+		"### Claude Desktop (remote)\n\n" +
+		"`~/.config/claude-desktop/claude_desktop_config.json`:\n\n" +
+		"```json\n" +
+		`{
+  "mcpServers": {
+    "` + n + `": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+` + "```\n\n" +
+		"### Codex CLI (remote)\n\n" +
+		"`~/.codex/config.yaml`:\n\n" +
+		"```yaml\nmcp:\n  servers:\n    " + n + ":\n      url: http://localhost:8080/mcp\n```\n\n" +
+		"### Cursor (remote)\n\n" +
+		"`~/.cursor/mcp.json`:\n\n" +
+		"```json\n" +
+		`{
+  "mcpServers": {
+    "` + n + `": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
+` + "```\n"
 
 	if err := writeFileContent(g.outputDir, "README.md", func() ([]byte, error) {
 		return []byte(readme), nil
