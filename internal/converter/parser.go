@@ -3,6 +3,7 @@ package converter
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -23,10 +24,20 @@ func NewParser(validation bool) *Parser {
 
 // ParseFile parses an OpenAPI document from a file
 func (p *Parser) ParseFile(filePath string) error {
+	// Read file first, normalize OAS 3.1, then load via kin-openapi
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to read file: %w", err)
+	}
+
+	normalized, err := preprocessSpec(data)
+	if err != nil {
+		return fmt.Errorf("failed to preprocess spec: %w", err)
+	}
+
 	loader := openapi3.NewLoader()
 
-	// Load directly from file path - this handles streaming internally
-	doc, err := loader.LoadFromFile(filePath)
+	doc, err := loader.LoadFromData(normalized)
 	if err != nil {
 		return fmt.Errorf("failed to parse OpenAPI document: %w", err)
 	}
@@ -47,12 +58,14 @@ func (p *Parser) ParseFile(filePath string) error {
 func (p *Parser) Parse(data []byte) error {
 	loader := openapi3.NewLoader()
 
-	// Try to parse as JSON first
-	var doc *openapi3.T
-	var err error
+	// Normalize OAS 3.1 features to 3.0-compatible format before loading
+	normalized, err := preprocessSpec(data)
+	if err != nil {
+		return fmt.Errorf("failed to preprocess spec: %w", err)
+	}
 
 	// Parse the document (loader can handle both JSON and YAML)
-	doc, err = loader.LoadFromData(data)
+	doc, err := loader.LoadFromData(normalized)
 
 	if err != nil {
 		return fmt.Errorf("failed to parse OpenAPI document: %w", err)

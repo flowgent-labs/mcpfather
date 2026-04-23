@@ -2,6 +2,7 @@ package generator
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -78,5 +79,68 @@ func TestGenerateMCP(t *testing.T) {
 	}
 	if !strings.Contains(content, "package mcptools") {
 		t.Errorf("Generated tool file missing package declaration")
+	}
+}
+
+// TestBacktickInMarkdown verifies that backticks in markdown descriptions
+// don't break Go raw string literal generation.
+func TestBacktickInMarkdown(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	markdownWithBackticks := `# API Response
+
+The response contains ` + "`" + `code blocks` + "`" + ` and ` + "`" + `inline code` + "`" + `.
+
+Example:
+` + "```json" + `
+{"key": "value"}
+` + "```" + `
+`
+
+	config := &converter.MCPConfig{
+		Tools: []converter.Tool{
+			{
+				Name:           "withBackticks",
+				Description:    "Tool with backticks in description",
+				RawInputSchema: `{"type":"object"}`,
+				Responses: []converter.ResponseTemplate{
+					{PrependBody: markdownWithBackticks, StatusCode: 200, ContentType: "application/json", Suffix: "A"},
+				},
+				RequestTemplate: converter.RequestTemplate{
+					URL:    "/test",
+					Method: "GET",
+				},
+			},
+		},
+	}
+
+	g := &Generator{
+		PackageName: "backticktest",
+		outputDir:   tmpDir,
+		converter:   &testConverter{config: config},
+	}
+
+	if err := g.GenerateMCP(); err != nil {
+		t.Fatalf("GenerateMCP with backticks failed: %v", err)
+	}
+
+	// Verify the generated tool file compiles
+	toolFile := filepath.Join(tmpDir, "internal", "mcptools", "WithBackticks.go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("Failed to read generated tool file: %v", err)
+	}
+
+	// The backticks should be escaped as \x60 in double-quoted strings
+	content := string(data)
+	if !strings.Contains(content, `\x60`) {
+		t.Error("Backtick escape sequence (\\x60) not found in generated code")
+	}
+
+	// Verify the generated code actually compiles
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = tmpDir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Generated code does not compile:\n%s\n%s", out, content)
 	}
 }

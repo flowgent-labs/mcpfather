@@ -23,7 +23,39 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		return fmt.Errorf("failed to read tool template file: %w", err)
 	}
 
-	tmpl, err := template.New("tool.templ").Parse(string(toolTemplateContent))
+	funcMap := template.FuncMap{
+			"goRawString": func(s string) string {
+				// Construct a Go string expression using double-quoted strings.
+				// Properly handles backticks, newlines, backslashes, and quotes.
+				//
+				// Examples:
+				//   "hello"      → "hello"
+				//   "a`b"        → "a" + "`" + "b"
+				//   "a\nb"       → "a\nb"
+				s = strings.ReplaceAll(s, "\\", `\\`)
+				s = strings.ReplaceAll(s, `"`, `\"`)
+				lines := strings.Split(s, "\n")
+				var b strings.Builder
+				b.WriteByte('"')
+				for i, line := range lines {
+					if i > 0 {
+						b.WriteString(`\n`)
+					}
+					parts := strings.Split(line, "`")
+					b.WriteString(parts[0])
+					for j := 1; j < len(parts); j++ {
+						b.WriteByte('"')
+						b.WriteString(` + "\x60" + `)
+						b.WriteByte('"')
+						b.WriteString(parts[j])
+					}
+				}
+				b.WriteByte('"')
+				return b.String()
+			},
+	}
+
+	tmpl, err := template.New("tool.templ").Funcs(funcMap).Parse(string(toolTemplateContent))
 	if err != nil {
 		return fmt.Errorf("failed to parse tool template: %w", err)
 	}
@@ -133,7 +165,9 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		// Format the generated code
 		formattedCode, err := format.Source(toolBuf.Bytes())
 		if err != nil {
-			return fmt.Errorf("failed to format generated code for %s: %w", outputFileName, err)
+			dumpPath := filepath.Join(g.outputDir, "internal", "mcptools", outputFileName+".bad")
+			_ = os.WriteFile(dumpPath, toolBuf.Bytes(), 0o644)
+			return fmt.Errorf("failed to format generated code for %s: %w (raw output written to %s)", outputFileName, err, dumpPath)
 		}
 
 		err = writeFileContent(g.outputDir+"/internal/mcptools", outputFileName, func() ([]byte, error) {

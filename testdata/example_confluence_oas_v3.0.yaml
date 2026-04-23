@@ -1,0 +1,1587 @@
+# OpenAPI 3.0.3 specification — Confluence Cloud REST API (simplified subset).
+# Covers CRUD operations for pages, spaces, attachments, comments, and search.
+openapi: "3.0.3"
+info:
+  title: Confluence Cloud REST API
+  version: 1.0.0
+  description: |
+    Confluence Cloud REST API — simplified subset for MCP tool generation.
+
+    ## Overview
+
+    This spec models a minimal Confluence integration supporting:
+
+    - **Reading** pages and space metadata
+    - **Creating** new pages from templates
+    - **Updating** existing page content
+    - **Deleting** pages and attachments
+    - **Searching** with CQL (Confluence Query Language)
+    - **Commenting** on pages
+    - **Uploading** attachments
+    - **Patching** page labels
+
+    ## Authentication
+
+    All requests require a Bearer token:
+
+    ```
+    Authorization: Bearer <api_token>
+    ```
+
+    The token is an [Atlassian API token](https://id.atlassian.com/manage/api-tokens).
+
+    ## Rate Limits
+
+    - 100 requests / minute per API token
+    - Exceeding the limit returns `429 Too Many Requests`
+
+servers:
+  - url: https://{domain}/wiki/rest/api
+    variables:
+      domain:
+        default: example.atlassian.net
+        description: "Confluence Cloud site domain"
+
+paths:
+  /space:
+    get:
+      operationId: listSpaces
+      summary: |
+        List all spaces accessible to the authenticated user.
+
+        Returns paginated results with space metadata including type
+        (global, personal, system) and permissions.
+      description: |
+        Lists spaces the authenticated user can access.
+
+        ## Response
+
+        The response is a paginated result:
+
+        ```json
+        {
+          "results": [
+            {"id": 10001, "key": "DOC", "name": "Documentation", "type": "global"}
+          ],
+          "start": 0,
+          "limit": 25
+        }
+        ```
+
+        ### Space Types
+
+        | Type       | Description                    |
+        |------------|-------------------------------|
+        | `global`   | Team collaboration space       |
+        | `personal` | Individual user's space        |
+        | `system`   | Built-in Confluence space      |
+
+        > **Note**: Use the `type` query parameter to filter by space type.
+      parameters:
+        - name: type
+          in: query
+          description: |
+            Filter by space type.
+
+            - `global` — Team collaboration space
+            - `personal` — Individual user space
+            - `system` — Built-in system space
+          schema:
+            type: string
+            enum: [global, personal, system]
+        - name: limit
+          in: query
+          description: |
+            Maximum number of spaces to return.
+
+            Default is `25`. Maximum is `200`.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 25
+      responses:
+        '200':
+          description: |
+            Successful response with a paginated list of spaces.
+
+            Each space object includes:
+            - `id`: Unique numeric identifier
+            - `key`: Short space key (e.g., `DOC`, `DEV`)
+            - `name`: Human-readable space name
+            - `type`: Space classification
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedSpaceList'
+
+  /content/{id}:
+    get:
+      operationId: getPage
+      summary: |
+        Get a page by its ID, optionally with inline children
+        and version history.
+      description: |
+        Retrieves a single page by its numeric ID.
+
+        ## Expandable Fields
+
+        Use the `expand` parameter to include additional content:
+
+        ```
+        GET /wiki/rest/api/content/{id}?expand=body.storage,version,space,children.attachment
+        ```
+
+        ### Available Expansions
+
+        - `body.storage` — Raw storage format (XHTML)
+        - `body.view` — Rendered HTML view
+        - `version` — Version number, last modified timestamp
+        - `space` — Parent space metadata
+        - `children.attachment` — Attached files
+
+        ### Storage Format
+
+        Confluence pages are stored in **storage format** (XHTML-based):
+
+        ```xml
+        <ac:structured-macro ac:name="info">
+          <p>This page documents the API.</p>
+        </ac:structured-macro>
+        ```
+
+        > **Warning**: The storage format differs from the editor format.
+        > Use `body.editor` for the WYSIWYG editor representation.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The unique numeric ID of the page.
+
+            Page IDs are `int64` values assigned by Confluence.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: expand
+          in: query
+          description: |
+            Comma-separated list of fields to expand.
+
+            Common expansions: `body.storage`, `version`, `space`, `children.attachment`, `ancestors`
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            Page content with optional expanded fields.
+
+            Returns the full page object including title, body content,
+            version number, and space reference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '404':
+          description: Page not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    put:
+      operationId: updatePage
+      summary: |
+        Update a page's title, content, or position.
+
+        Requires the current version number to prevent concurrent edits.
+      description: |
+        Updates an existing Confluence page.
+
+        ## Version Control
+
+        Confluence uses **optimistic locking** via version numbers.
+        You must provide the current version + 1:
+
+        ```json
+        {
+          "id": "123456",
+          "type": "page",
+          "title": "Updated Title",
+          "version": { "number": 5 },
+          "body": {
+            "storage": {
+              "value": "<p>Updated content in <strong>storage format</strong></p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ### Conflict Resolution
+
+        If the version number is stale, you'll get a `409 Conflict`:
+
+        ```json
+        {
+          "statusCode": 409,
+          "message": "Version mismatch: expected 5 but was 4"
+        }
+        ```
+
+        > **Best Practice**: Always `GET` the page first to obtain the
+        > current version number before updating.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page numeric ID.
+
+            Must be a positive integer assigned by Confluence.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PageUpdate'
+      responses:
+        '200':
+          description: |
+            Updated page with new version number.
+
+            The response includes the full page object with the updated
+            version number and `when` timestamp.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '409':
+          description: Version conflict — page was modified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+    delete:
+      operationId: deletePage
+      summary: |
+        Move a page to trash (soft delete) or permanently delete it.
+
+        Soft deletion is the default behavior for most permissions.
+      description: |
+        Deletes a page from the Confluence space.
+
+        ## Delete Modes
+
+        By default, pages are **soft deleted** (moved to trash):
+
+        ```
+        DELETE /wiki/rest/api/content/123456
+        ```
+
+        To permanently delete (requires space admin permissions):
+
+        ```
+        DELETE /wiki/rest/api/content/123456?status=permanent
+        ```
+
+        ### Response Behavior
+
+        Soft delete returns `200 OK` with the updated page object
+        showing `status: "trashed"`.
+
+        Permanent delete returns `204 No Content` — the page object
+        is removed from the database entirely.
+
+        ### Cascading Effects
+
+        > **Warning**: Deleting a parent page moves all child pages
+        > to trash as well. Use with caution in large page hierarchies.
+
+        ### Undo Soft Delete
+
+        Soft-deleted pages can be restored via:
+
+        ```
+        PUT /wiki/rest/api/content/{id}/restore
+        ```
+
+        > **Note**: Pages in trash are permanently removed after 60 days.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page ID to delete.
+
+            Must be a valid page ID the authenticated user can access.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: status
+          in: query
+          description: |
+            Delete mode.
+
+            - `trash` (default) — Move to trash, can be restored
+            - `permanent` — Remove permanently, **cannot** be undone
+          schema:
+            type: string
+            enum: [trash, permanent]
+      responses:
+        '200':
+          description: |
+            Page moved to trash.
+
+            The response includes the page object with `status: "trashed"`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '204':
+          description: |
+            Page permanently deleted.
+
+            No response body is returned. The page and all its children
+            are removed from the database.
+        '404':
+          description: Page not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content:
+    post:
+      operationId: createPage
+      summary: |
+        Create a new page (or child page) in a Confluence space.
+
+        Supports `page` and `blogpost` content types.
+      description: |
+        Creates a new page in the specified Confluence space.
+
+        ## Creating a Top-Level Page
+
+        ```json
+        {
+          "type": "page",
+          "title": "Meeting Notes — 2026-04-23",
+          "space": { "key": "ENG" },
+          "body": {
+            "storage": {
+              "value": "<h1>Meeting Notes</h1><p>Attendees: ...</p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ## Creating a Child Page
+
+        To create a child page, include the `ancestors` array:
+
+        ```json
+        {
+          "type": "page",
+          "title": "Sprint Review",
+          "space": { "key": "ENG" },
+          "ancestors": [{ "id": "123456" }],
+          "body": {
+            "storage": {
+              "value": "<p>Sprint review notes...</p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ### Content Types
+
+        | Type        | Description                      |
+        |-------------|---------------------------------|
+        | `page`      | Regular documentation page       |
+        | `blogpost`  | Blog post (chronological order)  |
+
+        > **Note**: Blog posts cannot have ancestors (they can't be child pages).
+
+        ### Required Fields
+
+        - `type`: Must be `page` or `blogpost`
+        - `title`: Page title (1–255 characters)
+        - `space.key`: Target space key
+        - `body.storage.value`: Content in storage format
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PageCreate'
+      responses:
+        '200':
+          description: |
+            Created page with assigned ID.
+
+            The response includes the new page ID, type, title, and
+            space reference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '400':
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{id}/children:
+    post:
+      operationId: createChildPage
+      summary: |
+        Create a child page under a parent page using the children API.
+
+        Simpler than the main content endpoint for nested pages.
+      description: |
+        Creates a child page directly under the specified parent.
+
+        ## Request Body
+
+        ```json
+        {
+          "type": "page",
+          "title": "Sub-page Title",
+          "body": {
+            "storage": {
+              "value": "<p>Child page content</p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ### Benefits
+
+        Using the `/children` endpoint is simpler because:
+
+        1. No need to specify `space` — it's inferred from the parent
+        2. No need to set `ancestors` — the parent ID is in the URL
+        3. Cleaner request body with fewer fields
+
+        ### Maximum Nesting Depth
+
+        > **Note**: Confluence supports unlimited nesting depth.
+        > However, very deep hierarchies (>20 levels) may cause
+        > performance issues in the UI and API responses.
+
+        ### Example with Code Block
+
+        ```xml
+        <p>Here's how to use the API:</p>
+        <pre><code class="language-javascript">
+        const response = await fetch('/wiki/rest/api/content', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        </code></pre>
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Parent page ID.
+
+            The new child page will be created under this page.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PageCreateChild'
+      responses:
+        '200':
+          description: |
+            Created child page.
+
+            Returns the full child page object with parent reference.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '404':
+          description: Parent page not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{id}/body:
+    put:
+      operationId: updatePageBody
+      summary: |
+        Update only the body/content of a page (not title or metadata).
+
+        Useful for small edits without modifying version number manually.
+      description: |
+        Updates just the body content of an existing page.
+
+        ## Request Body
+
+        ```json
+        {
+          "storage": {
+            "value": "<p>Updated body content only</p>",
+            "representation": "storage"
+          }
+        }
+        ```
+
+        ### Differences from Full Update
+
+        Unlike `PUT /content/{id}`:
+
+        1. Only the `body.storage` field is modified
+        2. Title, space, and other metadata remain unchanged
+        3. Version number is automatically incremented
+
+        ### Storage Format Requirements
+
+        > **Warning**: The body must be valid Confluence storage format
+        > (XHTML-based). Markdown is not accepted directly.
+        >
+        > Supported macros:
+        > - `{info}`, `{warning}`, `{note}`, `{tip}`
+        > - `{code}`, `{html}`
+        > - `{toc}` (table of contents)
+        > - `{panel}`, `{expand}`
+        >
+        > Unsupported macros are ignored during rendering.
+        >
+        > For inline code, use: `<code>your code here</code>`
+        > For code blocks, use: `<pre><code>your code</code></pre>`
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page ID to update.
+
+            Must be a valid page ID the user has edit permissions for.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [storage]
+              properties:
+                storage:
+                  type: object
+                  required: [value, representation]
+                  properties:
+                    value:
+                      type: string
+                      description: |
+                        Page body in storage format.
+
+                        Must be valid Confluence XHTML storage format.
+                        Supports structured macros and templates.
+                    representation:
+                      type: string
+                      enum: [storage, editor]
+                      description: |
+                        Content representation format.
+
+                        - `storage` — Raw storage format (recommended)
+                        - `editor` — WYSIWYG editor format
+      responses:
+        '200':
+          description: |
+            Updated page body with new version number.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Page'
+        '404':
+          description: Page not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{id}/children/attachment:
+    post:
+      operationId: uploadAttachment
+      summary: |
+        Upload a file attachment to a page.
+
+        Supports binary uploads with `multipart/form-data`.
+      description: |
+        Uploads a file attachment to the specified page.
+
+        ## Upload Method
+
+        Uses `multipart/form-data` content type:
+
+        ```bash
+        curl -X POST \
+          -H "Authorization: Bearer <token>" \
+          -F "file=@report.pdf" \
+          -F "comment=Q4 Report" \
+          "https://example.atlassian.net/wiki/rest/api/content/123456/child/attachment"
+        ```
+
+        ### Supported File Types
+
+        | Type         | Extensions                    |
+        |--------------|------------------------------|
+        | Documents    | `.pdf`, `.docx`, `.xlsx`     |
+        | Images       | `.png`, `.jpg`, `.gif`, `.svg` |
+        | Code         | `.py`, `.js`, `.go`, `.java` |
+        | Archives     | `.zip`, `.tar.gz`            |
+
+        ### Size Limits
+
+        > **Note**: Individual file size is limited to 100MB.
+        > Total attachment storage per page is limited to 1GB.
+        >
+        > Files larger than 100MB will return `413 Payload Too Large`.
+        >
+        > For very large files, consider using:
+        > - **File storage macros**: `{attachment}` macro referencing external URLs
+        > - **Linked content**: Use the `link` relation in page content
+
+        ### Overwriting Existing Files
+
+        To replace an existing attachment with the same filename,
+        set the `X-Atlassian-Upload-Draft` header to `true`:
+
+        ```
+        X-Atlassian-Upload-Draft: true
+        ```
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page ID to attach the file to.
+
+            The page must exist and the authenticated user must have
+            attach permissions for the space.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: |
+                    The file to upload.
+
+                    Accepts all file types. File content is validated
+                    against the Confluence attachment whitelist.
+                    Maximum size is 100MB per file.
+                comment:
+                  type: string
+                  description: |
+                    Optional attachment comment.
+
+                    Provides context for the uploaded file.
+                    Supports basic formatting: `*bold*`, `_italic_`, `- strikethrough -`
+                    Maximum length is 255 characters.
+      responses:
+        '200':
+          description: |
+            Attachment uploaded successfully.
+
+            Returns the attachment metadata including file ID, size,
+            and download URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Attachment'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{contentId}/child/comment:
+    post:
+      operationId: createComment
+      summary: |
+        Add a comment to a page using the nested children API.
+
+        Supports both plain text and storage format comments.
+      description: |
+        Creates a new comment on the specified content (page, blog post).
+
+        ## Creating a Comment
+
+        ```json
+        {
+          "type": "comment",
+          "version": { "number": 1 },
+          "body": {
+            "storage": {
+              "value": "<p>This looks good. Approved.</p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ### Inline Comments
+
+        To create an inline (annotation) comment, include the `target` field:
+
+        ```json
+        {
+          "type": "comment",
+          "target": {
+            "type": "content",
+            "id": "123456"
+          },
+          "position": {
+            "offset": 42,
+            "length": 15
+          },
+          "body": {
+            "storage": {
+              "value": "<p>Nitpick: consider renaming this variable</p>",
+              "representation": "storage"
+            }
+          }
+        }
+        ```
+
+        ### Comment Properties
+
+        | Field       | Description                        |
+        |-------------|-----------------------------------|
+        | `type`      | Always `comment`                   |
+        | `position`  | Character offset/length for inline |
+        | `resolved`  | Whether the thread is resolved     |
+
+        > **Note**: Inline comments reference character offsets in the
+        > page's storage format content, not the rendered output.
+        >
+        > If the page content changes, inline comment positions may shift.
+        >
+        > Use `GET /content/{id}/child/comment` to list all comments.
+      parameters:
+        - name: contentId
+          in: path
+          required: true
+          description: |
+            Content ID (page or blog post) to comment on.
+
+            Must be a valid content ID the user can view.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommentCreate'
+      responses:
+        '200':
+          description: |
+            Comment created successfully.
+
+            Returns the full comment object with assigned ID and version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Comment'
+        '404':
+          description: Content not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{id}/label:
+    put:
+      operationId: addLabels
+      summary: |
+        Add labels to a page.
+
+        Labels are flexible tags for categorizing content.
+      description: |
+        Adds one or more labels to the specified page.
+
+        ## Request Format
+
+        ```json
+        {
+          "id": "123456",
+          "name": "status",
+          "labels": [
+            { "id": "label:1", "prefix": "global", "name": "approved" },
+            { "id": "label:2", "prefix": "global", "name": "ready-for-review" }
+          ]
+        }
+        ```
+
+        ### Label Rules
+
+        Label names must follow these rules:
+
+        1. Maximum length: 255 characters
+        2. Allowed characters: `a-z`, `0-9`, `-`, `_`, and spaces
+        3. Cannot start or end with `-` or `_`
+        4. Case-insensitive (stored lowercase)
+        5. Maximum 500 labels per page
+
+        > **Note**: Existing labels are preserved. This endpoint
+        > adds new labels without removing any.
+        >
+        > To remove labels, use `DELETE /content/{id}/label/{labelId}`.
+        >
+        > To replace all labels, first delete all existing ones,
+        > then add the new set.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page ID to add labels to.
+
+            Must be a valid page ID with edit permissions.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LabelUpdate'
+      responses:
+        '200':
+          description: |
+            Labels added successfully.
+
+            Returns the page object with updated label list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageWithLabels'
+        '404':
+          description: Page not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /content/{id}/label/{labelId}:
+    delete:
+      operationId: removeLabel
+      summary: |
+        Remove a specific label from a page.
+
+        Only the specified label is removed; others remain intact.
+      description: |
+        Removes a single label from the specified page.
+
+        ## Request Format
+
+        ```
+        DELETE /wiki/rest/api/content/123456/label/label:42
+        ```
+
+        ### Label ID Format
+
+        Label IDs follow the format `label:<number>`:
+
+        ```
+        label:1
+        label:42
+        label:999
+        ```
+
+        > **Note**: The label ID (not the name) is required.
+        > Use `GET /content/{id}/label` to list labels and their IDs.
+        >
+        > If the label doesn't exist on the page, a `404 Not Found`
+        > is returned.
+        >
+        > Removing a label does not delete it from the system —
+        > other pages can still use the same label.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            Page ID to remove the label from.
+
+            Must be a valid page ID with edit permissions.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+        - name: labelId
+          in: path
+          required: true
+          description: |
+            Label ID to remove.
+
+            Format: `label:<number>` (e.g., `label:42`).
+          schema:
+            type: string
+            pattern: '^label:\d+$'
+      responses:
+        '200':
+          description: |
+            Label removed successfully.
+
+            Returns the page object with the label removed from its list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PageWithLabels'
+        '404':
+          description: Page or label not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /search:
+    get:
+      operationId: searchContent
+      summary: |
+        Search Confluence content using CQL (Confluence Query Language).
+      description: |
+        Searches for pages, blog posts, and comments across all spaces
+        the authenticated user can access.
+
+        ## CQL Examples
+
+        Basic search for pages containing "API":
+
+        ```
+        type=page AND text~"API"
+        ```
+
+        Search by space and last modified date:
+
+        ```
+        space=DOC AND lastModified > 2026-01-01
+        ```
+
+        Complex query with status filter:
+
+        ```
+        (space=DOC OR space=ENG) AND type=page AND status=current
+        ```
+
+        ### Supported CQL Functions
+
+        | Function            | Description                          |
+        |---------------------|-------------------------------------|
+        | `user()`            | Current authenticated user          |
+        | `childOf(id)`       | Children of a specific page         |
+        | `descendantOf(id)`  | All descendants of a page           |
+
+        ### Search Result Structure
+
+        ```json
+        {
+          "results": [
+            {
+              "content": { "id": "123456", "type": "page" },
+              "title": "API Documentation",
+              "excerpt": "...integration with the <em>API</em>..."
+            }
+          ],
+          "start": 0,
+          "limit": 25,
+          "size": 142
+        }
+        ```
+
+        > **Tip**: Use `cqlContext` to set a page context for relative CQL queries
+        > like `childOf(...)`. The value should be a page ID.
+      parameters:
+        - name: cql
+          in: query
+          required: true
+          description: |
+            CQL query string.
+
+            Examples: `type=page`, `space=DOC AND status=current`,
+            `text~"search term"`
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 4000
+        - name: limit
+          in: query
+          description: |
+            Number of results to return (default `25`, max `500`).
+
+            For large result sets, consider using `start` for pagination.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 25
+        - name: start
+          in: query
+          description: |
+            Zero-based offset for pagination.
+
+            Default is `0`. Combined with `limit` for cursor-style pagination.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: |
+            Search results with highlighted excerpts.
+
+            Each result includes:
+            - `content`: Reference to the content object (id, type)
+            - `title`: Result title with matched terms highlighted
+            - `excerpt`: Snippet with `<em>` tags around matched terms
+            - `url`: Relative URL to view the content
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+        '400':
+          description: Invalid CQL query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /space/{spaceKey}/content:
+    get:
+      operationId: getSpaceContent
+      summary: |
+        List all pages and blog posts in a space.
+
+        Returns paginated content with optional body expansion.
+      description: |
+        Retrieves all content pages within a specific space.
+
+        ## Response
+
+        Returns a paginated result set containing all pages and
+        blog posts the authenticated user can view in the space.
+
+        ```json
+        {
+          "results": [
+            {
+              "id": "123456",
+              "type": "page",
+              "title": "Getting Started",
+              "status": "current",
+              "version": { "number": 3 }
+            }
+          ],
+          "start": 0,
+          "limit": 25
+        }
+        ```
+
+        ### Content Status
+
+        | Status     | Description                     |
+        |------------|--------------------------------|
+        | `current`  | Latest published version        |
+        | `draft`    | Unpublished draft               |
+        | `trashed`  | Moved to trash                  |
+        | `historical` | Previous version (archived) |
+
+        ### Filtering
+
+        Use the `type` parameter to filter:
+        - `page` — Only regular pages
+        - `blogpost` — Only blog posts
+
+        > **Performance Tip**: Large spaces (1000+ pages) should use
+        > the search endpoint with CQL instead for better performance.
+      parameters:
+        - name: spaceKey
+          in: path
+          required: true
+          description: |
+            Space key (e.g., `DOC`, `ENG`, `~username`).
+
+            Personal spaces use `~` prefix (e.g., `~jdoe`).
+          schema:
+            type: string
+            pattern: '^[a-zA-Z0-9~_-]+$'
+            minLength: 1
+            maxLength: 255
+        - name: type
+          in: query
+          description: |
+            Filter by content type.
+
+            - `page` — Documentation pages
+            - `blogpost` — Blog posts
+          schema:
+            type: string
+            enum: [page, blogpost]
+        - name: limit
+          in: query
+          description: |
+            Maximum number of results (default `25`, max `200`).
+
+            For spaces with many pages, use `start` for pagination.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 25
+      responses:
+        '200':
+          description: |
+            Paginated content list for the space.
+
+            Returns page IDs, titles, types, and status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedContentList'
+        '404':
+          description: Space not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+
+    PaginatedSpaceList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Space'
+          description: List of space objects
+        start:
+          type: integer
+          format: int32
+        limit:
+          type: integer
+          format: int32
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Space:
+      type: object
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: Unique space identifier
+        key:
+          type: string
+          description: Short space key (e.g., DOC, ENG)
+        name:
+          type: string
+          nullable: true
+          description: Human-readable space name
+        type:
+          type: string
+          enum: [global, personal, system]
+          description: Space classification
+
+    PageCreate:
+      type: object
+      required: [type, title, space, body]
+      properties:
+        type:
+          type: string
+          enum: [page, blogpost]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        space:
+          type: object
+          required: [key]
+          properties:
+            key:
+              type: string
+        ancestors:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+          maxItems: 1
+        body:
+          type: object
+          required: [storage]
+          properties:
+            storage:
+              type: object
+              required: [value, representation]
+              properties:
+                value:
+                  type: string
+                representation:
+                  type: string
+                  enum: [storage, editor]
+
+    PageCreateChild:
+      type: object
+      required: [type, title, body]
+      properties:
+        type:
+          type: string
+          enum: [page, blogpost]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        body:
+          type: object
+          required: [storage]
+          properties:
+            storage:
+              type: object
+              required: [value, representation]
+              properties:
+                value:
+                  type: string
+                representation:
+                  type: string
+                  enum: [storage, editor]
+
+    PageUpdate:
+      type: object
+      required: [id, type, title, version, body]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [page, blogpost]
+        title:
+          type: string
+          minLength: 1
+          maxLength: 255
+        version:
+          type: object
+          required: [number]
+          properties:
+            number:
+              type: integer
+              minimum: 1
+        body:
+          type: object
+          required: [storage]
+          properties:
+            storage:
+              type: object
+              required: [value, representation]
+              properties:
+                value:
+                  type: string
+                representation:
+                  type: string
+                  enum: [storage, editor]
+
+    CommentCreate:
+      type: object
+      required: [type, body]
+      properties:
+        type:
+          type: string
+          enum: [comment]
+        position:
+          type: object
+          properties:
+            offset:
+              type: integer
+              minimum: 0
+            length:
+              type: integer
+              minimum: 1
+        body:
+          type: object
+          required: [storage]
+          properties:
+            storage:
+              type: object
+              required: [value, representation]
+              properties:
+                value:
+                  type: string
+                representation:
+                  type: string
+                  enum: [storage, editor]
+
+    Comment:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [comment]
+        title:
+          type: string
+          nullable: true
+        body:
+          type: object
+          properties:
+            storage:
+              type: object
+              properties:
+                value:
+                  type: string
+                  nullable: true
+        version:
+          type: object
+          properties:
+            number:
+              type: integer
+            when:
+              type: string
+              format: date-time
+        position:
+          type: string
+          nullable: true
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    LabelUpdate:
+      type: object
+      required: [id, labels]
+      properties:
+        id:
+          type: string
+        labels:
+          type: array
+          items:
+            type: object
+            required: [name]
+            properties:
+              id:
+                type: string
+              name:
+                type: string
+                description: |
+                  Label name to add.
+
+                  Must follow the naming convention: lowercase letters,
+                  numbers, hyphens, and underscores only.
+                  Maximum 255 characters.
+                  Case-insensitive (stored as lowercase).
+          maxItems: 500
+          description: |
+            List of labels to add to the page.
+
+            Maximum 500 labels per page.
+            Existing labels are preserved — this endpoint adds new labels only.
+
+    Attachment:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [attachment]
+        title:
+          type: string
+          nullable: true
+          description: Filename of the attachment
+        fileSize:
+          type: string
+          description: File size in bytes
+        mimeType:
+          type: string
+          nullable: true
+          description: MIME type (e.g., application/pdf)
+        comment:
+          type: string
+          nullable: true
+          description: Optional attachment comment
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    Page:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [page, blogpost, comment]
+        title:
+          type: string
+          nullable: true
+        space:
+          type: object
+          properties:
+            key:
+              type: string
+            name:
+              type: string
+              nullable: true
+        version:
+          type: object
+          properties:
+            number:
+              type: integer
+            when:
+              type: string
+              format: date-time
+        body:
+          type: object
+          properties:
+            storage:
+              type: object
+              properties:
+                value:
+                  type: string
+                  nullable: true
+                representation:
+                  type: string
+            view:
+              type: object
+              properties:
+                value:
+                  type: string
+        status:
+          type: string
+          nullable: true
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    PageWithLabels:
+      type: object
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+        title:
+          type: string
+          nullable: true
+        labels:
+          type: object
+          properties:
+            results:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  name:
+                    type: string
+                  prefix:
+                    type: string
+                    enum: [global, space, my]
+        _links:
+          $ref: '#/components/schemas/Links'
+
+    SearchResult:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              content:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  type:
+                    type: string
+              title:
+                type: string
+                nullable: true
+              excerpt:
+                type: string
+                nullable: true
+              url:
+                type: string
+                nullable: true
+        start:
+          type: integer
+        limit:
+          type: integer
+        size:
+          type: integer
+
+    PaginatedContentList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Page'
+        start:
+          type: integer
+        limit:
+          type: integer
+        size:
+          type: integer
+
+    Links:
+      type: object
+      properties:
+        self:
+          type: string
+        base:
+          type: string
+          nullable: true
+
+    Error:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+        message:
+          type: string
+          nullable: true
+        reason:
+          type: string
+          nullable: true

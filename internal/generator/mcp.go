@@ -61,6 +61,10 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate client script: %w", err)
 	}
 
+	if err := g.GenerateMakefile(); err != nil {
+		return fmt.Errorf("failed to generate Makefile: %w", err)
+	}
+
 	if err := g.RunGoModTidy(); err != nil {
 		return fmt.Errorf("failed to run go mod tidy: %w", err)
 	}
@@ -167,6 +171,20 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 	// Make executable
 	if err := os.Chmod(filepath.Join(g.outputDir, "client.sh"), 0755); err != nil {
 		return fmt.Errorf("failed to chmod client.sh: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateMakefile creates a Makefile for building and running the MCP server
+func (g *Generator) GenerateMakefile() error {
+	binName := filepath.Base(g.outputDir)
+	makefile := fmt.Sprintf(".PHONY: build run clean test\n\nbuild:\n\t@go build -o %s .\n\nrun: build\n\t@./%s\n\nclean:\n\t@rm -f %s\n\ntest:\n\t@go test ./...\n", binName, binName, binName)
+
+	if err := writeFileContent(g.outputDir, "Makefile", func() ([]byte, error) {
+		return []byte(makefile), nil
+	}); err != nil {
+		return fmt.Errorf("failed to write Makefile: %w", err)
 	}
 
 	return nil
@@ -382,7 +400,8 @@ func (g *Generator) RunGoModTidy() error {
 
 // RunGoBuild compiles the MCP server binary in the output directory
 func (g *Generator) RunGoBuild() error {
-	binPath := filepath.Join(g.outputDir, "server")
+	binName := filepath.Base(g.outputDir)
+	binPath := filepath.Join(g.outputDir, binName)
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
 	cmd.Dir = g.outputDir
 	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off")

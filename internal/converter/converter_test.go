@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-var specPath = filepath.Join("..", "..", "testdata", "simple_openapi.yaml")
+var specPath = filepath.Join("..", "..", "testdata", "example_confluence_oas_v3.0.yaml")
 
 func TestNewConverter(t *testing.T) {
 	parser := NewParser(false)
