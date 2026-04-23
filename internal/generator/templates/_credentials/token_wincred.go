@@ -3,13 +3,10 @@
 package mcputils
 
 import (
+	"os"
 	"os/exec"
 	"strings"
-	"sync"
 )
-
-var wincredToken string
-var wincredOnce sync.Once
 
 // getFromWinCred retrieves the upstream token from Windows Credential Manager.
 //
@@ -39,3 +36,5 @@ func getFromWinCred() string {
 	}
 	return ""
 }
+
+func getFromKeychain() string { return "" }
