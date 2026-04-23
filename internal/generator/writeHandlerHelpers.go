@@ -88,3 +88,26 @@ func (g *Generator) generateRequestLog() error {
 
 	return nil
 }
+
+// GenerateCredentials copies credential manager files to the helpers package.
+// These files use Go build tags to support macOS Keychain, Windows Credential
+// Manager, and provide stubs for other platforms.
+func (g *Generator) GenerateCredentials() error {
+	credFiles := []string{
+		"token_keychain.go",
+		"token_wincred.go",
+		"token_other.go",
+	}
+	for _, f := range credFiles {
+		content, err := templatesFS.ReadFile("templates/_credentials/" + f)
+		if err != nil {
+			return fmt.Errorf("failed to read template %s: %w", f, err)
+		}
+		if err := writeFileContent(g.outputDir+"/internal/helpers", f, func() ([]byte, error) {
+			return content, nil
+		}); err != nil {
+			return fmt.Errorf("failed to write %s: %w", f, err)
+		}
+	}
+	return nil
+}
