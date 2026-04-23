@@ -139,8 +139,8 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 
 	tools := make([]ClientToolInfo, 0, len(config.Tools))
 	limit := len(config.Tools)
-	if limit > 10 {
-		limit = 10
+	if limit > 20 {
+		limit = 20
 	}
 	for _, tool := range config.Tools[:limit] {
 		tools = append(tools, ClientToolInfo{
