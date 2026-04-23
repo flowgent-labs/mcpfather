@@ -74,6 +74,14 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate README.md: %w", err)
 	}
 
+	if err := g.GenerateDotCredentials(); err != nil {
+		return fmt.Errorf("failed to generate .credentials: %w", err)
+	}
+
+	if err := g.GenerateDotGitignore(); err != nil {
+		return fmt.Errorf("failed to generate .gitignore: %w", err)
+	}
+
 	if err := g.RunGoModTidy(); err != nil {
 		return fmt.Errorf("failed to run go mod tidy: %w", err)
 	}
@@ -209,6 +217,14 @@ func (g *Generator) GenerateReadme() error {
 
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"```sh\nmake\n```\n\n" +
+		"## Token Configuration\n\n" +
+		"The server retrieves the upstream Bearer token using the following priority:\n\n" +
+		"1. Authorization header from the client request (forwarded)\n" +
+		"2. `MCP_UPSTREAM_TOKEN` environment variable\n" +
+		"3. `.credentials` file (set `MCP_UPSTREAM_TOKEN_FILE=.credentials`)\n" +
+		"4. macOS Keychain / Windows Credential Manager\n\n" +
+		"To use the `.credentials` file:\n\n" +
+		"```sh\necho -n \"your-token\" > .credentials\nexport MCP_UPSTREAM_TOKEN_FILE=.credentials\n```\n\n" +
 		"## Agent Integration\n\n" +
 		"### Local Mode (stdio)\n\n" +
 		"Run the MCP server as a child process — recommended for local development.\n\n" +
@@ -369,6 +385,31 @@ func (g *Generator) GenerateReadme() error {
 		return fmt.Errorf("failed to write README.md: %w", err)
 	}
 
+	return nil
+}
+
+// GenerateDotCredentials creates a .credentials file for storing the upstream token.
+// The generated MCP server can read the token from this file via MCP_UPSTREAM_TOKEN_FILE.
+func (g *Generator) GenerateDotCredentials() error {
+	// Only create if it doesn't already exist (preserve user's token)
+	path := filepath.Join(g.outputDir, ".credentials")
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+	if err := os.WriteFile(path, []byte(""), 0600); err != nil {
+		return fmt.Errorf("failed to write .credentials: %w", err)
+	}
+	return nil
+}
+
+// GenerateDotGitignore creates a .gitignore for the generated MCP server project.
+func (g *Generator) GenerateDotGitignore() error {
+	content := ".credentials\n"
+	if err := writeFileContent(g.outputDir, ".gitignore", func() ([]byte, error) {
+		return []byte(content), nil
+	}); err != nil {
+		return fmt.Errorf("failed to write .gitignore: %w", err)
+	}
 	return nil
 }
 
