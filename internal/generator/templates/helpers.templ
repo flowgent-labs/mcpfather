@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -104,12 +105,12 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		}
 		placeholder := "{" + key + "}"
 		if strings.Contains(upstreamURL, placeholder) {
-			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, fmt.Sprintf("%v", val))
+			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, valueToString(val))
 		} else {
 			if strVal, ok := val.(string); ok {
 				query.Set(key, strVal)
 			} else {
-				query.Set(key, fmt.Sprintf("%v", val))
+				query.Set(key, valueToString(val))
 			}
 		}
 	}
@@ -129,7 +130,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 			// Otherwise, send all non-path args as the body
 			bodyData = buildJSONBody(args, pathKeys)
 		}
-		bodyBytes, err := json.Marshal(bodyData)
+		bodyBytes, err := marshalJSONNoSci(bodyData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
@@ -177,6 +178,20 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	return client.Do(req)
 }
 
+// valueToString converts an interface{} to a string suitable for URLs and
+// query parameters. It handles float64 values (from JSON unmarshalling)
+// without scientific notation, which would break integer path parameters.
+func valueToString(val interface{}) string {
+	switch v := val.(type) {
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
 // buildJSONBody creates a map of args that should be included in the JSON body
 // (i.e., args that are not path params or query params).
 func buildJSONBody(args map[string]interface{}, pathAndQueryKeys []string) map[string]interface{} {
@@ -195,7 +210,7 @@ func buildJSONBody(args map[string]interface{}, pathAndQueryKeys []string) map[s
 
 // ParamsParser provides a generic way to parse MCP tool arguments into typed structs
 func ParamsParser[T any](args map[string]interface{}) (*T, error) {
-	jsonData, err := json.Marshal(args)
+	jsonData, err := marshalJSONNoSci(args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process arguments: %w", err)
 	}
@@ -206,4 +221,36 @@ func ParamsParser[T any](args map[string]interface{}) (*T, error) {
 	}
 
 	return &typedArgs, nil
+}
+
+// marshalJSONNoSci marshals data to JSON without scientific notation for
+// floating point / integer values (which may come from JSON
+// unmarshalling as float64). It recursively sanitises maps and slices.
+func marshalJSONNoSci(v interface{}) ([]byte, error) {
+	return json.Marshal(sanitizeForJSON(v))
+}
+
+// sanitizeForJSON recursively replaces float64/float32 values with
+// json.RawMessage containing the decimal representation of the number.
+// This prevents json.Marshal from emitting scientific notation.
+func sanitizeForJSON(v interface{}) interface{} {
+	switch val := v.(type) {
+	case float64:
+		return json.RawMessage(strconv.FormatFloat(val, 'f', -1, 64))
+	case float32:
+		return json.RawMessage(strconv.FormatFloat(float64(val), 'f', -1, 32))
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, item := range val {
+			out[i] = sanitizeForJSON(item)
+		}
+		return out
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			out[k] = sanitizeForJSON(item)
+		}
+		return out
+	}
+	return v
 }
