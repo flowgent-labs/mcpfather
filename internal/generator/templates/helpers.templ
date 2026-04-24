@@ -40,6 +40,42 @@ func IsDefaultUpstreamEndpoint() bool {
 	return mcpUpstreamEndpointVal == mcpUpstreamEndpoint
 }
 
+var upstreamTokenVal string
+var upstreamTokenOnce sync.Once
+
+// GetUpstreamToken returns the upstream token using the following priority:
+//   1. MCP_UPSTREAM_TOKEN environment variable
+//   2. MCP_UPSTREAM_TOKEN_FILE (read token from file, for Kubernetes secrets etc.)
+//   3. macOS Keychain (darwin): security find-generic-password -s mcpgen-upstream
+//   4. Windows Credential Manager (windows): cmdkey /get:mcpgen-upstream
+//
+// To store a token in macOS Keychain:
+//
+//	security add-generic-password -s mcpgen-upstream -a mcpgen-upstream -w <your-token>
+//
+// To store a token in Windows Credential Manager:
+//
+//	cmdkey /add:mcpgen-upstream /user:mcpgen-upstream /pass:your-token
+func GetUpstreamToken() string {
+	upstreamTokenOnce.Do(func() {
+		upstreamTokenVal = os.Getenv("MCP_UPSTREAM_TOKEN")
+		if upstreamTokenVal == "" {
+			if f := os.Getenv("MCP_UPSTREAM_TOKEN_FILE"); f != "" {
+				if data, err := os.ReadFile(f); err == nil {
+					upstreamTokenVal = strings.TrimSpace(string(data))
+				}
+			}
+		}
+		if upstreamTokenVal == "" {
+			upstreamTokenVal = getFromKeychain()
+		}
+		if upstreamTokenVal == "" {
+			upstreamTokenVal = getFromWinCred()
+		}
+	})
+	return upstreamTokenVal
+}
+
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
 func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
 	return context.WithValue(ctx, HTTPHeadersContextKey, headers)
@@ -126,9 +162,9 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		}
 	}
 
-	// Use Authorization from request, fallback to env token
+	// Use Authorization from request, fallback to upstream token (env/file/keychain/credmgr)
 	if req.Header.Get("Authorization") == "" {
-		if token := os.Getenv("MCP_UPSTREAM_TOKEN"); token != "" {
+		if token := GetUpstreamToken(); token != "" {
 			req.Header.Set("Authorization", "Bearer "+token)
 		}
 	}
