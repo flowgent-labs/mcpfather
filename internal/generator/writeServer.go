@@ -27,12 +27,9 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 	}
 
 	data := struct {
-		PackageName        string
 		MCPToolsImportPath string
 		Tools              []ToolTemplateData
 	}{
-		PackageName:        g.PackageName,
-		Tools:              make([]ToolTemplateData, 0, len(config.Tools)),
 		MCPToolsImportPath: importPath,
 	}
 
@@ -57,7 +54,7 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 		return fmt.Errorf("failed to format generated server.go: %w", err)
 	}
 
-	if err := writeFileContent(g.outputDir, "server.go", func() ([]byte, error) {
+	if err := writeFileContent(g.outputDir+"/internal/mcpserver", "server.go", func() ([]byte, error) {
 		return formattedCode, nil
 	}); err != nil {
 		return fmt.Errorf("failed to write server.go file: %w", err)
