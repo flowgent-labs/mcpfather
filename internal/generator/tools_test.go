@@ -363,7 +363,7 @@ func Bar() {}
 
 func TestGenerateToolFiles(t *testing.T) {
 	tmpDir := t.TempDir()
-	toolsDir := filepath.Join(tmpDir, "mcptools")
+	toolsDir := filepath.Join(tmpDir, "internal", "mcptools")
 
 	// Only populate the fields needed for template rendering
 	config := &converter.MCPConfig{
@@ -440,7 +440,7 @@ func TestGenerateToolFiles(t *testing.T) {
 
 func TestGenerateToolFilesWithHandlerBodyImplemented(t *testing.T) {
 	tmpDir := t.TempDir()
-	toolsDir := filepath.Join(tmpDir, "mcptools")
+	toolsDir := filepath.Join(tmpDir, "internal", "mcptools")
 
 	// Initial config with two tools
 	config := &converter.MCPConfig{

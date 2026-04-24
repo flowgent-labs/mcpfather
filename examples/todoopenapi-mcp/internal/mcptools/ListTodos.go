@@ -7,7 +7,7 @@ import (
 )
 
 // Input Schema for the ListTodos tool
-const ListTodosInputSchema = `{
+const listTodosInputSchema = `{
   "properties": {
     "limit": {
       "default": 20,
@@ -62,6 +62,10 @@ The template shows a possible response, including its status code and content ty
   - **Items** (Type: Combinator):
     - **One Of the following structures**:
       - **Option 1** (Type: object):
+        - **createdAt**: Timestamp of when the todo item was created. (Type: string, date-time):
+            - Example: '2025-05-09T18:12:54Z'
+        - **id**: Unique identifier for the todo item. (Type: string, uuid):
+            - Example: 'd290f1ee-6c54-4b01-90e6-d701748f0851'
         - **status**: Current status of the todo item. (Type: string):
             - Default: 'pending'
             - Example: 'pending'
@@ -70,10 +74,6 @@ The template shows a possible response, including its status code and content ty
             - Example: 'Buy groceries'
         - **updatedAt**: Timestamp of when the todo item was last updated. (Type: string, date-time):
             - Example: '2025-05-10T10:00:00Z'
-        - **createdAt**: Timestamp of when the todo item was created. (Type: string, date-time):
-            - Example: '2025-05-09T18:12:54Z'
-        - **id**: Unique identifier for the todo item. (Type: string, uuid):
-            - Example: 'd290f1ee-6c54-4b01-90e6-d701748f0851'
       - **Option 2** (Type: object):
         - **title**: The main content of the todo item. (Type: string):
             - Example: 'Plan weekend trip'
@@ -108,8 +108,8 @@ The template shows a possible response, including its status code and content ty
   - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
+      - **field** (Type: string):
   - **message**: A human-readable description of the error. (Type: string):
 `
 
@@ -129,12 +129,12 @@ The template shows a possible response, including its status code and content ty
 ## Response Structure
 
 - Structure (Type: object):
-  - **code**: An application-specific error code. (Type: integer, int32):
   - **details**: Optional array of specific field validation errors. (Type: array):
     - **Items** (Type: object):
-      - **field** (Type: string):
       - **issue** (Type: string):
+      - **field** (Type: string):
   - **message**: A human-readable description of the error. (Type: string):
+  - **code**: An application-specific error code. (Type: integer, int32):
 `
 
 // NewListTodosMCPTool creates the MCP Tool instance for ListTodos
@@ -142,7 +142,7 @@ func NewListTodosMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"ListTodos",
 		"List all todo items - Retrieves a list of todo items, optionally filtered by status.",
-		[]byte(ListTodosInputSchema),
+		[]byte(listTodosInputSchema),
 	)
 }
 

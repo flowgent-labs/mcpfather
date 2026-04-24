@@ -19,11 +19,7 @@ func (g *Generator) GenerateHelpers() error {
 		return fmt.Errorf("failed to parse helpers template: %w", err)
 	}
 
-	data := struct {
-		PackageName string
-	}{
-		PackageName: g.PackageName,
-	}
+	data := struct{}{}
 
 	var buffer bytes.Buffer
 	if err := tmpl.Execute(&buffer, data); err != nil {
@@ -35,7 +31,7 @@ func (g *Generator) GenerateHelpers() error {
 		return fmt.Errorf("failed to format generated helpers code: %w", err)
 	}
 
-	err = writeFileContent(g.outputDir + "/helpers", "params.go", func() ([]byte, error) {
+	err = writeFileContent(g.outputDir+"/internal/helpers", "params.go", func() ([]byte, error) {
 		return formattedCode, nil
 	})
 	if err != nil {

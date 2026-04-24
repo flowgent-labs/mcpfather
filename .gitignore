@@ -2,6 +2,7 @@
 /bin/
 /build/
 /dist/
+mcpgen
 *.exe
 *.exe~
 *.dll
