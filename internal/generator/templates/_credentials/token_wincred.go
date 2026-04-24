@@ -3,12 +3,15 @@
 package mcputils
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // getFromWinCred retrieves the upstream token from Windows Credential Manager.
+// Returns "" on any error, timeout, or panic — this is purely optional.
 //
 // To store a token:
 //
@@ -17,12 +20,15 @@ import (
 // Customize the target name:
 //
 //	set MCP_UPSTREAM_WINCRED_TARGET=mcpgen-upstream
-func getFromWinCred() string {
+func getFromWinCred() (token string) {
+	defer func() { recover() }()
 	target := "mcpgen-upstream"
 	if t := os.Getenv("MCP_UPSTREAM_WINCRED_TARGET"); t != "" {
 		target = t
 	}
-	cmd := exec.Command("cmdkey", "/get:"+target)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "cmdkey", "/get:"+target)
 	out, err := cmd.Output()
 	if err != nil {
 		return ""
