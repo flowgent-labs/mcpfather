@@ -16,7 +16,6 @@ func main() {
 	outputDir := flag.String("output", "", "Path to the output MCP server directory")
 
 	validation := flag.Bool("validation", false, "Enable OpenAPI validation")
-	packageName := flag.String("package", "mcpgen", "Generated package name")
 	includes := flag.String("includes", "", "Comma-separated list of includes for the generated code")
 	
 
@@ -45,7 +44,7 @@ func main() {
 		}
 	}
 
-	generator, err := generator.NewGenerator(*inputFile, *validation, *packageName, *outputDir)
+	generator, err := generator.NewGenerator(*inputFile, *validation, "", *outputDir)
 	if err != nil {
 		fmt.Printf("Error creating generator: %v\n", err)
 		os.Exit(1)
