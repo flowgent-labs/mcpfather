@@ -3,13 +3,10 @@
 package mcputils
 
 import (
+	"os"
 	"os/exec"
 	"strings"
-	"sync"
 )
-
-var keychainToken string
-var keychainOnce sync.Once
 
 // getFromKeychain retrieves the upstream token from macOS Keychain.
 //
@@ -32,3 +29,5 @@ func getFromKeychain() string {
 	}
 	return strings.TrimSpace(string(out))
 }
+
+func getFromWinCred() string { return "" }
