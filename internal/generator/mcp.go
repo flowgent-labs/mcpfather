@@ -213,12 +213,14 @@ func (g *Generator) GenerateReadme() error {
 		`{
   "mcp": {
     "` + mcpName + `": {
-      "command": "./` + binName + `",
+      "type": "local",
+      "command": ["./` + binName + `"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
         "MCP_UPSTREAM_TOKEN": "your-token"
-      }
+      },
+      "enabled": true
     }
   }
 }
@@ -297,6 +299,7 @@ func (g *Generator) GenerateReadme() error {
 		`{
   "mcp": {
     "` + mcpName + `": {
+      "type": "remote",
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
