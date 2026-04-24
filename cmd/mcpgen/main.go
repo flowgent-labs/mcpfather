@@ -14,6 +14,7 @@ var (
 	outputDir  string
 	validation bool
 	includes   string
+	excludes   string
 )
 
 func init() {
@@ -22,7 +23,8 @@ func init() {
 	flag.StringVar(&outputDir, "o", "", "Path to the output MCP server directory")
 	flag.StringVar(&outputDir, "output", "", "Path to the output MCP server directory")
 	flag.BoolVar(&validation, "validation", false, "Enable OpenAPI validation")
-	flag.StringVar(&includes, "includes", "", "Comma-separated list of includes for the generated code")
+	flag.StringVar(&includes, "includes", "", "Comma-separated OpenAPI paths to include (e.g. /wiki/rest/api/pages,/wiki/rest/api/spaces)")
+	flag.StringVar(&excludes, "excludes", "", "Comma-separated OpenAPI paths to exclude (e.g. /wiki/rest/api/health)")
 }
 
 func usage() {
@@ -31,7 +33,8 @@ func usage() {
 Options:
   -i, --input       Path to the OpenAPI specification file (JSON or YAML)
   -o, --output      Path to the output MCP server directory
-  --includes        Comma-separated list of includes for the generated code
+  --includes        Comma-separated OpenAPI paths to include
+  --excludes        Comma-separated OpenAPI paths to exclude
   --validation      Enable OpenAPI validation
 `)
 }
@@ -52,6 +55,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Parse include/exclude lists
+	var includePaths, excludePaths []string
+	if includes != "" {
+		includePaths = strings.Split(includes, ",")
+	}
+	if excludes != "" {
+		excludePaths = strings.Split(excludes, ",")
+	}
+
 	// Create the output directory if it doesn't exist
 	if outputDir != "" && outputDir != "." {
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -60,18 +72,10 @@ func main() {
 		}
 	}
 
-	gen, err := generator.NewGenerator(inputFile, validation, "", outputDir)
+	gen, err := generator.NewGenerator(inputFile, validation, "", outputDir, includePaths, excludePaths)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating generator: %v\n", err)
 		os.Exit(1)
-	}
-
-	// Generate the HTTP client (optional)
-	if includes != "" {
-		if err := gen.GenerateHTTPClient(strings.Split(includes, ",")); err != nil {
-			fmt.Fprintf(os.Stderr, "Error generating HTTP client: %v\n", err)
-			os.Exit(1)
-		}
 	}
 
 	// Generate the MCP server
