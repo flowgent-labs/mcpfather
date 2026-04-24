@@ -12,26 +12,46 @@ func New{{.ToolNameOriginal}}MCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"{{.ToolNameOriginal}}",
 		"{{.ToolDescription}}",
-		[]byte({{.InputSchemaConst}}), 
+		[]byte({{.InputSchemaConst}}),
 	)
 }
 
 
-
 // {{.ToolHandlerName}} is the handler function for the {{.ToolNameOriginal}} tool.
-// This function is automatically generated. Users should implement the actual
-// logic within this function body to integrate with backend APIs.
-// You can generate types, http client and helpers for parsing request params to facilitate the implementation.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
 func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	
-	// IMPORTANT: Replace the following placeholder implementation with your actual logic.
-	// Use the 'request' parameter to access tool call arguments.
-	// Make HTTP calls or interact with services as needed.
-	// Return an *mcp.CallToolResult with the response payload, or an error.
+	upstream := mcputils.GetUpstreamEndpoint()
 
-	// Example placeholder implementation:
-	// Extract the parameters from the request and parse them.
-	// Call your backend API or perform the necessary operations using 'params'.
-	// Handle the response and errors accordingly.
-	return nil, fmt.Errorf("%s not implemented", "{{.ToolNameOriginal}}")
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+
+{{- if .Headers }}
+	{{- range .Headers }}
+	contentType := "{{.Value}}"
+	{{- end }}
+{{- else }}
+	contentType := ""
+{{- end }}
+
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "{{.Method}}", resp.Request.URL.String(), time.Since(startTime), body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	return mcp.NewToolResultText(string(body)), nil
 }
