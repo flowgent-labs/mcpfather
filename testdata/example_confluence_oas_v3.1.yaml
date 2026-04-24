@@ -128,7 +128,7 @@ paths:
 
   /content/{id}:
     get:
-      operationId: getPage
+      operationId: get-a-very-long-operation-id-with-dashes-and_underscores_that_exceeds_the_maximum_tool_name_limit_set_by_opencode_and_other_mcp_integrations_in_the_enterprise_environment
       summary: |
         Get a page by its ID, optionally with inline children
         and version history.
