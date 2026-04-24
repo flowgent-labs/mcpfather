@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"sort"
+	"strings"
+	"unicode"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -11,11 +13,17 @@ import (
 const maxToolNameLength = 125
 
 // truncateToolName ensures tool names fit within MCP limits while remaining
-// unique Go identifiers. If the name exceeds the limit it is truncated and a
-// short hash suffix is appended to preserve uniqueness.
+// unique Go identifiers. Converts dash/underscore separated names to
+// PascalCase (e.g. get_user_list → GetUserList) to save characters and
+// improve readability. If still too long, truncates and appends a hash suffix.
 func truncateToolName(name string) string {
-	if len(name) <= maxToolNameLength {
+	if name == toPascalCase(name) && len(name) <= maxToolNameLength {
 		return name
+	}
+
+	converted := toPascalCase(name)
+	if len(converted) <= maxToolNameLength {
+		return converted
 	}
 
 	h := sha256.Sum256([]byte(name))
@@ -23,7 +31,7 @@ func truncateToolName(name string) string {
 	maxPrefix := maxToolNameLength - len(hashStr) - 1
 
 	var truncated []rune
-	for _, r := range name {
+	for _, r := range converted {
 		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
 			truncated = append(truncated, r)
 		}
@@ -37,12 +45,31 @@ func truncateToolName(name string) string {
 		result = result[:maxToolNameLength]
 	}
 
-	// Ensure it's a valid Go identifier (doesn't start with a digit)
 	if len(result) > 0 && result[0] >= '0' && result[0] <= '9' {
 		return "_" + result[:maxToolNameLength-1]
 	}
 
 	return result
+}
+
+// toPascalCase splits by non-alphanumeric separators, lowercases each segment,
+// and capitalises the first letter to produce a Go-style identifier.
+func toPascalCase(s string) string {
+	var b strings.Builder
+	capitalizeNext := true
+	for _, r := range s {
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			if capitalizeNext {
+				b.WriteRune(unicode.ToUpper(r))
+				capitalizeNext = false
+			} else {
+				b.WriteRune(unicode.ToLower(r))
+			}
+		} else {
+			capitalizeNext = true
+		}
+	}
+	return b.String()
 }
 
 // getOperations returns a map of HTTP method to operation
