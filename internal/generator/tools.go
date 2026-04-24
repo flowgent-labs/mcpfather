@@ -30,11 +30,25 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 
 	for _, tool := range config.Tools {
 		capitalizedName := capitalizeFirstLetter(tool.Name)
+
+		// Collect path args for URL parameter replacement
+		var pathArgs []converter.Arg
+		for _, arg := range tool.Args {
+			if arg.Source == "path" {
+				pathArgs = append(pathArgs, arg)
+			}
+		}
+
+		// Extract just the path from the full URL (serverURL + path)
+		requestPath := extractRequestPath(tool.RequestTemplate.URL)
+
 		data := struct {
 			ToolTemplateData
-			URL     string
-			Method  string
-			Headers []converter.Header
+			URL        string
+			Method     string
+			Headers    []converter.Header
+			RequestPath string
+			PathArgs   []converter.Arg
 		}{
 			ToolTemplateData: ToolTemplateData{
 				ToolNameOriginal:      capitalizedName,
@@ -46,9 +60,11 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 				InputSchemaConst:      fmt.Sprintf("%sInputSchema", tool.Name),
 				ResponseTemplateConst: fmt.Sprintf("%sResponseTemplate", tool.Name),
 			},
-			URL:     tool.RequestTemplate.URL,
-			Method:  tool.RequestTemplate.Method,
-			Headers: tool.RequestTemplate.Headers,
+			URL:         tool.RequestTemplate.URL,
+			Method:      tool.RequestTemplate.Method,
+			Headers:     tool.RequestTemplate.Headers,
+			RequestPath: requestPath,
+			PathArgs:    pathArgs,
 		}
 
 		outputFileName := capitalizedName + ".go"
@@ -77,10 +93,14 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		fmt.Fprintf(&toolBuf, "package mcptools\n\n")
 
 		// Merge imports
+		mcputilsImport := BuildModuleName(g.outputDir) + "/internal/helpers"
 		requiredImports := []string{
 			"context",
 			"fmt",
+			"io",
+			"time",
 			"github.com/mark3labs/mcp-go/mcp",
+			mcputilsImport,
 		}
 
 		if len(existingImports) > 0 {
@@ -240,4 +260,24 @@ func exprToString(expr ast.Expr) string {
 	var buf bytes.Buffer
 	printer.Fprint(&buf, token.NewFileSet(), expr)
 	return buf.String()
+}
+
+// extractRequestPath extracts the path portion from a full URL.
+// The URL is in the form "https://api.example.com/v1/todos/{todoId}",
+// and we need just "/v1/todos/{todoId}" for the ForwardRequest call.
+func extractRequestPath(fullURL string) string {
+	// The URL is the server URL + path. We need to extract just the path.
+	// Find the path part by removing the scheme and host.
+	// e.g., "https://api.example.com/v1/todos/{todoId}" → "/v1/todos/{todoId}"
+	idx := strings.Index(fullURL, "://")
+	if idx == -1 {
+		return fullURL
+	}
+	afterScheme := fullURL[idx+3:]
+	// Find the first "/" after the host
+	pathIdx := strings.Index(afterScheme, "/")
+	if pathIdx == -1 {
+		return "/"
+	}
+	return afterScheme[pathIdx:]
 }

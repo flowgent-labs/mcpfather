@@ -1,0 +1,147 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ============================================================
+# MCP Server Client Script
+# Quick test helper for the generated MCP server.
+#
+# Usage:
+#   ./client.sh                  Show this help message
+#   ./client.sh help             Show this help message
+#   ./client.sh list-tools       List all available tools
+#   ./client.sh call <tool> [args]  Call a tool
+#
+# Environment variables:
+#   MCP_SERVER_URL  - Server URL (default: http://localhost:8080/mcp)
+# ============================================================
+
+SERVER_URL="${MCP_SERVER_URL:-http://localhost:8080/mcp}"
+SESSION_ID=""
+
+usage() {
+  cat <<'USAGE'
+client.sh — MCP Server Client Script
+
+Usage:
+  ./client.sh [command] [arguments]
+
+Commands:
+  (no args)           Show this help message
+  help                Show this help message
+  list-tools          List all available tools
+  call <tool> [args]  Call a tool with optional JSON arguments
+
+Examples:
+USAGE
+
+  cat <<'EXAMPLES'
+{{ range .Tools }}
+  # {{ .Description }}
+  # Method: {{ .Method }}
+  ./client.sh call {{ .Name }} '{{ jsonExample . }}'
+{{ end }}
+EXAMPLES
+
+  cat <<'USAGE'
+
+Environment:
+  MCP_SERVER_URL      Override server URL (default: http://localhost:8080/mcp)
+
+Tips:
+  - Always uses --noproxy '*' to avoid proxy issues with localhost
+  - If the server is running on a different port:
+      MCP_SERVER_URL=http://localhost:9090/mcp ./client.sh
+  - The script auto-initializes a session on first call
+USAGE
+}
+
+# --- Session helpers ---
+
+init_session() {
+  echo "[*] Initializing MCP session at $SERVER_URL ..." >&2
+  local headers_file
+  headers_file=$(mktemp)
+  trap "rm -f '$headers_file'" RETURN
+
+  local body
+  body=$(curl -s -D "$headers_file" --noproxy '*' -X POST "$SERVER_URL" \
+    -H "Content-Type: application/json" \
+    -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"client","version":"1.0"}}}')
+
+  SESSION_ID=$(grep -oi "Mcp-Session-Id: [^ ]*" "$headers_file" | head -1 | awk '{print $2}' | tr -d '"\r' || true)
+  if [ -z "$SESSION_ID" ]; then
+    echo "[!] Failed to get session ID. Is the server running?" >&2
+    echo "[!] Response: $body" >&2
+    return 1
+  fi
+  echo "[+] Session: $SESSION_ID" >&2
+}
+
+# --- MCP JSON-RPC helpers ---
+
+mcp_request() {
+  local method="$1"
+  local id="${2:-1}"
+  local params
+  if [ $# -ge 3 ]; then params="$3"; else params='{ }'; fi
+
+  if [ -z "$SESSION_ID" ]; then
+    init_session
+  fi
+
+  curl -s --noproxy '*' -X POST "$SERVER_URL" \
+    -H "Content-Type: application/json" \
+    -H "Mcp-Session-Id: $SESSION_ID" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\",\"params\":$params}"
+}
+
+# --- Tool helpers ---
+
+list_tools() {
+  echo "[*] Listing tools ..." >&2
+  local result
+  result=$(mcp_request tools/list 1)
+  echo "$result" | python3 -m json.tool 2>/dev/null || echo "$result"
+}
+
+call_tool() {
+  local tool_name="${1:?Usage: call_tool <tool-name> [json-args]}"
+  local args
+  if [ $# -ge 2 ]; then args="$2"; else args='{ }'; fi
+
+  echo "[*] Calling tool: $tool_name" >&2
+  echo "[*] Args: $args" >&2
+
+  local result
+  result=$(mcp_request tools/call 1 "{\"name\":\"$tool_name\",\"arguments\":$args}")
+
+  # Pretty print
+  echo "$result" | python3 -m json.tool 2>/dev/null || echo "$result"
+
+  # Check if response has isError
+  if echo "$result" | grep -q '"isError":true'; then
+    echo "[!] Tool returned an error" >&2
+    return 1
+  fi
+}
+
+# --- Main ---
+
+case "${1:-help}" in
+  help|--help|-h)
+    usage
+    ;;
+  list-tools|list)
+    init_session
+    list_tools
+    ;;
+  call)
+    shift
+    init_session
+    call_tool "$@"
+    ;;
+  *)
+    init_session
+    call_tool "$@"
+    ;;
+esac

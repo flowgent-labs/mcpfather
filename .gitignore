@@ -3,6 +3,8 @@
 /build/
 /dist/
 mcpgen
+mcpgen.com
+main
 *.exe
 *.exe~
 *.dll

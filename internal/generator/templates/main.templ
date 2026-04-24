@@ -4,31 +4,108 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
+	"time"
 
+	mcputils "{{ .ModuleName }}/internal/helpers"
 	mcpserver "{{ .ModuleName }}/internal/mcpserver"
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// logHTTP wraps any handler and logs every incoming HTTP request + response
+func logHTTP(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		v := mcputils.GetVerbosity()
+
+		// Extract session ID for logging and pass it downstream via context
+		sessionID := r.Header.Get("Mcp-Session-Id")
+		ctx := mcputils.WithSessionID(r.Context(), sessionID)
+		r = r.WithContext(ctx)
+
+		if v >= 2 {
+			var bodyLog string
+			if r.Body != nil {
+				body, _ := io.ReadAll(r.Body)
+				r.Body = io.NopCloser(strings.NewReader(string(body)))
+				bodyLog = string(body)
+			}
+			sid := sessionID
+			if sid == "" {
+				sid = "-"
+			}
+			fmt.Fprintf(os.Stderr, "%s [http] sid=%s %s %s body=%s\n", start.Format(time.RFC3339), sid, r.Method, r.URL.RequestURI(), truncate(bodyLog, 300))
+		}
+
+		lw := &loggingWriter{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(lw, r)
+
+		if v >= 1 {
+			sid := sessionID
+			if sid == "" {
+				sid = "-"
+			}
+			fmt.Fprintf(os.Stderr, "%s [http] sid=%s %d %s %s (%s)\n", time.Now().Format(time.RFC3339), sid, lw.status, r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
+		}
+	})
+}
+
+type loggingWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (l *loggingWriter) WriteHeader(code int) {
+	l.status = code
+	l.ResponseWriter.WriteHeader(code)
+}
+
+func truncate(s string, max int) string {
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	if s == "" {
+		return "(empty)"
+	}
+	return s
+}
+
 func main() {
+	upstreamEndpoint := mcputils.GetUpstreamEndpoint()
+	isDefault := mcputils.IsDefaultUpstreamEndpoint()
+
+	fmt.Fprintf(os.Stderr, "UPSTREAM_ENDPOINT=%s\n", upstreamEndpoint)
+	if isDefault {
+		fmt.Fprintln(os.Stderr, "Warning: UPSTREAM_ENDPOINT is not set. Using default (httpbin.org/anything) which echoes requests. Set it to your actual upstream service endpoint.")
+	}
+
 	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
 	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
+	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10): 0=silent, 1=access log, 2+=method+URL, 3+=query, 5+=headers, 7+=body, 9+=pretty JSON")
 	flag.Parse()
+
+	mcputils.SetVerbosity(*verbose)
 
 	s := mcpserver.NewMCPServer()
 
 	switch *transport {
 	case "http":
-		mcpServer := server.NewStreamableHTTPServer(s)
+		mcpServer := server.NewStreamableHTTPServer(s,
+			server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
+				return mcputils.WithHTTPHeaders(ctx, r.Header)
+			}),
+		)
 
 		mux := http.NewServeMux()
 		mux.Handle("/mcp", mcpServer)
 
 		addr := fmt.Sprintf(":%d", *port)
-		httpServer := &http.Server{Addr: addr, Handler: mux}
+		httpServer := &http.Server{Addr: addr, Handler: logHTTP(mux)}
 
 		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 		defer cancel()

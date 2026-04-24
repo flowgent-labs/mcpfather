@@ -8,18 +8,7 @@ type MCPConfig struct {
 
 // ServerConfig represents the MCP server configuration
 type ServerConfig struct {
-	Config          map[string]interface{}
-	SecuritySchemes []SecurityScheme
-}
-
-// SecurityScheme defines a security scheme that can be used by the tools.
-type SecurityScheme struct {
-	ID                string
-	Type              string // e.g., "http", "apiKey", "oauth2", "openIdConnect"
-	Scheme            string // e.g., "basic", "bearer" for "http" type
-	In                string // e.g., "header", "query", "cookie" for "apiKey" type
-	Name              string // Name of the header, query parameter or cookie for "apiKey" type
-	DefaultCredential string
+	Config map[string]interface{}
 }
 
 // Tool represents an MCP tool configuration
@@ -41,12 +30,6 @@ type RequestTemplate struct {
 	ArgsToJsonBody bool
 	ArgsToUrlParam bool
 	ArgsToFormBody bool
-	Security       []ToolSecurityRequirement
-}
-
-// ToolSecurityRequirement specifies a security scheme requirement for a tool.
-type ToolSecurityRequirement struct {
-	ID string
 }
 
 // Header represents an HTTP header
