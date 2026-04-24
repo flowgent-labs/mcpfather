@@ -26,11 +26,15 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 		return fmt.Errorf("failed to build import path: %w", err)
 	}
 
+	helperImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
+
 	data := struct {
 		MCPToolsImportPath string
+		HelpersImportPath  string
 		Tools              []ToolTemplateData
 	}{
 		MCPToolsImportPath: importPath,
+		HelpersImportPath:  helperImportPath,
 	}
 
 	for _, tool := range config.Tools {

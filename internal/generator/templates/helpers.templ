@@ -1,24 +1,166 @@
 package mcputils
 
-
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
 )
 
+type contextKey string
+
+const HTTPHeadersContextKey contextKey = "mcp-http-headers"
+
+const defaultUpstreamEndpoint = "https://httpbin.org/anything"
+
+var upstreamEndpoint string
+var upstreamOnce sync.Once
+
+// GetUpstreamEndpoint returns the upstream endpoint from the UPSTREAM_ENDPOINT
+// environment variable, falling back to a default echo service for debugging.
+func GetUpstreamEndpoint() string {
+	upstreamOnce.Do(func() {
+		upstreamEndpoint = os.Getenv("UPSTREAM_ENDPOINT")
+		if upstreamEndpoint == "" {
+			upstreamEndpoint = defaultUpstreamEndpoint
+		}
+	})
+	return upstreamEndpoint
+}
+
+// IsDefaultUpstreamEndpoint returns true if the upstream endpoint uses the default
+// value (i.e. UPSTREAM_ENDPOINT environment variable was not set).
+func IsDefaultUpstreamEndpoint() bool {
+	GetUpstreamEndpoint() // ensure initialized
+	return upstreamEndpoint == defaultUpstreamEndpoint
+}
+
+// WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
+func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
+	return context.WithValue(ctx, HTTPHeadersContextKey, headers)
+}
+
+// GetHTTPHeaders retrieves HTTP headers from the context.
+func GetHTTPHeaders(ctx context.Context) http.Header {
+	if h, ok := ctx.Value(HTTPHeadersContextKey).(http.Header); ok {
+		return h
+	}
+	return nil
+}
+
+// ForwardRequest sends an HTTP request to the upstream endpoint and returns the response.
+// All HTTP headers stored in ctx are forwarded to the upstream service.
+func ForwardRequest(ctx context.Context, upstreamBase string, method string, path string, args map[string]interface{}, pathKeys []string, contentType string) (*http.Response, error) {
+	// Build URL
+	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
+
+	// Replace path parameters and collect query parameters
+	query := url.Values{}
+	for key, val := range args {
+		// "body" is reserved for request body, never goes in query
+		if key == "body" {
+			continue
+		}
+		placeholder := "{" + key + "}"
+		if strings.Contains(upstreamURL, placeholder) {
+			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, fmt.Sprintf("%v", val))
+		} else {
+			if strVal, ok := val.(string); ok {
+				query.Set(key, strVal)
+			} else {
+				query.Set(key, fmt.Sprintf("%v", val))
+			}
+		}
+	}
+	if len(query) > 0 {
+		upstreamURL += "?" + query.Encode()
+	}
+
+	// Build request body
+	var bodyReader io.Reader
+	var bodyBytes []byte
+	if method != "GET" && method != "HEAD" {
+		var bodyData interface{}
+		if bodyArg, ok := args["body"]; ok {
+			// If a "body" arg is present, use it directly as the request body
+			bodyData = bodyArg
+		} else {
+			// Otherwise, send all non-path args as the body
+			bodyData = buildJSONBody(args, pathKeys)
+		}
+		bodyBytes, err := json.Marshal(bodyData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		bodyReader = strings.NewReader(string(bodyBytes))
+	}
+
+	// Log outgoing request according to verbosity level (all methods)
+	LogRequest(method, upstreamURL, query, nil, bodyBytes)
+
+	req, err := http.NewRequestWithContext(ctx, method, upstreamURL, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upstream request: %w", err)
+	}
+
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	// Forward all headers from context
+	if forwarded := GetHTTPHeaders(ctx); forwarded != nil {
+		for key, values := range forwarded {
+			// Skip hop-by-hop headers
+			lowerKey := strings.ToLower(key)
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" {
+				continue
+			}
+			for _, v := range values {
+				req.Header.Add(key, v)
+			}
+		}
+	}
+
+		client := &http.Client{
+			Transport: &http.Transport{
+				Proxy: http.ProxyFromEnvironment,
+			},
+		}
+		return client.Do(req)
+}
+
+// buildJSONBody creates a map of args that should be included in the JSON body
+// (i.e., args that are not path params or query params).
+func buildJSONBody(args map[string]interface{}, pathAndQueryKeys []string) map[string]interface{} {
+	skip := make(map[string]bool, len(pathAndQueryKeys))
+	for _, k := range pathAndQueryKeys {
+		skip[k] = true
+	}
+	body := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		if !skip[k] {
+			body[k] = v
+		}
+	}
+	return body
+}
 
 // ParamsParser provides a generic way to parse MCP tool arguments into typed structs
 func ParamsParser[T any](args map[string]interface{}) (*T, error) {
-    // Convert through JSON as a safe way to handle nested structures
-    jsonData, err := json.Marshal(args)
-    if err != nil {
-        return nil, fmt.Errorf("failed to process arguments: %w", err)
-    }
-    
-    var typedArgs T
-    if err := json.Unmarshal(jsonData, &typedArgs); err != nil {
-        return nil, fmt.Errorf("invalid argument structure: %w", err)
-    }
-    
-    return &typedArgs, nil
+	jsonData, err := json.Marshal(args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process arguments: %w", err)
+	}
+
+	var typedArgs T
+	if err := json.Unmarshal(jsonData, &typedArgs); err != nil {
+		return nil, fmt.Errorf("invalid argument structure: %w", err)
+	}
+
+	return &typedArgs, nil
 }
