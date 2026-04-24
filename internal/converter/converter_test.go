@@ -10,7 +10,10 @@ var specPath = filepath.Join("..", "..", "testdata", "example_confluence_oas_v3.
 
 func TestNewConverter(t *testing.T) {
 	parser := NewParser(false)
-	c := NewConverter(parser)
+	c, err := NewConverter(parser, nil, nil)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
 	if c == nil {
 		t.Fatal("expected non-nil Converter")
 	}
@@ -36,7 +39,10 @@ func TestConverter_Convert(t *testing.T) {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
-	c := NewConverter(parser)
+	c, err := NewConverter(parser, nil, nil)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
 	config, err := c.Convert()
 	if err != nil {
 		t.Fatalf("Convert failed: %v", err)
@@ -60,8 +66,11 @@ func TestConverter_Convert(t *testing.T) {
 
 func TestConverter_Convert_NoDocument(t *testing.T) {
 	parser := NewParser(false)
-	c := NewConverter(parser)
-	_, err := c.Convert()
+	c, err := NewConverter(parser, nil, nil)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	_, err = c.Convert()
 	if err == nil {
 		t.Fatal("expected error when no OpenAPI document is loaded")
 	}
