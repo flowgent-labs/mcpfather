@@ -8,25 +8,34 @@ import (
 )
 
 type Generator struct {
-	specPath    string
-	PackageName string
-	outputDir   string
-	converter   converter.ConverterInterface
-	spec        *openapi3.T
+	specPath     string
+	PackageName  string
+	outputDir    string
+	converter    converter.ConverterInterface
+	spec         *openapi3.T
+	includePaths []string
+	excludePaths []string
 }
 
-func NewGenerator(specPath string, validation bool, packageName string, outputDir string) (*Generator, error) {
+func NewGenerator(specPath string, validation bool, packageName string, outputDir string, includePaths []string, excludePaths []string) (*Generator, error) {
 	parser := converter.NewParser(validation)
 	err := parser.ParseFile(specPath)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing OpenAPI specification: %w", err)
 	}
 
+	conv, err := converter.NewConverter(parser, includePaths, excludePaths)
+	if err != nil {
+		return nil, fmt.Errorf("error creating converter: %w", err)
+	}
+
 	return &Generator{
-		specPath:    specPath,
-		converter:   converter.NewConverter(parser),
-		spec:        parser.GetDocument(),
-		outputDir:   outputDir,
-		PackageName: packageName,
+		specPath:     specPath,
+		converter:    conv,
+		spec:         parser.GetDocument(),
+		outputDir:    outputDir,
+		PackageName:  packageName,
+		includePaths: includePaths,
+		excludePaths: excludePaths,
 	}, nil
 }

@@ -49,6 +49,8 @@ type ResponseTemplate struct {
 // ConvertOptions represents options for the conversion process
 type ConvertOptions struct {
 	ServerConfig map[string]interface{}
+	IncludePaths map[string]struct{}
+	ExcludePaths map[string]struct{}
 }
 
 // ToolTemplate represents a template for applying to all tools
