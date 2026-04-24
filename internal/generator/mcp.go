@@ -200,7 +200,7 @@ func (g *Generator) GenerateMakefile() error {
 // GenerateReadme creates a README.md for the generated MCP server project
 func (g *Generator) GenerateReadme() error {
 	binName := filepath.Base(g.outputDir)
-	n := binName
+	mcpName := "myconfluence"
 
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"```sh\nmake\n```\n\n" +
@@ -212,11 +212,11 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcp": {
-    "` + n + `": {
-      "command": "./` + n + `",
+    "` + mcpName + `": {
+      "command": "./` + binName + `",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
         "MCP_UPSTREAM_TOKEN": "your-token"
       }
     }
@@ -228,11 +228,11 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "command": "./` + n + `",
+    "` + mcpName + `": {
+      "command": "./` + binName + `",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
         "MCP_UPSTREAM_TOKEN": "your-token"
       }
     }
@@ -244,11 +244,11 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "command": ["./` + n + `"],
+    "` + mcpName + `": {
+      "command": ["./` + binName + `"],
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
         "MCP_UPSTREAM_TOKEN": "your-token"
       }
     }
@@ -260,11 +260,11 @@ func (g *Generator) GenerateReadme() error {
 		"```yaml\n" +
 		"mcp:\n" +
 		"  servers:\n" +
-		"    " + n + ":\n" +
-		"      command: ./" + n + "\n" +
+		"    " + mcpName + ":\n" +
+		"      command: ./" + binName + "\n" +
 		"      args: [\"--transport\", \"stdio\"]\n" +
 		"      env:\n" +
-		"        MCP_UPSTREAM_ENDPOINT: https://example.com/api\n" +
+		"        MCP_UPSTREAM_ENDPOINT: https://example.atlassian.net/wiki/rest/api\n" +
 		"        MCP_UPSTREAM_TOKEN: your-token\n" +
 		"```\n\n" +
 		"### Cursor\n\n" +
@@ -272,11 +272,11 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "command": "./` + n + `",
+    "` + mcpName + `": {
+      "command": "./` + binName + `",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
         "MCP_UPSTREAM_TOKEN": "your-token"
       }
     }
@@ -287,15 +287,21 @@ func (g *Generator) GenerateReadme() error {
 		"Run the server separately and connect agents via HTTP transport.\n\n" +
 		"Start the server:\n\n" +
 		"```sh\n" +
-		"./" + n + " --transport http --port 8080\n" +
+		"export MCP_UPSTREAM_ENDPOINT=https://example.atlassian.net/wiki/rest/api\n" +
+		"export MCP_UPSTREAM_TOKEN=your-token\n" +
+		"./" + binName + " --transport http --port 8080\n" +
 		"```\n\n" +
 		"### OpenCode (remote)\n\n" +
 		"`~/.config/opencode/config.json`:\n\n" +
 		"```json\n" +
 		`{
   "mcp": {
-    "` + n + `": {
-      "url": "http://localhost:8080/mcp"
+    "` + mcpName + `": {
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
     }
   }
 }
@@ -305,8 +311,12 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "url": "http://localhost:8080/mcp"
+    "` + mcpName + `": {
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
     }
   }
 }
@@ -316,22 +326,30 @@ func (g *Generator) GenerateReadme() error {
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "url": "http://localhost:8080/mcp"
+    "` + mcpName + `": {
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
     }
   }
 }
 ` + "```\n\n" +
 		"### Codex CLI (remote)\n\n" +
 		"`~/.codex/config.yaml`:\n\n" +
-		"```yaml\nmcp:\n  servers:\n    " + n + ":\n      url: http://localhost:8080/mcp\n```\n\n" +
+		"```yaml\nmcp:\n  servers:\n    " + mcpName + ":\n      url: http://localhost:8080/mcp\n      env:\n        MCP_UPSTREAM_ENDPOINT: https://example.atlassian.net/wiki/rest/api\n        MCP_UPSTREAM_TOKEN: your-token\n```\n\n" +
 		"### Cursor (remote)\n\n" +
 		"`~/.cursor/mcp.json`:\n\n" +
 		"```json\n" +
 		`{
   "mcpServers": {
-    "` + n + `": {
-      "url": "http://localhost:8080/mcp"
+    "` + mcpName + `": {
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
     }
   }
 }
