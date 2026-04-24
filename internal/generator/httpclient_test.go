@@ -20,7 +20,7 @@ func TestGenerateHTTPClient_WithFixture(t *testing.T) {
 	outputDir := t.TempDir()
 
 	// Create a real Generator using the fixture
-	gen, err := NewGenerator(specPath, true, packageName, outputDir)
+	gen, err := NewGenerator(specPath, true, packageName, outputDir, nil, nil)
 	if err != nil {
 		t.Fatalf("Failed to create generator: %v", err)
 	}
