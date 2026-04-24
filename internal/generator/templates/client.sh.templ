@@ -43,7 +43,15 @@ Tips:
   - If authentication is required:
       MCP_UPSTREAM_TOKEN=your-token ./client.sh call <tool>
   - The script auto-initializes a session on first call
+
+Examples:
 USAGE
+{{- range .Tools }}
+  cat <<'EOEX'
+  # {{ .Name }} ({{ .Method }})
+  ./client.sh call {{ .Name }} '{{ jsonExample . }}'
+EOEX
+{{- end }}
 }
 
 # --- Auth helper ---
