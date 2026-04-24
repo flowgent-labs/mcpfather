@@ -16,6 +16,7 @@ import (
 )
 
 //go:embed templates/*.templ
+//go:embed templates/_credentials/*
 var templatesFS embed.FS
 
 // ToolTemplateData holds the data to pass to the template for a single tool
@@ -55,6 +56,10 @@ func (g *Generator) GenerateMCP() error {
 
 	if err := g.GenerateHelpers(); err != nil {
 		return fmt.Errorf("failed to generate helpers: %w", err)
+	}
+
+	if err := g.GenerateCredentials(); err != nil {
+		return fmt.Errorf("failed to generate credentials: %w", err)
 	}
 
 	if err := g.GenerateClientSh(config); err != nil {
