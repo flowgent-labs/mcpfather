@@ -10,7 +10,7 @@ var specPath = filepath.Join("..", "..", "testdata", "example_confluence_oas_v3.
 
 func TestNewConverter(t *testing.T) {
 	parser := NewParser(false)
-	c, err := NewConverter(parser, nil, nil)
+	c, err := NewConverter(parser, nil, nil, false)
 	if err != nil {
 		t.Fatalf("NewConverter failed: %v", err)
 	}
@@ -39,7 +39,7 @@ func TestConverter_Convert(t *testing.T) {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
-	c, err := NewConverter(parser, nil, nil)
+	c, err := NewConverter(parser, nil, nil, false)
 	if err != nil {
 		t.Fatalf("NewConverter failed: %v", err)
 	}
@@ -90,20 +90,53 @@ func TestPathMatch_TrailingSlashes(t *testing.T) {
 	}
 }
 
+func TestPathMatch_Prefix(t *testing.T) {
+	tests := []struct {
+		name      string
+		specPath  string
+		filter    string
+		method    string
+		wantMatch bool
+	}{
+		{"exact match", "/space", "/space", "get", true},
+		{"prefix match", "/space/{spaceKey}/content", "/space", "get", true},
+		{"prefix match child", "/space/{spaceKey}/content", "/space", "get", true},
+		{"no prefix", "/api/v2/search", "/api/v2/scans", "get", false},
+		{"partial segment no match", "/search", "/sea", "get", false},
+		{"trailing slash prefix", "/space/{spaceKey}", "/space/", "get", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := pathMatch(tt.specPath, tt.filter, tt.method)
+			if got != tt.wantMatch {
+				t.Errorf("pathMatch(%q, %q, %q) = %v, want %v", tt.specPath, tt.filter, tt.method, got, tt.wantMatch)
+			}
+		})
+	}
+}
+
 func TestCleanFilterPath(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
 	}{
-		{"/api/v2/login", "/api/v2/login"},
-		{"'/api/v2/login'", "/api/v2/login"},
-		{"/api/v2/login", "/api/v2/login"},
-		{`"/api/v2/login"`, "/api/v2/login"},
-		{"  /api/v2/login  ", "/api/v2/login"},
-		{"  '/api/v2/login'  ", "/api/v2/login"},
-		{"", ""},
-		{"''", ""},
-		{`""`, ""},
+		{"/api/v2/login", "api/v2/login"},
+		{"'/api/v2/login'", "api/v2/login"},
+		{"/api/v2/login", "api/v2/login"},
+		{`"/api/v2/login"`, "api/v2/login"},
+		{"  /api/v2/login  ", "api/v2/login"},
+		{"  '/api/v2/login'  ", "api/v2/login"},
+		{"", "/"},
+		{"''", "/"},
+		{`""`, "/"},
+		// Newlines and carriage returns
+		{"/api/v2/login\n", "api/v2/login"},
+		{"/api/v2/login\r\n", "api/v2/login"},
+		{"/api/v2/\nlogin", "api/v2/login"},
+		// Tabs
+		{"/api/v2/login\t", "api/v2/login"},
+		// YAML trailing colon
+		{"/api/v2/login:", "api/v2/login"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -120,11 +153,11 @@ func TestNormalizePath_TrailingColon(t *testing.T) {
 		input string
 		want  string
 	}{
-		{"/api/v2/login", "/api/v2/login"},
-		{"/api/v2/login:", "/api/v2/login"},
-		{"/api/v2/login/", "/api/v2/login"},
-		{"/api/v2/scans/{id}:", "/api/v2/scans/{id}"},
-		{"/api/v2/scans/{id}/", "/api/v2/scans/{id}"},
+		{"/api/v2/login", "api/v2/login"},
+		{"/api/v2/login:", "api/v2/login"},
+		{"/api/v2/login/", "api/v2/login"},
+		{"/api/v2/scans/{id}:", "api/v2/scans/{id}"},
+		{"/api/v2/scans/{id}/", "api/v2/scans/{id}"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -138,7 +171,7 @@ func TestNormalizePath_TrailingColon(t *testing.T) {
 
 func TestConverter_Convert_NoDocument(t *testing.T) {
 	parser := NewParser(false)
-	c, err := NewConverter(parser, nil, nil)
+	c, err := NewConverter(parser, nil, nil, false)
 	if err != nil {
 		t.Fatalf("NewConverter failed: %v", err)
 	}
