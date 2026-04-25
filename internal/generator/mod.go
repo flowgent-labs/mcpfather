@@ -36,7 +36,7 @@ func BuildServerImportPath(outputDir string) (string, error) {
 // GenerateGoMod creates a go.mod file in the output directory for the standalone project.
 func GenerateGoMod(outputDir string) error {
 	moduleName := BuildModuleName(outputDir)
-	content := fmt.Sprintf("module %s\n\ngo 1.21\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName)
+	content := fmt.Sprintf("module %s\n\ngo 1.23\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName)
 
 	goModPath := filepath.Join(outputDir, "go.mod")
 	return os.WriteFile(goModPath, []byte(content), 0644)

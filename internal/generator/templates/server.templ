@@ -8,7 +8,9 @@ import (
 	"time"
 
 	mcputils "{{.HelpersImportPath}}"
+	{{- if .Tools }}
 	"{{.MCPToolsImportPath}}"
+	{{- end }}
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
