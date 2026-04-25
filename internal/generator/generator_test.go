@@ -46,7 +46,7 @@ func TestNewGenerator_Success_WithValidFile(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			gen, err := NewGenerator(specPath, tc.validation, packageName, outputDir, nil, nil)
+			gen, err := NewGenerator(specPath, tc.validation, packageName, outputDir, nil, nil, false)
 
 			if err != nil {
 				t.Fatalf("NewGenerator() with file %s error = %v, wantErr nil", specPath, err)
@@ -121,7 +121,7 @@ func TestNewGenerator_Error_ParsingFailed(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			specPath := tc.specPathSetup(t)
-			gen, err := NewGenerator(specPath, tc.validation, packageName, outputDir, nil, nil)
+			gen, err := NewGenerator(specPath, tc.validation, packageName, outputDir, nil, nil, false)
 
 			if err == nil {
 				t.Fatal("NewGenerator() error = nil, wantErr non-nil")

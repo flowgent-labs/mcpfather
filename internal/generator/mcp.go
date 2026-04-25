@@ -33,45 +33,80 @@ type ToolTemplateData struct {
 
 // GenerateMCP generates the MCP tool files while preserving existing handler implementations and imports
 func (g *Generator) GenerateMCP() error {
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] starting MCP generation\n")
+	}
+
 	config, err := g.converter.Convert()
 	if err != nil {
 		return fmt.Errorf("failed at converting OpenAPI schema into MCP code %w", err)
 	}
 
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] conversion complete: %d tools generated\n", len(config.Tools))
+	}
+
 	if err := GenerateGoMod(g.outputDir); err != nil {
 		return fmt.Errorf("failed to generate go.mod: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated go.mod\n")
 	}
 
 	if err := g.GenerateMainGo(); err != nil {
 		return fmt.Errorf("failed to generate main.go: %w", err)
 	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated main.go\n")
+	}
 
 	if err := g.GenerateServerFile(config); err != nil {
 		return fmt.Errorf("failed to generate server file: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpserver/server.go\n")
 	}
 
 	if err := g.GenerateToolFiles(config); err != nil {
 		return fmt.Errorf("failed to generate tool files: %w", err)
 	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated %d tool files in internal/mcptools/\n", len(config.Tools))
+	}
 
 	if err := g.GenerateHelpers(); err != nil {
 		return fmt.Errorf("failed to generate helpers: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/helpers/\n")
 	}
 
 	if err := g.GenerateCredentials(); err != nil {
 		return fmt.Errorf("failed to generate credentials: %w", err)
 	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated .credentials\n")
+	}
 
 	if err := g.GenerateClientSh(config); err != nil {
 		return fmt.Errorf("failed to generate client script: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated client.sh\n")
 	}
 
 	if err := g.GenerateMakefile(); err != nil {
 		return fmt.Errorf("failed to generate Makefile: %w", err)
 	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated Makefile\n")
+	}
 
 	if err := g.GenerateReadme(); err != nil {
 		return fmt.Errorf("failed to generate README.md: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated README.md\n")
 	}
 
 	if err := g.GenerateDotCredentials(); err != nil {
@@ -86,6 +121,9 @@ func (g *Generator) GenerateMCP() error {
 	// without network access to proxy.golang.org.
 	if err := g.RunGoModTidy(); err != nil {
 		return fmt.Errorf("failed to run go mod tidy: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] go mod tidy completed\n")
 	}
 
 	return nil

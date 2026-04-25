@@ -16,6 +16,7 @@ var (
 	validation bool
 	includes   string
 	excludes   string
+	verbose    bool
 )
 
 func init() {
@@ -28,6 +29,8 @@ func init() {
 	flag.StringVar(&includes, "includes", "", "Comma-separated OpenAPI paths to include")
 	flag.StringVar(&excludes, "e", "", "Comma-separated OpenAPI paths to exclude")
 	flag.StringVar(&excludes, "excludes", "", "Comma-separated OpenAPI paths to exclude")
+	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
+	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 }
 
 func usage() {
@@ -39,6 +42,7 @@ Options:
   -I, --includes    Comma-separated OpenAPI paths to include
   -e, --excludes    Comma-separated OpenAPI paths to exclude
   --validation      Enable OpenAPI validation
+  -v, --verbose     Enable verbose logging
 `)
 }
 
@@ -75,7 +79,7 @@ func main() {
 		}
 	}
 
-	gen, err := generator.NewGenerator(inputFile, validation, "", outputDir, includePaths, excludePaths)
+	gen, err := generator.NewGenerator(inputFile, validation, "", outputDir, includePaths, excludePaths, verbose)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating generator: %v\n", err)
 		os.Exit(1)
