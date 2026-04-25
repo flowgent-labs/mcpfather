@@ -148,12 +148,7 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 	}
 	tool.Responses = responseTemplate
 
-	// Detect download-type API (response is binary: image, PDF, octet-stream, etc.)
-	if detectDownloadContentType(operation) {
-		tool.ResponseType = "download"
-	}
-
-	// Detect upload-type API (request body expects file: multipart/form-data,
+		// Detect upload-type API (request body expects file: multipart/form-data,
 	// application/octet-stream, image/*)
 	if ct := detectUploadContentType(operation); ct != "" {
 		tool.UploadContentType = ct
@@ -187,26 +182,6 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 	return tool, nil
 }
 
-// detectDownloadContentType returns true if the operation's response contains
-// a binary file (image, PDF, octet-stream, audio, video, etc.).
-func detectDownloadContentType(operation *openapi3.Operation) bool {
-	if operation == nil || operation.Responses == nil {
-		return false
-	}
-	for _, code := range []string{"200", "201", "202", "204"} {
-		respRef := operation.Responses.Map()[code]
-		if respRef == nil || respRef.Value == nil {
-			continue
-		}
-		for ct := range respRef.Value.Content {
-			if isBinaryContentType(ct) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
 // detectUploadContentType returns the content type if the operation expects a
 // file upload body (multipart/form-data, application/octet-stream, image/*),
 // or "" otherwise.
@@ -223,20 +198,4 @@ func detectUploadContentType(operation *openapi3.Operation) string {
 		}
 	}
 	return ""
-}
-
-// isBinaryContentType returns true if the content type represents a binary file
-// download response.
-func isBinaryContentType(ct string) bool {
-	ct = strings.ToLower(strings.TrimSpace(ct))
-	return strings.HasPrefix(ct, "image/") ||
-		strings.HasPrefix(ct, "video/") ||
-		strings.HasPrefix(ct, "audio/") ||
-		ct == "application/pdf" ||
-		ct == "application/octet-stream" ||
-		ct == "application/zip" ||
-		ct == "application/gzip" ||
-		strings.HasPrefix(ct, "application/vnd.") ||
-		strings.HasPrefix(ct, "application/msword") ||
-		strings.HasPrefix(ct, "application/vnd.openxmlformats")
 }

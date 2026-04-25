@@ -337,3 +337,39 @@ func IsBinaryContentType(ct string) bool {
 	}
 	return false
 }
+
+// SaveBinaryResponse checks if an HTTP response is binary data (Content-Disposition
+// header or binary Content-Type) and if so, saves it to the downloads directory.
+// Returns ("", nil) if the response is not binary.
+func SaveBinaryResponse(resp *http.Response, body []byte, defaultName string) (string, error) {
+	// 1. Check Content-Disposition header
+	if resp.Header.Get("Content-Disposition") != "" {
+		// Looks like a file download, save it
+	} else if !IsBinaryContentType(resp.Header.Get("Content-Type")) {
+		return "", nil
+	}
+
+	fileName := DetermineFileName(resp, defaultName)
+	downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
+	if downloadDir == "" {
+		exe, err := os.Executable()
+		binName := "mcpgen-server"
+		if err == nil {
+			binName = filepath.Base(exe)
+		}
+		home, err := os.UserHomeDir()
+		if err == nil {
+			downloadDir = filepath.Join(home, "."+binName, "downloads")
+		} else {
+			downloadDir = "." + binName + "/downloads"
+		}
+	}
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create download directory %s: %w", downloadDir, err)
+	}
+	filePath := filepath.Join(downloadDir, fileName)
+	if err := os.WriteFile(filePath, body, 0644); err != nil {
+		return "", fmt.Errorf("failed to save file %s: %w", filePath, err)
+	}
+	return filePath, nil
+}
