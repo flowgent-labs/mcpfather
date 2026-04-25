@@ -96,6 +96,32 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
 	}
 
+	if mcputils.IsBinaryContentType(resp.Header.Get("Content-Type")) {
+		fileName := mcputils.DetermineFileName(resp, "{{.ToolNameOriginal}}")
+		downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
+		if downloadDir == "" {
+			exe, err := os.Executable()
+			binName := "mcpgen-server"
+			if err == nil {
+				binName = filepath.Base(exe)
+			}
+			home, err := os.UserHomeDir()
+			if err == nil {
+				downloadDir = filepath.Join(home, "."+binName, "downloads")
+			} else {
+				downloadDir = "." + binName + "/downloads"
+			}
+		}
+		if err := os.MkdirAll(downloadDir, 0755); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to create download directory %s: %v", downloadDir, err)), nil
+		}
+		filePath := filepath.Join(downloadDir, fileName)
+		if err := os.WriteFile(filePath, body, 0644); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to save file %s: %v", filePath, err)), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
+	}
+
 	return mcp.NewToolResultText(string(body)), nil
 
 {{- else if eq .ResponseType "download" }}
@@ -121,10 +147,20 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	// Determine filename from Content-Disposition or generate one
 	fileName := mcputils.DetermineFileName(resp, "{{.ToolNameOriginal}}")
 
-	// Save to downloads directory
+	// Save to downloads directory under ~/.{server-name}/downloads
 	downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
 	if downloadDir == "" {
-		downloadDir = "downloads"
+		exe, err := os.Executable()
+		binName := "mcpgen-server"
+		if err == nil {
+			binName = filepath.Base(exe)
+		}
+		home, err := os.UserHomeDir()
+		if err == nil {
+			downloadDir = filepath.Join(home, "."+binName, "downloads")
+		} else {
+			downloadDir = "." + binName + "/downloads"
+		}
 	}
 	if err := os.MkdirAll(downloadDir, 0755); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to create download directory %s: %v", downloadDir, err)), nil

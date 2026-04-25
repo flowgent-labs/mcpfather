@@ -132,3 +132,56 @@ func TestConverter_Convert_NoDocument(t *testing.T) {
 		t.Fatal("expected error when no OpenAPI document is loaded")
 	}
 }
+
+func TestConverter_UploadDownloadDetection(t *testing.T) {
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("could not read %s: %v", specPath, err)
+	}
+
+	parser := NewParser(false)
+	if err := parser.Parse(data); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	// Find upload and download tools
+	var uploadTool *Tool
+	var downloadTool *Tool
+	for i := range config.Tools {
+		switch config.Tools[i].Name {
+		case "Uploadattachment":
+			uploadTool = &config.Tools[i]
+		case "Downloadattachment":
+			downloadTool = &config.Tools[i]
+		}
+	}
+
+	if uploadTool == nil {
+		t.Fatal("expected uploadAttachment tool to be generated")
+	}
+	if uploadTool.UploadContentType == "" {
+		t.Error("expected uploadAttachment to have UploadContentType set")
+	}
+	if uploadTool.ResponseType == "download" {
+		t.Error("upload tool should not be detected as download")
+	}
+
+	if downloadTool == nil {
+		t.Fatal("expected downloadAttachment tool to be generated")
+	}
+	if downloadTool.ResponseType != "download" {
+		t.Errorf("expected downloadAttachment ResponseType to be 'download', got %q", downloadTool.ResponseType)
+	}
+	if downloadTool.UploadContentType != "" {
+		t.Error("download tool should not have UploadContentType set")
+	}
+}
