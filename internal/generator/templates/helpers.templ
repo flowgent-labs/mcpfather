@@ -304,42 +304,39 @@ func sanitizeForJSON(v interface{}) interface{} {
 	return v
 }
 
-// IsBinaryContentType checks whether a Content-Type header value indicates
-// binary data that should be saved to a file rather than embedded in JSON.
+// IsBinaryContentType checks whether a Content-Type indicates binary data.
+// The logic is inverted: instead of maintaining a whitelist of binary types
+// (which can never be exhaustive — missing parquet, avro, custom vendor types, etc.),
+// we define what is TEXT and treat everything else as binary.
 func IsBinaryContentType(ct string) bool {
 	ct = strings.TrimSpace(strings.ToLower(ct))
 	mediaType, _, _ := mime.ParseMediaType(ct)
 	if mediaType == "" {
+		return true // unknown content-type, treat as binary to be safe
+	}
+
+	// Text-based types — safe to embed in JSON as string
+	if strings.HasPrefix(mediaType, "text/") {
 		return false
 	}
-	if strings.HasPrefix(mediaType, "image/") ||
-		strings.HasPrefix(mediaType, "video/") ||
-		strings.HasPrefix(mediaType, "audio/") {
-		return true
-	}
 	switch mediaType {
-	case "application/octet-stream",
-		"application/pdf",
-		"application/zip",
-		"application/x-zip-compressed",
-		"application/x-rar",
-		"application/x-rar-compressed",
-		"application/x-7z-compressed",
-		"application/gzip",
-		"application/x-tar",
-		"application/x-compressed-tar",
-		"application/x-gzip",
-		"application/vnd.ms-excel",
-		"application/vnd.ms-powerpoint",
-		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
-		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
-		return true
+	case "application/json",
+		"application/javascript",
+		"application/x-www-form-urlencoded",
+		"application/xml",
+		"application/atom+xml",
+		"application/rss+xml",
+		"application/soap+xml":
+		return false
 	}
-	if strings.HasPrefix(mediaType, "application/vnd.") {
-		return true
+	if strings.HasSuffix(mediaType, "+json") ||
+		strings.HasSuffix(mediaType, "+xml") {
+		return false
 	}
-	return false
+
+	// Everything else is binary (image/*, video/*, audio/*, application/octet-stream,
+	// application/pdf, application/parquet, application/vnd.*, custom vendor types, etc.)
+	return true
 }
 
 // SaveBinaryResponse checks if an HTTP response is binary data (Content-Disposition
