@@ -65,6 +65,10 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate Makefile: %w", err)
 	}
 
+	if err := g.GenerateReadme(); err != nil {
+		return fmt.Errorf("failed to generate README.md: %w", err)
+	}
+
 	if err := g.RunGoModTidy(); err != nil {
 		return fmt.Errorf("failed to run go mod tidy: %w", err)
 	}
@@ -188,6 +192,123 @@ func (g *Generator) GenerateMakefile() error {
 		return []byte(makefile), nil
 	}); err != nil {
 		return fmt.Errorf("failed to write Makefile: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateReadme creates a README.md for the generated MCP server project
+func (g *Generator) GenerateReadme() error {
+	binName := filepath.Base(g.outputDir)
+
+	readme := fmt.Sprintf(`# %s
+
+## Quick Start
+
+`+"```"+`sh
+make
+`+"```"+`
+
+## Agent Integration
+
+For any MCP-compatible IDE/agent, use **stdio** transport.
+
+### OpenCode
+
+`+"`"+`~/.config/opencode/config.json`+"`"+`:
+
+`+"```"+`json
+{
+  "mcp": {
+    "%s": {
+      "command": "./%s",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
+    }
+  }
+}
+`+"```"+`
+
+### Claude Code
+
+`+"`"+`~/.claude/settings.json`+"`"+`:
+
+`+"```"+`json
+{
+  "mcpServers": {
+    "%s": {
+      "command": "./%s",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
+    }
+  }
+}
+`+"```"+`
+
+### Claude Desktop
+
+`+"`"+`~/.config/claude-desktop/claude_desktop_config.json`+"`"+`:
+
+`+"```"+`json
+{
+  "mcpServers": {
+    "%s": {
+      "command": ["./%s"],
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
+    }
+  }
+}
+`+"```"+`
+
+### Codex CLI
+
+`+"`"+`~/.codex/config.yaml`+"`"+`:
+
+`+"```"+`yaml
+mcp:
+  servers:
+    %s:
+      command: ./%s
+      args: ["--transport", "stdio"]
+      env:
+        MCP_UPSTREAM_ENDPOINT: https://example.com/api
+        MCP_UPSTREAM_TOKEN: your-token
+`+"```"+`
+
+### Cursor
+
+`+"`"+`~/.cursor/mcp.json`+"`"+`:
+
+`+"```"+`json
+{
+  "mcpServers": {
+    "%s": {
+      "command": "./%s",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP_UPSTREAM_ENDPOINT": "https://example.com/api",
+        "MCP_UPSTREAM_TOKEN": "your-token"
+      }
+    }
+  }
+}
+`+"```"+`
+`, binName, binName, binName, binName, binName, binName, binName, binName, binName, binName, binName)
+
+	if err := writeFileContent(g.outputDir, "README.md", func() ([]byte, error) {
+		return []byte(readme), nil
+	}); err != nil {
+		return fmt.Errorf("failed to write README.md: %w", err)
 	}
 
 	return nil
