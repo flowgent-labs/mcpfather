@@ -76,11 +76,13 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 
 		data := struct {
 			ToolTemplateData
-			URL        string
-			Method     string
-			Headers    []converter.Header
-			RequestPath string
-			PathArgs   []converter.Arg
+			URL               string
+			Method            string
+			Headers           []converter.Header
+			RequestPath       string
+			PathArgs          []converter.Arg
+			ResponseType      string
+			UploadContentType string
 		}{
 			ToolTemplateData: ToolTemplateData{
 				ToolNameOriginal:      capitalizedName,
@@ -92,11 +94,13 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 				InputSchemaConst:      fmt.Sprintf("%sInputSchema", tool.Name),
 				ResponseTemplateConst: fmt.Sprintf("%sResponseTemplate", tool.Name),
 			},
-			URL:         tool.RequestTemplate.URL,
-			Method:      tool.RequestTemplate.Method,
-			Headers:     tool.RequestTemplate.Headers,
-			RequestPath: requestPath,
-			PathArgs:    pathArgs,
+			URL:               tool.RequestTemplate.URL,
+			Method:            tool.RequestTemplate.Method,
+			Headers:           tool.RequestTemplate.Headers,
+			RequestPath:       requestPath,
+			PathArgs:          pathArgs,
+			ResponseType:      tool.ResponseType,
+			UploadContentType: tool.UploadContentType,
 		}
 
 		outputFileName := capitalizedName + ".go"
@@ -133,6 +137,17 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			"time",
 			"github.com/mark3labs/mcp-go/mcp",
 			mcputilsImport,
+		}
+
+		// Add extra imports needed for upload/download handlers
+		if tool.ResponseType == "download" || tool.UploadContentType != "" {
+			requiredImports = append(requiredImports, "os", "net/http")
+		}
+		if tool.ResponseType == "download" {
+			requiredImports = append(requiredImports, "path/filepath")
+		}
+		if tool.UploadContentType != "" {
+			requiredImports = append(requiredImports, "bytes", "strings")
 		}
 
 		if len(existingImports) > 0 {
