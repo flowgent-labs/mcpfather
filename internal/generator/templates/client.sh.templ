@@ -32,19 +32,6 @@ Commands:
   list-tools          List all available tools
   call <tool> [args]  Call a tool with optional JSON arguments
 
-Examples:
-USAGE
-
-  cat <<'EXAMPLES'
-{{ range .Tools }}
-  # {{ .Description }}
-  # Method: {{ .Method }}
-  ./client.sh call {{ .Name }} '{{ jsonExample . }}'
-{{ end }}
-EXAMPLES
-
-  cat <<'USAGE'
-
 Environment:
   MCP_SERVER_URL        Override server URL (default: http://localhost:8080/mcp)
   MCP_UPSTREAM_TOKEN    Bearer token for server auth
@@ -61,9 +48,9 @@ USAGE
 
 # --- Auth helper ---
 
-auth_header() {
+get_auth_header() {
   if [ -n "${MCP_UPSTREAM_TOKEN:-}" ]; then
-    echo "-H" "Authorization: Bearer $MCP_UPSTREAM_TOKEN"
+    printf '%s' "Authorization: Bearer ${MCP_UPSTREAM_TOKEN}"
   fi
 }
 
@@ -73,15 +60,26 @@ init_session() {
   echo "[*] Initializing MCP session at $SERVER_URL ..." >&2
   local headers_file
   headers_file=$(mktemp)
-  trap "rm -f '$headers_file'" RETURN
+
+  local curl_args=(
+    -s -D "$headers_file"
+    --noproxy '*'
+    -X POST "$SERVER_URL"
+    -H "Content-Type: application/json"
+    -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"client","version":"1.0"}}}'
+  )
+
+  local auth_header
+  auth_header=$(get_auth_header)
+  if [ -n "$auth_header" ]; then
+    curl_args+=(-H "$auth_header")
+  fi
 
   local body
-  body=$(curl -s -D "$headers_file" --noproxy '*' -X POST "$SERVER_URL" \
-    $(auth_header) \
-    -H "Content-Type: application/json" \
-    -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"client","version":"1.0"}}}')
+  body=$(curl "${curl_args[@]}")
 
   SESSION_ID=$(grep -oi "Mcp-Session-Id: [^ ]*" "$headers_file" | head -1 | awk '{print $2}' | tr -d '"\r' || true)
+  rm -f "$headers_file"
   if [ -z "$SESSION_ID" ]; then
     echo "[!] Failed to get session ID. Is the server running?" >&2
     echo "[!] Response: $body" >&2
@@ -102,11 +100,21 @@ mcp_request() {
     init_session
   fi
 
-  curl -s --noproxy '*' -X POST "$SERVER_URL" \
-    $(auth_header) \
-    -H "Content-Type: application/json" \
-    -H "Mcp-Session-Id: $SESSION_ID" \
+  local curl_args=(
+    -s --noproxy '*'
+    -X POST "$SERVER_URL"
+    -H "Content-Type: application/json"
+    -H "Mcp-Session-Id: $SESSION_ID"
     -d "{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\",\"params\":$params}"
+  )
+
+  local auth_header
+  auth_header=$(get_auth_header)
+  if [ -n "$auth_header" ]; then
+    curl_args+=(-H "$auth_header")
+  fi
+
+  curl "${curl_args[@]}"
 }
 
 # --- Tool helpers ---
