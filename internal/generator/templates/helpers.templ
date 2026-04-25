@@ -126,12 +126,19 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		}
 	}
 
-		client := &http.Client{
-			Transport: &http.Transport{
-				Proxy: http.ProxyFromEnvironment,
-			},
+	// Use Authorization from request, fallback to env token
+	if req.Header.Get("Authorization") == "" {
+		if token := os.Getenv("MCP_UPSTREAM_TOKEN"); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
 		}
-		return client.Do(req)
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+	return client.Do(req)
 }
 
 // buildJSONBody creates a map of args that should be included in the JSON body
