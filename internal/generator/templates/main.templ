@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
@@ -12,20 +14,47 @@ import (
 )
 
 func main() {
+	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
+	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
+	flag.Parse()
+
 	s := mcpserver.NewMCPServer()
 
-	_, cancel := context.WithCancel(context.Background())
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	switch *transport {
+	case "http":
+		mcpServer := server.NewStreamableHTTPServer(s)
 
-	go func() {
-		<-sigChan
-		fmt.Println("Received shutdown signal")
-		cancel()
-	}()
+		mux := http.NewServeMux()
+		mux.Handle("/mcp", mcpServer)
 
-	if err := server.ServeStdio(s); err != nil {
-		fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+		addr := fmt.Sprintf(":%d", *port)
+		httpServer := &http.Server{Addr: addr, Handler: mux}
+
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
+		go func() {
+			fmt.Fprintf(os.Stderr, "MCP server listening on %s/mcp\n", addr)
+			if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				fmt.Fprintf(os.Stderr, "HTTP server error: %v\n", err)
+				os.Exit(1)
+			}
+		}()
+
+		<-ctx.Done()
+		fmt.Fprintln(os.Stderr, "Shutting down...")
+		if err := httpServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
+			fmt.Fprintf(os.Stderr, "HTTP server shutdown error: %v\n", err)
+		}
+
+	case "stdio":
+		if err := server.ServeStdio(s); err != nil {
+			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
+			os.Exit(1)
+		}
+
+	default:
+		fmt.Fprintf(os.Stderr, "unknown transport: %s (use 'stdio' or 'http')\n", *transport)
 		os.Exit(1)
 	}
 }
