@@ -140,14 +140,11 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		}
 
 		// Add extra imports needed for upload/download handlers
-		if tool.ResponseType == "download" || tool.UploadContentType != "" {
-			requiredImports = append(requiredImports, "os", "net/http")
-		}
 		if tool.ResponseType == "download" {
-			requiredImports = append(requiredImports, "path/filepath")
+			requiredImports = append(requiredImports, "os", "path/filepath")
 		}
 		if tool.UploadContentType != "" {
-			requiredImports = append(requiredImports, "bytes", "strings")
+			requiredImports = append(requiredImports, "os", "net/http", "path/filepath", "bytes", "strings")
 		}
 
 		if len(existingImports) > 0 {
