@@ -81,7 +81,6 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			Headers           []converter.Header
 			RequestPath       string
 			PathArgs          []converter.Arg
-			ResponseType      string
 			UploadContentType string
 		}{
 			ToolTemplateData: ToolTemplateData{
@@ -99,7 +98,6 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			Headers:           tool.RequestTemplate.Headers,
 			RequestPath:       requestPath,
 			PathArgs:          pathArgs,
-			ResponseType:      tool.ResponseType,
 			UploadContentType: tool.UploadContentType,
 		}
 
@@ -139,12 +137,9 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			mcputilsImport,
 		}
 
-		// Add extra imports needed for upload/download handlers
-		if tool.ResponseType == "download" {
-			requiredImports = append(requiredImports, "os", "path/filepath")
-		}
+		// Add extra imports needed for upload handlers
 		if tool.UploadContentType != "" {
-			requiredImports = append(requiredImports, "os", "net/http", "path/filepath", "bytes", "strings")
+			requiredImports = append(requiredImports, "os", "net/http", "bytes", "strings")
 		}
 
 		if len(existingImports) > 0 {

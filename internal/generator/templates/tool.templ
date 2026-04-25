@@ -28,7 +28,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 {{- if .UploadContentType }}
-	// Upload tool: read file from local_file_path and send as raw body
+	// Upload: read local file and send as raw body
 	localFilePath := ""
 	if fp, ok := args["local_file_path"]; ok {
 		if s, ok := fp.(string); ok {
@@ -47,7 +47,6 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	startTime := time.Now()
 	upstreamURL := upstream + "{{.RequestPath}}"
 
-	// Log outgoing request
 	mcputils.LogRequest("{{.Method}}", upstreamURL, nil, nil, nil)
 
 	req, err := http.NewRequestWithContext(ctx, "{{.Method}}", upstreamURL, bytes.NewReader(fileData))
@@ -56,7 +55,6 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 	req.Header.Set("Content-Type", "{{.UploadContentType}}")
 
-	// Forward headers from context
 	if forwarded := mcputils.GetHTTPHeaders(ctx); forwarded != nil {
 		for key, values := range forwarded {
 			lowerKey := strings.ToLower(key)
@@ -96,82 +94,13 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
 	}
 
-	if mcputils.IsBinaryContentType(resp.Header.Get("Content-Type")) {
-		fileName := mcputils.DetermineFileName(resp, "{{.ToolNameOriginal}}")
-		downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
-		if downloadDir == "" {
-			exe, err := os.Executable()
-			binName := "mcpgen-server"
-			if err == nil {
-				binName = filepath.Base(exe)
-			}
-			home, err := os.UserHomeDir()
-			if err == nil {
-				downloadDir = filepath.Join(home, "."+binName, "downloads")
-			} else {
-				downloadDir = "." + binName + "/downloads"
-			}
-		}
-		if err := os.MkdirAll(downloadDir, 0755); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to create download directory %s: %v", downloadDir, err)), nil
-		}
-		filePath := filepath.Join(downloadDir, fileName)
-		if err := os.WriteFile(filePath, body, 0644); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to save file %s: %v", filePath, err)), nil
-		}
+	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "{{.ToolNameOriginal}}"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if filePath != "" {
 		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
 	}
 
 	return mcp.NewToolResultText(string(body)), nil
-
-{{- else if eq .ResponseType "download" }}
-	// Download tool: save response body to a file
-	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, "")
-	if err != nil {
-		return nil, fmt.Errorf("upstream request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read upstream response: %w", err)
-	}
-
-	mcputils.LogResponse(ctx, resp.StatusCode, "{{.Method}}", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	// Determine filename from Content-Disposition or generate one
-	fileName := mcputils.DetermineFileName(resp, "{{.ToolNameOriginal}}")
-
-	// Save to downloads directory under ~/.{server-name}/downloads
-	downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
-	if downloadDir == "" {
-		exe, err := os.Executable()
-		binName := "mcpgen-server"
-		if err == nil {
-			binName = filepath.Base(exe)
-		}
-		home, err := os.UserHomeDir()
-		if err == nil {
-			downloadDir = filepath.Join(home, "."+binName, "downloads")
-		} else {
-			downloadDir = "." + binName + "/downloads"
-		}
-	}
-	if err := os.MkdirAll(downloadDir, 0755); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to create download directory %s: %v", downloadDir, err)), nil
-	}
-
-	filePath := filepath.Join(downloadDir, fileName)
-	if err := os.WriteFile(filePath, body, 0644); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to save file %s: %v", filePath, err)), nil
-	}
-
-	return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
 
 {{- else }}
 	{{- if .Headers }}
@@ -197,6 +126,12 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "{{.ToolNameOriginal}}"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if filePath != "" {
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
 	}
 
 	return mcp.NewToolResultText(string(body)), nil
