@@ -115,8 +115,8 @@ func TestOAS31Preprocessor(t *testing.T) {
 			t.Errorf("unexpected title: %s", p.GetInfo().Title)
 		}
 
-		if len(p.GetPaths()) != 11 {
-			t.Errorf("expected 11 paths, got %d", len(p.GetPaths()))
+		if len(p.GetPaths()) != 12 {
+			t.Errorf("expected 12 paths, got %d", len(p.GetPaths()))
 		}
 	})
 }
@@ -133,13 +133,13 @@ func TestOASCompatibility(t *testing.T) {
 			name:          "OAS 3.0 Confluence",
 			path:          "../../testdata/example_confluence_oas_v3.0.yaml",
 			expectedTitle: "Confluence Cloud REST API",
-			expectedPaths: 11,
+			expectedPaths: 12,
 		},
 		{
 			name:          "OAS 3.1 Confluence",
 			path:          "../../testdata/example_confluence_oas_v3.1.yaml",
 			expectedTitle: "Confluence Cloud REST API",
-			expectedPaths: 11,
+			expectedPaths: 12,
 		},
 	}
 
