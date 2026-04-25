@@ -9,62 +9,76 @@ import (
 	"github.com/lyeslabs/mcpgen/internal/generator"
 )
 
+var (
+	inputFile  string
+	outputDir  string
+	validation bool
+	includes   string
+)
+
+func init() {
+	flag.StringVar(&inputFile, "i", "", "Path to the OpenAPI specification file (JSON or YAML)")
+	flag.StringVar(&inputFile, "input", "", "Path to the OpenAPI specification file (JSON or YAML)")
+	flag.StringVar(&outputDir, "o", "", "Path to the output MCP server directory")
+	flag.StringVar(&outputDir, "output", "", "Path to the output MCP server directory")
+	flag.BoolVar(&validation, "validation", false, "Enable OpenAPI validation")
+	flag.StringVar(&includes, "includes", "", "Comma-separated list of includes for the generated code")
+}
+
+func usage() {
+	fmt.Fprintf(os.Stderr, `Usage: mcpgen [OPTIONS]
+
+Options:
+  -i, --input       Path to the OpenAPI specification file (JSON or YAML)
+  -o, --output      Path to the output MCP server directory
+  --includes        Comma-separated list of includes for the generated code
+  --validation      Enable OpenAPI validation
+`)
+}
+
 func main() {
-
-	// Define command-line flags
-	inputFile := flag.String("input", "", "Path to the OpenAPI specification file (JSON or YAML)")
-	outputDir := flag.String("output", "", "Path to the output MCP server directory")
-
-	validation := flag.Bool("validation", false, "Enable OpenAPI validation")
-	includes := flag.String("includes", "", "Comma-separated list of includes for the generated code")
-	
-
-	// Parse command-line flags
+	flag.Usage = usage
 	flag.Parse()
 
-	// Validate required flags
-	if *inputFile == "" {
-		fmt.Println("Error: input file is required")
-		flag.Usage()
+	if inputFile == "" {
+		fmt.Fprintln(os.Stderr, "Error: --input is required")
+		usage()
 		os.Exit(1)
 	}
 
-	if *outputDir == "" {
-		fmt.Println("Error: output directory is required")
-		flag.Usage()
+	if outputDir == "" {
+		fmt.Fprintln(os.Stderr, "Error: --output is required")
+		usage()
 		os.Exit(1)
 	}
 
 	// Create the output directory if it doesn't exist
-	if *outputDir != "" && *outputDir != "." {
-		err := os.MkdirAll(*outputDir, 0755)
-		if err != nil {
-			fmt.Printf("Error creating output directory '%s': %v\n", *outputDir, err)
+	if outputDir != "" && outputDir != "." {
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			fmt.Fprintf(os.Stderr, "Error creating output directory '%s': %v\n", outputDir, err)
 			os.Exit(1)
 		}
 	}
 
-	generator, err := generator.NewGenerator(*inputFile, *validation, "", *outputDir)
+	gen, err := generator.NewGenerator(inputFile, validation, "", outputDir)
 	if err != nil {
-		fmt.Printf("Error creating generator: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error creating generator: %v\n", err)
 		os.Exit(1)
 	}
 
-	// Generate the HTTP CLIENT
-	if *includes != "" {
-		err = generator.GenerateHTTPClient(strings.Split(*includes, ","))
-		if err != nil {
-			fmt.Printf("Error generating HTTP client: %v\n", err)
+	// Generate the HTTP client (optional)
+	if includes != "" {
+		if err := gen.GenerateHTTPClient(strings.Split(includes, ",")); err != nil {
+			fmt.Fprintf(os.Stderr, "Error generating HTTP client: %v\n", err)
 			os.Exit(1)
 		}
 	}
 
 	// Generate the MCP server
-	err = generator.GenerateMCP()
-	if err != nil {
-		fmt.Printf("Error generating MCP: %v\n", err)
+	if err := gen.GenerateMCP(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error generating MCP: %v\n", err)
 		os.Exit(1)
 	}
 
-	fmt.Printf("Successfully converted OpenAPI specification to MCP: %s\n", *outputDir)
+	fmt.Printf("Successfully generated MCP server in: %s\n", outputDir)
 }

@@ -11,7 +11,7 @@ import (
 
 func TestGenerateHTTPClient_WithFixture(t *testing.T) {
 	// Path to your OpenAPI fixture
-	specPath := filepath.Join("../..", "testdata", "simple_openapi.yaml")
+	specPath := filepath.Join("../..", "testdata", "example_confluence_oas_v3.0.yaml")
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
 		t.Fatalf("Fixture file %s does not exist. Please create it.", specPath)
 	}

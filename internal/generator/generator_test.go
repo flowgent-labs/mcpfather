@@ -25,8 +25,8 @@ func createTempSpecFileWithContent(t *testing.T, content string) string {
 	return tempFile.Name()
 }
 func TestNewGenerator_Success_WithValidFile(t *testing.T) {
-	// Assumes testdata/valid_openapi.yaml exists relative to this test file
-	specPath := filepath.Join("../..", "testdata", "simple_openapi.yaml")
+	// Assumes testdata/example_confluence_oas_v3.0.yaml exists relative to this test file
+	specPath := filepath.Join("../..", "testdata", "example_confluence_oas_v3.0.yaml")
 
 	// Check if the fixture file exists
 	if _, err := os.Stat(specPath); os.IsNotExist(err) {
@@ -71,9 +71,9 @@ func TestNewGenerator_Success_WithValidFile(t *testing.T) {
 			if gen.spec == nil {
 				t.Error("gen.spec is nil, want non-nil")
 			} else {
-				// Check a value from the testdata/valid_openapi.yaml file
+				// Check a value from the testdata/example_confluence_oas_v3.0.yaml file
 				if gen.spec.Info == nil {
-					t.Errorf("gen.spec.Info.Title not parsed correctly from file, got '%s', want 'My Valid API From File'", gen.spec.Info.Title)
+					t.Errorf("gen.spec.Info.Title not parsed correctly from file, got '%s', want 'Confluence Cloud REST API'", gen.spec.Info.Title)
 				}
 			}
 		})

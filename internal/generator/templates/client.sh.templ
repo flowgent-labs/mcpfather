@@ -12,7 +12,8 @@ set -euo pipefail
 #   ./client.sh call <tool> [args]  Call a tool
 #
 # Environment variables:
-#   MCP_SERVER_URL  - Server URL (default: http://localhost:8080/mcp)
+#   MCP_SERVER_URL        - Server URL (default: http://localhost:8080/mcp)
+#   MCP_UPSTREAM_TOKEN    - Bearer token for MCP server auth
 # ============================================================
 
 SERVER_URL="${MCP_SERVER_URL:-http://localhost:8080/mcp}"
@@ -45,14 +46,25 @@ EXAMPLES
   cat <<'USAGE'
 
 Environment:
-  MCP_SERVER_URL      Override server URL (default: http://localhost:8080/mcp)
+  MCP_SERVER_URL        Override server URL (default: http://localhost:8080/mcp)
+  MCP_UPSTREAM_TOKEN    Bearer token for server auth
 
 Tips:
   - Always uses --noproxy '*' to avoid proxy issues with localhost
   - If the server is running on a different port:
       MCP_SERVER_URL=http://localhost:9090/mcp ./client.sh
+  - If authentication is required:
+      MCP_UPSTREAM_TOKEN=your-token ./client.sh call <tool>
   - The script auto-initializes a session on first call
 USAGE
+}
+
+# --- Auth helper ---
+
+auth_header() {
+  if [ -n "${MCP_UPSTREAM_TOKEN:-}" ]; then
+    echo "-H" "Authorization: Bearer $MCP_UPSTREAM_TOKEN"
+  fi
 }
 
 # --- Session helpers ---
@@ -65,6 +77,7 @@ init_session() {
 
   local body
   body=$(curl -s -D "$headers_file" --noproxy '*' -X POST "$SERVER_URL" \
+    $(auth_header) \
     -H "Content-Type: application/json" \
     -d '{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"client","version":"1.0"}}}')
 
@@ -90,6 +103,7 @@ mcp_request() {
   fi
 
   curl -s --noproxy '*' -X POST "$SERVER_URL" \
+    $(auth_header) \
     -H "Content-Type: application/json" \
     -H "Mcp-Session-Id: $SESSION_ID" \
     -d "{\"jsonrpc\":\"2.0\",\"id\":$id,\"method\":\"$method\",\"params\":$params}"

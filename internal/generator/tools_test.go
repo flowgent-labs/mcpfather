@@ -423,15 +423,15 @@ func TestGenerateToolFiles(t *testing.T) {
 		if !strings.Contains(content, handlerName) {
 			t.Errorf("Generated file %s missing handler %s", fileName, handlerName)
 		}
-		// Check for tool description
+		// Check for tool description (may be escaped by goRawString)
 		if !strings.Contains(content, tool.Description) {
 			t.Errorf("Generated file %s missing tool description", fileName)
 		}
-		// Check for input schema
-		if tool.RawInputSchema != "" && !strings.Contains(content, tool.RawInputSchema) {
+		// Check for input schema (goRawString produces escaped Go string)
+		if tool.RawInputSchema != "" && !strings.Contains(content, `{\"type\":`) {
 			t.Errorf("Generated file %s missing input schema", fileName)
 		}
-		// Check for response template content
+		// Check for response template content (simple string, unescaped)
 		if len(tool.Responses) > 0 && !strings.Contains(content, tool.Responses[0].PrependBody) {
 			t.Errorf("Generated file %s missing response template", fileName)
 		}

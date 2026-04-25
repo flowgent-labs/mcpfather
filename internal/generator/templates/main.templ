@@ -79,9 +79,9 @@ func main() {
 	upstreamEndpoint := mcputils.GetUpstreamEndpoint()
 	isDefault := mcputils.IsDefaultUpstreamEndpoint()
 
-	fmt.Fprintf(os.Stderr, "UPSTREAM_ENDPOINT=%s\n", upstreamEndpoint)
+	fmt.Fprintf(os.Stderr, "MCP_UPSTREAM_ENDPOINT=%s\n", upstreamEndpoint)
 	if isDefault {
-		fmt.Fprintln(os.Stderr, "Warning: UPSTREAM_ENDPOINT is not set. Using default (httpbin.org/anything) which echoes requests. Set it to your actual upstream service endpoint.")
+		fmt.Fprintln(os.Stderr, "Warning: MCP_UPSTREAM_ENDPOINT is not set. Using default (httpbin.org/anything) which echoes requests. Set it to your actual upstream service endpoint.")
 	}
 
 	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")

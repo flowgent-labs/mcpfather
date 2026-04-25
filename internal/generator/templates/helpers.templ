@@ -16,28 +16,28 @@ type contextKey string
 
 const HTTPHeadersContextKey contextKey = "mcp-http-headers"
 
-const defaultUpstreamEndpoint = "https://httpbin.org/anything"
+const mcpUpstreamEndpoint = "https://httpbin.org/anything"
 
-var upstreamEndpoint string
-var upstreamOnce sync.Once
+var mcpUpstreamEndpointVal string
+var mcpUpstreamOnce sync.Once
 
-// GetUpstreamEndpoint returns the upstream endpoint from the UPSTREAM_ENDPOINT
+// GetUpstreamEndpoint returns the upstream endpoint from the MCP_UPSTREAM_ENDPOINT
 // environment variable, falling back to a default echo service for debugging.
 func GetUpstreamEndpoint() string {
-	upstreamOnce.Do(func() {
-		upstreamEndpoint = os.Getenv("UPSTREAM_ENDPOINT")
-		if upstreamEndpoint == "" {
-			upstreamEndpoint = defaultUpstreamEndpoint
+	mcpUpstreamOnce.Do(func() {
+		mcpUpstreamEndpointVal = os.Getenv("MCP_UPSTREAM_ENDPOINT")
+		if mcpUpstreamEndpointVal == "" {
+			mcpUpstreamEndpointVal = mcpUpstreamEndpoint
 		}
 	})
-	return upstreamEndpoint
+	return mcpUpstreamEndpointVal
 }
 
 // IsDefaultUpstreamEndpoint returns true if the upstream endpoint uses the default
-// value (i.e. UPSTREAM_ENDPOINT environment variable was not set).
+// value (i.e. MCP_UPSTREAM_ENDPOINT environment variable was not set).
 func IsDefaultUpstreamEndpoint() bool {
 	GetUpstreamEndpoint() // ensure initialized
-	return upstreamEndpoint == defaultUpstreamEndpoint
+	return mcpUpstreamEndpointVal == mcpUpstreamEndpoint
 }
 
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
