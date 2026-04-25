@@ -90,7 +90,7 @@ func TestPathMatch_TrailingSlashes(t *testing.T) {
 	}
 }
 
-func TestPathMatch_Prefix(t *testing.T) {
+func TestPathMatch_ExactOnly(t *testing.T) {
 	tests := []struct {
 		name      string
 		specPath  string
@@ -99,11 +99,9 @@ func TestPathMatch_Prefix(t *testing.T) {
 		wantMatch bool
 	}{
 		{"exact match", "/space", "/space", "get", true},
-		{"prefix match", "/space/{spaceKey}/content", "/space", "get", true},
-		{"prefix match child", "/space/{spaceKey}/content", "/space", "get", true},
-		{"no prefix", "/api/v2/search", "/api/v2/scans", "get", false},
-		{"partial segment no match", "/search", "/sea", "get", false},
-		{"trailing slash prefix", "/space/{spaceKey}", "/space/", "get", true},
+		{"no prefix match", "/space/{spaceKey}/content", "/space", "get", false},
+		{"trailing slash matches", "/space/{spaceKey}", "/space/{spaceKey}/", "get", true},
+		{"trailing colon matches", "/space/", "/space:", "get", true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
