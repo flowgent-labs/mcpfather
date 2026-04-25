@@ -54,10 +54,7 @@ Examples:
 USAGE
 {{- range .Tools }}
   cat <<'EOEX'
-  {{- if .IsDownload }}
-  # {{ .Name }} ({{ .Method }}) — downloads a file
-  ./client.sh call {{ .Name }} '{{ jsonExample . }}'
-  {{- else if .UploadCT }}
+  {{- if .UploadCT }}
   # {{ .Name }} ({{ .Method }}) — uploads a file
   ./client.sh call {{ .Name }} '{}' --file /path/to/file
   {{- else }}

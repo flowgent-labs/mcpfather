@@ -171,15 +171,9 @@ func TestConverter_UploadDownloadDetection(t *testing.T) {
 	if uploadTool.UploadContentType == "" {
 		t.Error("expected uploadAttachment to have UploadContentType set")
 	}
-	if uploadTool.ResponseType == "download" {
-		t.Error("upload tool should not be detected as download")
-	}
 
 	if downloadTool == nil {
 		t.Fatal("expected downloadAttachment tool to be generated")
-	}
-	if downloadTool.ResponseType != "download" {
-		t.Errorf("expected downloadAttachment ResponseType to be 'download', got %q", downloadTool.ResponseType)
 	}
 	if downloadTool.UploadContentType != "" {
 		t.Error("download tool should not have UploadContentType set")
