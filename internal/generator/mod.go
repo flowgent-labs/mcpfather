@@ -14,14 +14,14 @@ const (
 )
 
 // BuildModuleName computes the module name from the output directory basename.
-// e.g. outputDir "mymcpserver" → "mymcpserver.com"
+// e.g. outputDir "mymcpserver" → "mymcpserver"
 func BuildModuleName(outputDir string) string {
 	base := filepath.Base(filepath.Clean(outputDir))
-	return base + ".com"
+	return base
 }
 
 // BuildImportPath returns the import path for the mcptools package within the
-// generated standalone project (e.g. "mymcpserver.com/internal/mcptools").
+// generated standalone project (e.g. "mymcpserver/internal/mcptools").
 func BuildImportPath(outputDir string) (string, error) {
 	moduleName := BuildModuleName(outputDir)
 	return moduleName + "/internal/mcptools", nil

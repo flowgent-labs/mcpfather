@@ -78,10 +78,10 @@ func TestBuildModuleName(t *testing.T) {
 		outputDir string
 		expected  string
 	}{
-		{"mymcpserver", "mymcpserver.com"},
-		{"myproject", "myproject.com"},
-		{"/path/to/myapp", "myapp.com"},
-		{"output", "output.com"},
+		{"mymcpserver", "mymcpserver"},
+		{"myproject", "myproject"},
+		{"/path/to/myapp", "myapp"},
+		{"output", "output"},
 	}
 
 	for _, tc := range testCases {
@@ -100,8 +100,8 @@ func TestBuildImportPath(t *testing.T) {
 		output   string
 		expected string
 	}{
-		{"simple", "mymcpserver", "mymcpserver.com/internal/mcptools"},
-		{"nested", "output/myserver", "myserver.com/internal/mcptools"},
+		{"simple", "mymcpserver", "mymcpserver/internal/mcptools"},
+		{"nested", "output/myserver", "myserver/internal/mcptools"},
 	}
 
 	for _, tc := range testCases {
@@ -123,8 +123,8 @@ func TestBuildServerImportPath(t *testing.T) {
 		output   string
 		expected string
 	}{
-		{"simple", "mymcpserver", "mymcpserver.com/internal/mcpserver"},
-		{"nested", "output/myserver", "myserver.com/internal/mcpserver"},
+		{"simple", "mymcpserver", "mymcpserver/internal/mcpserver"},
+		{"nested", "output/myserver", "myserver/internal/mcpserver"},
 	}
 
 	for _, tc := range testCases {
@@ -158,8 +158,8 @@ func TestGenerateGoMod(t *testing.T) {
 	}
 
 	goModContent := string(content)
-	if !strings.Contains(goModContent, "module myserver.com") {
-		t.Errorf("Expected 'module myserver.com' in go.mod, got:\n%s", goModContent)
+	if !strings.Contains(goModContent, "module myserver") {
+		t.Errorf("Expected 'module myserver' in go.mod, got:\n%s", goModContent)
 	}
 	if !strings.Contains(goModContent, "github.com/mark3labs/mcp-go") {
 		t.Errorf("Expected 'github.com/mark3labs/mcp-go' in go.mod, got:\n%s", goModContent)
