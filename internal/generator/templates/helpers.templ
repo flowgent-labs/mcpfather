@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -75,6 +77,53 @@ func GetUpstreamToken() string {
 		}
 	})
 	return upstreamTokenVal
+}
+
+// DetermineFileName extracts a filename from the HTTP response, falling back to a
+// default name with an extension derived from the response Content-Type.
+func DetermineFileName(resp *http.Response, defaultName string) string {
+	// 1. Try Content-Disposition header
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if fn := params["filename"]; fn != "" {
+				return filepath.Clean(fn)
+			}
+		}
+	}
+	// 2. Try URL path last segment
+	if u, err := url.Parse(resp.Request.URL.String()); err == nil {
+		if segs := strings.Split(strings.Trim(u.Path, "/"), "/"); len(segs) > 0 {
+			if name, _ := url.QueryUnescape(segs[len(segs)-1]); name != "" {
+				return filepath.Clean(name)
+			}
+		}
+	}
+	// 3. Generate from default name + content-type extension
+	ct := resp.Header.Get("Content-Type")
+	ext := ""
+	if ct != "" {
+		mediaType, _, _ := mime.ParseMediaType(ct)
+		ext = mime.TypeByExtension(mediaType)
+		if ext == "" {
+			switch {
+			case strings.HasPrefix(mediaType, "image/"):
+				ext = ".png"
+			case strings.HasPrefix(mediaType, "video/"):
+				ext = ".mp4"
+			case strings.HasPrefix(mediaType, "audio/"):
+				ext = ".mp3"
+			case mediaType == "application/pdf":
+				ext = ".pdf"
+			case mediaType == "application/octet-stream":
+				ext = ".bin"
+			case mediaType == "application/zip":
+				ext = ".zip"
+			default:
+				ext = ".dat"
+			}
+		}
+	}
+	return defaultName + ext
 }
 
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
