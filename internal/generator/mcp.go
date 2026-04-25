@@ -82,6 +82,12 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate .gitignore: %w", err)
 	}
 
+	// Download dependencies and generate go.sum so the user can build
+	// without network access to proxy.golang.org.
+	if err := g.RunGoModTidy(); err != nil {
+		return fmt.Errorf("failed to run go mod tidy: %w", err)
+	}
+
 	return nil
 }
 
