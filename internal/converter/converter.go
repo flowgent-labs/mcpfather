@@ -22,13 +22,13 @@ func NewConverter(parser *Parser, includePaths []string, excludePaths []string) 
 	excludeSet := make(map[string]struct{})
 
 	for _, p := range includePaths {
-		p = strings.TrimSpace(p)
+		p = cleanFilterPath(p)
 		if p != "" {
 			includeSet[p] = struct{}{}
 		}
 	}
 	for _, p := range excludePaths {
-		p = strings.TrimSpace(p)
+		p = cleanFilterPath(p)
 		if p != "" {
 			excludeSet[p] = struct{}{}
 		}
@@ -90,10 +90,25 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 	return config, nil
 }
 
-// normalizePath strips trailing slashes and lowercases for consistent matching.
+// cleanFilterPath strips surrounding quotes and whitespace from a filter path
+// entry to handle values copied from PowerShell, bash, or YAML.
+func cleanFilterPath(p string) string {
+	p = strings.TrimSpace(p)
+	// Remove surrounding quotes (PowerShell/bash)
+	if len(p) >= 2 && ((p[0] == '"' && p[len(p)-1] == '"') || (p[0] == '\'' && p[len(p)-1] == '\'')) {
+		p = p[1 : len(p)-1]
+	}
+	return strings.TrimSpace(p)
+}
+
+// normalizePath strips trailing slashes/colons, removes BOM and invisible
+// characters, and lowercases for consistent matching.
 func normalizePath(p string) string {
 	p = strings.TrimSpace(p)
-	p = strings.TrimRight(p, "/")
+	// Remove BOM and other invisible characters that may come from
+	// copying on Windows (e.g., from YAML editors or terminals)
+	p = strings.Trim(p, "\xef\xbb\xbf\uFEFF")
+	p = strings.TrimRight(p, "/:")
 	if p == "" {
 		p = "/"
 	}
