@@ -2,14 +2,17 @@ package converter
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strings"
+	"unicode"
 )
 
 // Converter represents an OpenAPI to MCP converter
 type Converter struct {
 	parser  *Parser
 	options ConvertOptions
+	verbose bool
 }
 
 type ConverterInterface interface {
@@ -17,20 +20,26 @@ type ConverterInterface interface {
 }
 
 // NewConverter creates a new OpenAPI to MCP converter
-func NewConverter(parser *Parser, includePaths []string, excludePaths []string) (*Converter, error) {
+func NewConverter(parser *Parser, includePaths []string, excludePaths []string, verbose bool) (*Converter, error) {
 	includeSet := make(map[string]struct{})
 	excludeSet := make(map[string]struct{})
 
 	for _, p := range includePaths {
-		p = cleanFilterPath(p)
-		if p != "" {
-			includeSet[p] = struct{}{}
+		cleaned := cleanFilterPath(p)
+		if cleaned != "" {
+			includeSet[cleaned] = struct{}{}
+		}
+		if verbose && cleaned != "" && cleaned != cleanFilterPath(p) {
+			fmt.Fprintf(os.Stderr, "[verbose] include path cleaned: %q -> %q\n", p, cleaned)
 		}
 	}
 	for _, p := range excludePaths {
-		p = cleanFilterPath(p)
-		if p != "" {
-			excludeSet[p] = struct{}{}
+		cleaned := cleanFilterPath(p)
+		if cleaned != "" {
+			excludeSet[cleaned] = struct{}{}
+		}
+		if verbose && cleaned != "" && cleaned != cleanFilterPath(p) {
+			fmt.Fprintf(os.Stderr, "[verbose] exclude path cleaned: %q -> %q\n", p, cleaned)
 		}
 	}
 
@@ -48,6 +57,7 @@ func NewConverter(parser *Parser, includePaths []string, excludePaths []string) 
 			IncludePaths: includeSet,
 			ExcludePaths: excludeSet,
 		},
+		verbose: verbose,
 	}, nil
 }
 
@@ -56,6 +66,10 @@ func NewConverter(parser *Parser, includePaths []string, excludePaths []string) 
 func (c *Converter) Convert() (*MCPConfig, error) {
 	if c.parser.GetDocument() == nil {
 		return nil, fmt.Errorf("no OpenAPI document loaded")
+	}
+
+	if c.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] converting OpenAPI document with %d paths\n", len(c.parser.GetPaths()))
 	}
 
 	// Create the MCP configuration
@@ -71,12 +85,24 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 		operations := getOperations(pathItem)
 		for method, operation := range operations {
 			if !c.shouldIncludePath(path, method) {
+				if c.verbose {
+					operationID := c.parser.GetOperationID(path, method, operation)
+					fmt.Fprintf(os.Stderr, "[verbose] filtered out: %s %s (operationId=%s)\n", method, path, operationID)
+				}
 				continue
+			}
+
+			if c.verbose {
+				operationID := c.parser.GetOperationID(path, method, operation)
+				fmt.Fprintf(os.Stderr, "[verbose] including: %s %s (operationId=%s)\n", method, path, operationID)
 			}
 
 			tool, err := c.convertOperation(path, method, operation)
 			if err != nil {
 				return nil, fmt.Errorf("failed to convert operation %s %s: %w", method, path, err)
+			}
+			if c.verbose {
+				fmt.Fprintf(os.Stderr, "[verbose] tool created: %s\n", tool.Name)
 			}
 			config.Tools = append(config.Tools, *tool)
 		}
@@ -90,25 +116,57 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 	return config, nil
 }
 
-// cleanFilterPath strips surrounding quotes and whitespace from a filter path
-// entry to handle values copied from PowerShell, bash, or YAML.
+// cleanFilterPath aggressively strips all invisible, control, and
+// formatting characters from a filter path so that values pasted
+// from any source (PowerShell, bash, YAML, browsers, terminal
+// emulators, Windows editors) still match the OpenAPI spec paths.
 func cleanFilterPath(p string) string {
-	p = strings.TrimSpace(p)
+	// Build a new string with only meaningful characters.
+	var b strings.Builder
+	for _, r := range p {
+		switch r {
+		case '\t', '\n', '\r', '\v', '\f':
+			// skip all whitespace/control chars
+		default:
+			// skip any unicode space or control category
+			if !unicode.IsSpace(r) && !unicode.IsControl(r) {
+				b.WriteRune(r)
+			}
+		}
+	}
+	p = b.String()
 	// Remove surrounding quotes (PowerShell/bash)
 	if len(p) >= 2 && ((p[0] == '"' && p[len(p)-1] == '"') || (p[0] == '\'' && p[len(p)-1] == '\'')) {
 		p = p[1 : len(p)-1]
 	}
-	return strings.TrimSpace(p)
+	// Strip leading/trailing slashes and colons (YAML path separator)
+	p = strings.Trim(p, "/:")
+	// Remove any embedded \r\n, \n, \r sequences that may have
+	// been introduced by line-wrapped paste operations
+	p = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || unicode.IsControl(r) {
+			return -1
+		}
+		return r
+	}, p)
+	if p == "" {
+		return "/"
+	}
+	return p
 }
 
-// normalizePath strips trailing slashes/colons, removes BOM and invisible
-// characters, and lowercases for consistent matching.
+// normalizePath aggressively strips ALL invisible, control, and
+// formatting characters, leading/trailing slashes, and lowercases
+// for consistent matching across all platforms.
 func normalizePath(p string) string {
-	p = strings.TrimSpace(p)
-	// Remove BOM and other invisible characters that may come from
-	// copying on Windows (e.g., from YAML editors or terminals)
-	p = strings.Trim(p, "\xef\xbb\xbf\uFEFF")
-	p = strings.TrimRight(p, "/:")
+	// Remove all control chars, whitespace, BOM, etc.
+	p = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) || unicode.IsControl(r) || r == '\uFEFF' {
+			return -1
+		}
+		return r
+	}, p)
+	p = strings.Trim(p, "/:")
 	if p == "" {
 		p = "/"
 	}
@@ -133,6 +191,7 @@ func normalizePathParam(p string) string {
 //  1. Trailing-slash normalization (/api/v2/login/ == /api/v2/login)
 //  2. Variable-name independence (/api/v2/scans/{scan_id} == /api/v2/scans/{id})
 //  3. Method-scoped matching (GET /api/v2/login)
+//  4. Prefix matching (/space matches /space and /space/{spaceKey})
 func pathMatch(specPath, filterPath, method string) bool {
 	specNorm := normalizePathParam(specPath)
 	filterNorm := normalizePathParam(filterPath)
@@ -143,18 +202,41 @@ func pathMatch(specPath, filterPath, method string) bool {
 		parts := strings.SplitN(filterPath, "#", 2)
 		filterMethod := strings.TrimSpace(strings.ToLower(parts[0]))
 		filterPathPart := normalizePathParam(parts[1])
-		return normalizePath(method) == filterMethod && specNorm == filterPathPart
+		if normalizePath(method) == filterMethod && specNorm == filterPathPart {
+			return true
+		}
+		// Also check prefix for method-scoped
+		if normalizePath(method) == filterMethod && strings.HasPrefix(specNorm, filterPathPart+"/") {
+			return true
+		}
+		return false
 	}
 
 	// Check if filter contains a space indicating "METHOD /path"
 	if idx := strings.Index(filterPath, " "); idx > 0 {
 		filterMethod := strings.TrimSpace(strings.ToLower(filterPath[:idx]))
 		filterPathPart := normalizePathParam(strings.TrimSpace(filterPath[idx+1:]))
-		return normalizePath(method) == filterMethod && specNorm == filterPathPart
+		if normalizePath(method) == filterMethod && specNorm == filterPathPart {
+			return true
+		}
+		if normalizePath(method) == filterMethod && strings.HasPrefix(specNorm, filterPathPart+"/") {
+			return true
+		}
+		return false
 	}
 
 	// Simple path match (ignoring variable names)
-	return specNorm == filterNorm
+	if specNorm == filterNorm {
+		return true
+	}
+
+	// Prefix match at segment boundary:
+	// filter "/space" matches spec "/space/{spaceKey}/content"
+	if strings.HasPrefix(specNorm, filterNorm+"/") {
+		return true
+	}
+
+	return false
 }
 
 func (c *Converter) shouldIncludePath(path, method string) bool {
