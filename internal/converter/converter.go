@@ -188,10 +188,9 @@ func normalizePathParam(p string) string {
 
 // pathMatch checks whether specPath (from the OpenAPI document) matches
 // filterPath (from --includes/--excludes). It supports:
-//  1. Trailing-slash normalization (/api/v2/login/ == /api/v2/login)
+//  1. Trailing-slash/colon normalization (/api/v2/login/ == /api/v2/login)
 //  2. Variable-name independence (/api/v2/scans/{scan_id} == /api/v2/scans/{id})
 //  3. Method-scoped matching (GET /api/v2/login)
-//  4. Prefix matching (/space matches /space and /space/{spaceKey})
 func pathMatch(specPath, filterPath, method string) bool {
 	specNorm := normalizePathParam(specPath)
 	filterNorm := normalizePathParam(filterPath)
@@ -202,41 +201,18 @@ func pathMatch(specPath, filterPath, method string) bool {
 		parts := strings.SplitN(filterPath, "#", 2)
 		filterMethod := strings.TrimSpace(strings.ToLower(parts[0]))
 		filterPathPart := normalizePathParam(parts[1])
-		if normalizePath(method) == filterMethod && specNorm == filterPathPart {
-			return true
-		}
-		// Also check prefix for method-scoped
-		if normalizePath(method) == filterMethod && strings.HasPrefix(specNorm, filterPathPart+"/") {
-			return true
-		}
-		return false
+		return normalizePath(method) == filterMethod && specNorm == filterPathPart
 	}
 
 	// Check if filter contains a space indicating "METHOD /path"
 	if idx := strings.Index(filterPath, " "); idx > 0 {
 		filterMethod := strings.TrimSpace(strings.ToLower(filterPath[:idx]))
 		filterPathPart := normalizePathParam(strings.TrimSpace(filterPath[idx+1:]))
-		if normalizePath(method) == filterMethod && specNorm == filterPathPart {
-			return true
-		}
-		if normalizePath(method) == filterMethod && strings.HasPrefix(specNorm, filterPathPart+"/") {
-			return true
-		}
-		return false
+		return normalizePath(method) == filterMethod && specNorm == filterPathPart
 	}
 
-	// Simple path match (ignoring variable names)
-	if specNorm == filterNorm {
-		return true
-	}
-
-	// Prefix match at segment boundary:
-	// filter "/space" matches spec "/space/{spaceKey}/content"
-	if strings.HasPrefix(specNorm, filterNorm+"/") {
-		return true
-	}
-
-	return false
+	// Exact path match (ignoring variable names, trailing slashes, colons)
+	return specNorm == filterNorm
 }
 
 func (c *Converter) shouldIncludePath(path, method string) bool {
