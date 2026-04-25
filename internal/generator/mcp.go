@@ -176,7 +176,10 @@ type ClientToolInfo struct {
 	Name         string
 	Description  string
 	Method       string
-	ExampleArgs  string // JSON string ready for use in curl
+	ExampleArgs  string
+	ResponseType string
+	UploadCT     string // non-empty if this is an upload tool
+	IsDownload   bool
 }
 
 // GenerateClientSh creates a client.sh script for quick manual testing
@@ -192,12 +195,16 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 		limit = 20
 	}
 	for _, tool := range config.Tools[:limit] {
-		tools = append(tools, ClientToolInfo{
+		info := ClientToolInfo{
 			Name:         capitalizeFirstLetter(tool.Name),
 			Description:  tool.Description,
 			Method:       tool.RequestTemplate.Method,
 			ExampleArgs:  generateExampleArgs(tool),
-		})
+			ResponseType: tool.ResponseType,
+			UploadCT:     tool.UploadContentType,
+			IsDownload:   tool.ResponseType == "download",
+		}
+		tools = append(tools, info)
 	}
 
 	tmpl, err := template.New("client.sh").Funcs(template.FuncMap{

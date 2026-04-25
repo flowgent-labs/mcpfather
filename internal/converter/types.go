@@ -19,6 +19,13 @@ type Tool struct {
 	RequestTemplate RequestTemplate
 	Responses       []ResponseTemplate
 	RawInputSchema  string
+	// ResponseType controls how the handler processes upstream responses:
+	//   "text"    — return response body as text (default)
+	//   "download" — save response body to a file and return the path
+	ResponseType string
+	// UploadContentType is non-empty when this tool accepts a local file path
+	// to upload. The value is the Content-Type header to send upstream.
+	UploadContentType string
 }
 
 // RequestTemplate represents the MCP request template
