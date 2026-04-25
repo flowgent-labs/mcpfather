@@ -90,17 +90,62 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 	return config, nil
 }
 
-func (c *Converter) shouldIncludePath(path, method string) bool {
-	pathLower := strings.ToLower(path)
-	methodLower := strings.ToLower(method)
+// normalizePath strips trailing slashes and lowercases for consistent matching.
+func normalizePath(p string) string {
+	p = strings.TrimSpace(p)
+	p = strings.TrimRight(p, "/")
+	if p == "" {
+		p = "/"
+	}
+	return strings.ToLower(p)
+}
 
+// normalizePathParam replaces all path variable segments with a generic
+// placeholder so that /api/v2/scans/{scan_id} matches /api/v2/scans/{id}.
+func normalizePathParam(p string) string {
+	p = normalizePath(p)
+	parts := strings.Split(p, "/")
+	for i, seg := range parts {
+		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+			parts[i] = "{}"
+		}
+	}
+	return strings.Join(parts, "/")
+}
+
+// pathMatch checks whether specPath (from the OpenAPI document) matches
+// filterPath (from --includes/--excludes). It supports:
+//  1. Trailing-slash normalization (/api/v2/login/ == /api/v2/login)
+//  2. Variable-name independence (/api/v2/scans/{scan_id} == /api/v2/scans/{id})
+//  3. Method-scoped matching (GET /api/v2/login)
+func pathMatch(specPath, filterPath, method string) bool {
+	specNorm := normalizePathParam(specPath)
+	filterNorm := normalizePathParam(filterPath)
+
+	// Check for method-scoped filter: "get /api/v2/login"
+	// We also handle the filterPath containing "#" as separator
+	if strings.Contains(filterPath, "#") {
+		parts := strings.SplitN(filterPath, "#", 2)
+		filterMethod := strings.TrimSpace(strings.ToLower(parts[0]))
+		filterPathPart := normalizePathParam(parts[1])
+		return normalizePath(method) == filterMethod && specNorm == filterPathPart
+	}
+
+	// Check if filter contains a space indicating "METHOD /path"
+	if idx := strings.Index(filterPath, " "); idx > 0 {
+		filterMethod := strings.TrimSpace(strings.ToLower(filterPath[:idx]))
+		filterPathPart := normalizePathParam(strings.TrimSpace(filterPath[idx+1:]))
+		return normalizePath(method) == filterMethod && specNorm == filterPathPart
+	}
+
+	// Simple path match (ignoring variable names)
+	return specNorm == filterNorm
+}
+
+func (c *Converter) shouldIncludePath(path, method string) bool {
 	// Check excludes first
 	for excluded := range c.options.ExcludePaths {
-		excludedLower := strings.ToLower(excluded)
-		if pathLower == excludedLower {
-			return false
-		}
-		if pathLower+"#"+methodLower == excludedLower {
+		if pathMatch(path, excluded, method) {
 			return false
 		}
 	}
@@ -112,11 +157,7 @@ func (c *Converter) shouldIncludePath(path, method string) bool {
 	}
 
 	for included := range c.options.IncludePaths {
-		includedLower := strings.ToLower(included)
-		if pathLower == includedLower {
-			return true
-		}
-		if pathLower+"#"+methodLower == includedLower {
+		if pathMatch(path, included, method) {
 			return true
 		}
 	}
