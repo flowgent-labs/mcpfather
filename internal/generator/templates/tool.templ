@@ -1,9 +1,9 @@
 // Input Schema for the {{.ToolNameOriginal}} tool
-const {{.InputSchemaConst}} = `{{.RawInputSchema}}`
+const {{.InputSchemaConst}} = {{ goRawString .RawInputSchema }}
 
 {{- range .ResponseTemplate }}
 // Response Template for the {{$.ToolNameOriginal}} tool (Status: {{.StatusCode}}, Content-Type: {{.ContentType}})
-const {{$.ToolNameOriginal}}ResponseTemplate_{{.Suffix}} = `{{ .PrependBody }}`
+const {{$.ToolNameOriginal}}ResponseTemplate_{{.Suffix}} = {{ goRawString .PrependBody }}
 {{ end }}
 
 
@@ -11,7 +11,7 @@ const {{$.ToolNameOriginal}}ResponseTemplate_{{.Suffix}} = `{{ .PrependBody }}`
 func New{{.ToolNameOriginal}}MCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"{{.ToolNameOriginal}}",
-		"{{.ToolDescription}}",
+		{{ goRawString .ToolDescription }},
 		[]byte({{.InputSchemaConst}}),
 	)
 }

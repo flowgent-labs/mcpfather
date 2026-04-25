@@ -80,7 +80,7 @@ func TestParser_GetPaths(t *testing.T) {
 	if paths == nil {
 		t.Fatal("expected non-nil paths")
 	}
-	// Optionally check for a known path in your simple_openapi.yaml
+	// Optionally check for a known path in your example_confluence_oas_v3.0.yaml
 	// if _, ok := paths["/hello"]; !ok {
 	// 	t.Errorf("expected /hello path")
 	// }
