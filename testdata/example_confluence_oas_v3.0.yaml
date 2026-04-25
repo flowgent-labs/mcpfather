@@ -730,6 +730,110 @@ paths:
               schema:
                 $ref: '#/components/schemas/Error'
 
+  /content/{id}/child/attachment/{attachmentId}/download:
+    get:
+      operationId: downloadAttachment
+      summary: |
+        Download an attachment file.
+      description: |
+        Downloads the binary content of an attachment by its ID.
+
+        Returns the raw file bytes with the appropriate Content-Type
+        and Content-Disposition headers.
+
+        ## Example
+
+        ```bash
+        curl -H "Authorization: Bearer <token>" \
+          "https://example.atlassian.net/wiki/rest/api/content/123456/child/attachment/789012/download" \
+          --output attachment.pdf
+        ```
+
+        ### Supported File Types
+
+        - Documents: PDF, DOC, DOCX, XLS, XLSX, PPT, PPTX
+        - Images: PNG, JPG, GIF, SVG, BMP
+        - Archives: ZIP, TAR, GZ
+        - Any file type supported by the attachment
+
+        ### Notes
+
+        > Large files may take time to download depending on size
+        > and network conditions.
+
+        > Ensure you have **View** permission on the attachment.
+
+        ### Query Parameters
+
+        - **version** (optional): Download a specific version of the attachment
+        - **expand** (optional): Include additional metadata in response headers
+
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: |
+            The page ID that the attachment belongs to.
+
+            > Example: `123456`
+          schema:
+            type: integer
+            format: int64
+            example: 123456
+        - name: attachmentId
+          in: path
+          required: true
+          description: |
+            The attachment ID to download.
+
+            > Find this from the attachment metadata response.
+          schema:
+            type: string
+            example: "789012"
+        - name: version
+          in: query
+          required: false
+          description: |
+            Download a specific version of the attachment.
+
+            > If not specified, downloads the latest version.
+          schema:
+            type: integer
+            format: int32
+        - name: expand
+          in: query
+          required: false
+          description: |
+            Include additional metadata in response headers.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            Attachment file downloaded successfully.
+
+            Returns the raw file bytes with appropriate headers:
+            - `Content-Type`: The MIME type of the file
+            - `Content-Disposition`: Attachment with filename
+            - `Content-Length`: File size in bytes
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: |
+            Attachment not found.
+
+            Possible reasons:
+            - Invalid attachment ID
+            - Attachment has been deleted
+            - Insufficient permissions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
   /content/{contentId}/child/comment:
     post:
       operationId: createComment

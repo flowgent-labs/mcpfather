@@ -303,3 +303,37 @@ func sanitizeForJSON(v interface{}) interface{} {
 	}
 	return v
 }
+
+// IsBinaryContentType checks whether a Content-Type header value indicates
+// binary data that should be saved to a file rather than embedded in JSON.
+func IsBinaryContentType(ct string) bool {
+	ct = strings.TrimSpace(strings.ToLower(ct))
+	mediaType, _, _ := mime.ParseMediaType(ct)
+	if mediaType == "" {
+		return false
+	}
+	if strings.HasPrefix(mediaType, "image/") ||
+		strings.HasPrefix(mediaType, "video/") ||
+		strings.HasPrefix(mediaType, "audio/") {
+		return true
+	}
+	switch mediaType {
+	case "application/octet-stream",
+		"application/pdf",
+		"application/zip",
+		"application/gzip",
+		"application/x-tar",
+		"application/x-compressed-tar",
+		"application/x-gzip",
+		"application/vnd.ms-excel",
+		"application/vnd.ms-powerpoint",
+		"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+		"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+		"application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+		return true
+	}
+	if strings.HasPrefix(mediaType, "application/vnd.") {
+		return true
+	}
+	return false
+}

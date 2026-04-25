@@ -202,8 +202,8 @@ func TestOAS31ConfluenceJSON(t *testing.T) {
 	if p.GetInfo().Title != "Confluence Cloud REST API" {
 		t.Errorf("title = %q, want %q", p.GetInfo().Title, "Confluence Cloud REST API")
 	}
-	if len(p.GetPaths()) != 11 {
-		t.Errorf("paths = %d, want 11", len(p.GetPaths()))
+	if len(p.GetPaths()) != 12 {
+		t.Errorf("paths = %d, want 12", len(p.GetPaths()))
 	}
 }
 
