@@ -64,106 +64,60 @@ func TestConverter_Convert(t *testing.T) {
 	}
 }
 
-func TestPathMatch_TrailingSlashes(t *testing.T) {
-	tests := []struct {
-		specPath  string
-		filter    string
-		method    string
-		wantMatch bool
-	}{
-		{"/api/v2/login", "/api/v2/login/", "post", true},
-		{"/api/v2/login/", "/api/v2/login", "post", true},
-		{"/api/v2/login", "/api/v2/login", "post", true},
-		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{id}", "get", true},
-		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{scan_id}", "get", true},
-		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{other}/details", "get", false},
-		{"/api/v2/scans", "/api/v2/scans/{id}", "get", false},
-		{"/health", "/api/v2/health", "get", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.specPath+"/"+tt.filter, func(t *testing.T) {
-			got := pathMatch(tt.specPath, tt.filter, tt.method)
-			if got != tt.wantMatch {
-				t.Errorf("pathMatch(%q, %q, %q) = %v, want %v", tt.specPath, tt.filter, tt.method, got, tt.wantMatch)
-			}
-		})
-	}
-}
-
-func TestPathMatch_ExactOnly(t *testing.T) {
-	tests := []struct {
-		name      string
-		specPath  string
-		filter    string
-		method    string
-		wantMatch bool
-	}{
-		{"exact match", "/space", "/space", "get", true},
-		{"no prefix match", "/space/{spaceKey}/content", "/space", "get", false},
-		{"trailing slash matches", "/space/{spaceKey}", "/space/{spaceKey}/", "get", true},
-		{"trailing colon matches", "/space/", "/space:", "get", true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := pathMatch(tt.specPath, tt.filter, tt.method)
-			if got != tt.wantMatch {
-				t.Errorf("pathMatch(%q, %q, %q) = %v, want %v", tt.specPath, tt.filter, tt.method, got, tt.wantMatch)
-			}
-		})
-	}
-}
-
-func TestCleanFilterPath(t *testing.T) {
+func TestCleanOperationId(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
 	}{
-		{"/api/v2/login", "api/v2/login"},
-		{"'/api/v2/login'", "api/v2/login"},
-		{"/api/v2/login", "api/v2/login"},
-		{`"/api/v2/login"`, "api/v2/login"},
-		{"  /api/v2/login  ", "api/v2/login"},
-		{"  '/api/v2/login'  ", "api/v2/login"},
-		{"", "/"},
-		{"''", "/"},
-		{`""`, "/"},
-		// Newlines and carriage returns
-		{"/api/v2/login\n", "api/v2/login"},
-		{"/api/v2/login\r\n", "api/v2/login"},
-		{"/api/v2/\nlogin", "api/v2/login"},
-		// Tabs
-		{"/api/v2/login\t", "api/v2/login"},
-		// YAML trailing colon
-		{"/api/v2/login:", "api/v2/login"},
+		{"listSpaces", "listSpaces"},
+		{"'listSpaces'", "listSpaces"},
+		{`"listSpaces"`, "listSpaces"},
+		{"  listSpaces  ", "listSpaces"},
+		{"listSpaces\n", "listSpaces"},
+		{"listSpaces\r\n", "listSpaces"},
+		{"get-a-very-long-operation-id", "get-a-very-long-operation-id"},
+		{"", ""},
+		{"''", ""},
+		{`""`, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := cleanFilterPath(tt.input)
+			got := cleanOperationId(tt.input)
 			if got != tt.want {
-				t.Errorf("cleanFilterPath(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("cleanOperationId(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
 }
 
-func TestNormalizePath_TrailingColon(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"/api/v2/login", "api/v2/login"},
-		{"/api/v2/login:", "api/v2/login"},
-		{"/api/v2/login/", "api/v2/login"},
-		{"/api/v2/scans/{id}:", "api/v2/scans/{id}"},
-		{"/api/v2/scans/{id}/", "api/v2/scans/{id}"},
+func TestConverter_Convert_IncludeExcludeByOperationId(t *testing.T) {
+	if _, err := os.Stat(specPath); os.IsNotExist(err) {
+		t.Fatalf("fixture file %s does not exist", specPath)
 	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := normalizePath(tt.input)
-			if got != tt.want {
-				t.Errorf("normalizePath(%q) = %q, want %q", tt.input, got, tt.want)
-			}
-		})
+	data, err := os.ReadFile(specPath)
+	if err != nil {
+		t.Fatalf("could not read %s: %v", specPath, err)
+	}
+
+	parser := NewParser(false)
+	if err := parser.Parse(data); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	// Include only "listSpaces"
+	c, err := NewConverter(parser, []string{"listSpaces"}, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+	if len(config.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
+	}
+	if config.Tools[0].Name != "Listspaces" {
+		t.Errorf("expected tool Listspaces, got %s", config.Tools[0].Name)
 	}
 }
 
