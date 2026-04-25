@@ -103,6 +103,7 @@ func main() {
 	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
 	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
 	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
+	flag.IntVar(verbose, "verbose", 0, "Request logging verbosity level (0-10)")
 	flag.Parse()
 
 	mcputils.SetVerbosity(*verbose)
