@@ -90,6 +90,52 @@ func TestPathMatch_TrailingSlashes(t *testing.T) {
 	}
 }
 
+func TestCleanFilterPath(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/api/v2/login", "/api/v2/login"},
+		{"'/api/v2/login'", "/api/v2/login"},
+		{"/api/v2/login", "/api/v2/login"},
+		{`"/api/v2/login"`, "/api/v2/login"},
+		{"  /api/v2/login  ", "/api/v2/login"},
+		{"  '/api/v2/login'  ", "/api/v2/login"},
+		{"", ""},
+		{"''", ""},
+		{`""`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := cleanFilterPath(tt.input)
+			if got != tt.want {
+				t.Errorf("cleanFilterPath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNormalizePath_TrailingColon(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/api/v2/login", "/api/v2/login"},
+		{"/api/v2/login:", "/api/v2/login"},
+		{"/api/v2/login/", "/api/v2/login"},
+		{"/api/v2/scans/{id}:", "/api/v2/scans/{id}"},
+		{"/api/v2/scans/{id}/", "/api/v2/scans/{id}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := normalizePath(tt.input)
+			if got != tt.want {
+				t.Errorf("normalizePath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestConverter_Convert_NoDocument(t *testing.T) {
 	parser := NewParser(false)
 	c, err := NewConverter(parser, nil, nil)
