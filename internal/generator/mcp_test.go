@@ -138,6 +138,12 @@ Example:
 	}
 
 	// Verify the generated code actually compiles
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = tmpDir
+	tidyCmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off")
+	if out, err := tidyCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed:\n%s", out)
+	}
 	cmd := exec.Command("go", "build", "./...")
 	cmd.Dir = tmpDir
 	if out, err := cmd.CombinedOutput(); err != nil {

@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lyeslabs/mcpgen/internal/generator"
@@ -86,5 +87,10 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Successfully generated MCP server in: %s\n", outputDir)
+	fmt.Printf("Successfully generated MCP server in: %s\n\n", outputDir)
+	fmt.Printf("To build and run:\n")
+	fmt.Printf("  cd %s\n", outputDir)
+	fmt.Printf("  go mod tidy\n")
+	fmt.Printf("  go build -o %s .\n", filepath.Base(outputDir))
+	fmt.Printf("  ./%s --transport http --port 8080\n", filepath.Base(outputDir))
 }

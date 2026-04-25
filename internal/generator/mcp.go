@@ -82,14 +82,6 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate .gitignore: %w", err)
 	}
 
-	if err := g.RunGoModTidy(); err != nil {
-		return fmt.Errorf("failed to run go mod tidy: %w", err)
-	}
-
-	if err := g.RunGoBuild(); err != nil {
-		return fmt.Errorf("failed to build server binary: %w", err)
-	}
-
 	return nil
 }
 
