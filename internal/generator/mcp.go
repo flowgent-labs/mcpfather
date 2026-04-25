@@ -59,6 +59,10 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to run go mod tidy: %w", err)
 	}
 
+	if err := g.RunGoBuild(); err != nil {
+		return fmt.Errorf("failed to build server binary: %w", err)
+	}
+
 	return nil
 }
 
@@ -137,6 +141,23 @@ func (g *Generator) RunGoModTidy() error {
 
 	if err := os.WriteFile(goModPath, []byte(goModContent), 0644); err != nil {
 		return fmt.Errorf("failed to update go.mod module name: %w", err)
+	}
+
+	return nil
+}
+
+// RunGoBuild compiles the MCP server binary in the output directory
+func (g *Generator) RunGoBuild() error {
+	binPath := filepath.Join(g.outputDir, "server")
+	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd.Dir = g.outputDir
+	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("go build failed: %w\nstdout: %s\nstderr: %s", err, stdout.String(), stderr.String())
 	}
 
 	return nil
