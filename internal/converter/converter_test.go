@@ -64,6 +64,32 @@ func TestConverter_Convert(t *testing.T) {
 	}
 }
 
+func TestPathMatch_TrailingSlashes(t *testing.T) {
+	tests := []struct {
+		specPath  string
+		filter    string
+		method    string
+		wantMatch bool
+	}{
+		{"/api/v2/login", "/api/v2/login/", "post", true},
+		{"/api/v2/login/", "/api/v2/login", "post", true},
+		{"/api/v2/login", "/api/v2/login", "post", true},
+		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{id}", "get", true},
+		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{scan_id}", "get", true},
+		{"/api/v2/scans/{scan_id}", "/api/v2/scans/{other}/details", "get", false},
+		{"/api/v2/scans", "/api/v2/scans/{id}", "get", false},
+		{"/health", "/api/v2/health", "get", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.specPath+"/"+tt.filter, func(t *testing.T) {
+			got := pathMatch(tt.specPath, tt.filter, tt.method)
+			if got != tt.wantMatch {
+				t.Errorf("pathMatch(%q, %q, %q) = %v, want %v", tt.specPath, tt.filter, tt.method, got, tt.wantMatch)
+			}
+		})
+	}
+}
+
 func TestConverter_Convert_NoDocument(t *testing.T) {
 	parser := NewParser(false)
 	c, err := NewConverter(parser, nil, nil)
