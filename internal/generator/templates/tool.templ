@@ -27,14 +27,124 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 		args = make(map[string]interface{})
 	}
 
-{{- if .Headers }}
+{{- if .UploadContentType }}
+	// Upload tool: read file from local_file_path and send as raw body
+	localFilePath := ""
+	if fp, ok := args["local_file_path"]; ok {
+		if s, ok := fp.(string); ok {
+			localFilePath = s
+		}
+	}
+	if localFilePath == "" {
+		return mcp.NewToolResultError("missing required argument: local_file_path"), nil
+	}
+
+	fileData, err := os.ReadFile(localFilePath)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s: %v", localFilePath, err)), nil
+	}
+
+	startTime := time.Now()
+	upstreamURL := upstream + "{{.RequestPath}}"
+
+	// Log outgoing request
+	mcputils.LogRequest("{{.Method}}", upstreamURL, nil, nil, nil)
+
+	req, err := http.NewRequestWithContext(ctx, "{{.Method}}", upstreamURL, bytes.NewReader(fileData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upstream request: %w", err)
+	}
+	req.Header.Set("Content-Type", "{{.UploadContentType}}")
+
+	// Forward headers from context
+	if forwarded := mcputils.GetHTTPHeaders(ctx); forwarded != nil {
+		for key, values := range forwarded {
+			lowerKey := strings.ToLower(key)
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" {
+				continue
+			}
+			for _, v := range values {
+				req.Header.Add(key, v)
+			}
+		}
+	}
+	if req.Header.Get("Authorization") == "" {
+		if token := mcputils.GetUpstreamToken(); token != "" {
+			req.Header.Set("Authorization", "Bearer "+token)
+		}
+	}
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "{{.Method}}", resp.Request.URL.String(), time.Since(startTime), body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	return mcp.NewToolResultText(string(body)), nil
+
+{{- else if eq .ResponseType "download" }}
+	// Download tool: save response body to a file
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, "")
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "{{.Method}}", resp.Request.URL.String(), time.Since(startTime), body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	// Determine filename from Content-Disposition or generate one
+	fileName := mcputils.DetermineFileName(resp, "{{.ToolNameOriginal}}")
+
+	// Save to downloads directory
+	downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
+	if downloadDir == "" {
+		downloadDir = "downloads"
+	}
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to create download directory %s: %v", downloadDir, err)), nil
+	}
+
+	filePath := filepath.Join(downloadDir, fileName)
+	if err := os.WriteFile(filePath, body, 0644); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to save file %s: %v", filePath, err)), nil
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
+
+{{- else }}
+	{{- if .Headers }}
 	{{- range .Headers }}
 	contentType := "{{.Value}}"
 	{{- end }}
-{{- else }}
+	{{- else }}
 	contentType := ""
-{{- end }}
-
+	{{- end }}
 	startTime := time.Now()
 	resp, err := mcputils.ForwardRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, contentType)
 	if err != nil {
@@ -54,4 +164,5 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	return mcp.NewToolResultText(string(body)), nil
+{{- end }}
 }
