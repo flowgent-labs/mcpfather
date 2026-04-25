@@ -89,11 +89,14 @@ func (g *Generator) GenerateMainGo() error {
 	}
 
 	moduleName := BuildModuleName(g.outputDir)
+	binName := filepath.Base(g.outputDir)
 
 	data := struct {
 		ModuleName string
+		BinaryName string
 	}{
 		ModuleName: moduleName,
+		BinaryName: binName,
 	}
 
 	var buf bytes.Buffer

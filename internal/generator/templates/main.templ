@@ -75,6 +75,19 @@ func truncate(s string, max int) string {
 	return s
 }
 
+func usage() {
+	fmt.Fprintf(os.Stderr, `Usage: {{ .BinaryName }} [OPTIONS]
+
+Options:
+  --transport <stdio|http>  Transport mode (default "stdio")
+  --port <number>           HTTP server port (default 8080)
+  -v, --verbose <0-10>      Request logging verbosity level
+                            0=silent, 1=access log, 2+=method+URL,
+                            3+=query, 5+=headers, 7+=body, 9+=pretty JSON
+  -h, --help                Show this help message
+`)
+}
+
 func main() {
 	upstreamEndpoint := mcputils.GetUpstreamEndpoint()
 	isDefault := mcputils.IsDefaultUpstreamEndpoint()
@@ -84,9 +97,12 @@ func main() {
 		fmt.Fprintln(os.Stderr, "Warning: MCP_UPSTREAM_ENDPOINT is not set. Using default (httpbin.org/anything) which echoes requests. Set it to your actual upstream service endpoint.")
 	}
 
+	flag.CommandLine.SetOutput(os.Stderr)
+	flag.Usage = usage
+
 	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
 	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
-	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10): 0=silent, 1=access log, 2+=method+URL, 3+=query, 5+=headers, 7+=body, 9+=pretty JSON")
+	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
 	flag.Parse()
 
 	mcputils.SetVerbosity(*verbose)
