@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -34,9 +35,21 @@ func BuildServerImportPath(outputDir string) (string, error) {
 }
 
 // GenerateGoMod creates a go.mod file in the output directory for the standalone project.
+// It uses the current Go version detected from the runtime.
 func GenerateGoMod(outputDir string) error {
 	moduleName := BuildModuleName(outputDir)
-	content := fmt.Sprintf("module %s\n\ngo 1.23\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName)
+	goVersion := runtime.Version()
+	// runtime.Version() returns e.g. "go1.23.4" or "go1.23.4-final"
+	goVersion = strings.TrimPrefix(goVersion, "go")
+	if idx := strings.IndexByte(goVersion, '-'); idx != -1 {
+		goVersion = goVersion[:idx]
+	}
+	// Keep only major.minor (e.g. "1.23")
+	if parts := strings.Split(goVersion, "."); len(parts) >= 2 {
+		goVersion = strings.Join(parts[:2], ".")
+	}
+
+	content := fmt.Sprintf("module %s\n\ngo %s\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName, goVersion)
 
 	goModPath := filepath.Join(outputDir, "go.mod")
 	return os.WriteFile(goModPath, []byte(content), 0644)
