@@ -18,6 +18,25 @@ import (
 
 // GenerateToolFiles generates individual tool files while preserving existing handler implementations
 func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
+	toolDir := filepath.Join(g.outputDir, "internal", "mcptools")
+
+	// Collect the set of tool files that should exist
+	expectedFiles := make(map[string]struct{})
+	for _, tool := range config.Tools {
+		expectedFiles[capitalizeFirstLetter(tool.Name)+".go"] = struct{}{}
+	}
+
+	// Remove stale tool files from previous runs with different filters
+	if entries, err := os.ReadDir(toolDir); err == nil {
+		for _, entry := range entries {
+			if _, ok := expectedFiles[entry.Name()]; !ok && strings.HasSuffix(entry.Name(), ".go") {
+				if g.verbose {
+					fmt.Fprintf(os.Stderr, "[verbose] removing stale tool file: %s\n", entry.Name())
+				}
+				os.Remove(filepath.Join(toolDir, entry.Name()))
+			}
+		}
+	}
 	toolTemplateContent, err := templatesFS.ReadFile("templates/tool.templ")
 	if err != nil {
 		return fmt.Errorf("failed to read tool template file: %w", err)
@@ -100,7 +119,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		}
 
 		outputFileName := capitalizedName + ".go"
-		outputFilePath := filepath.Join(g.outputDir+"/internal/mcptools", outputFileName)
+		outputFilePath := filepath.Join(toolDir, outputFileName)
 
 		// Check if file already exists and extract handler implementation if it does
 		existingImplementation := ""
@@ -165,12 +184,12 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		// Format the generated code
 		formattedCode, err := format.Source(toolBuf.Bytes())
 		if err != nil {
-			dumpPath := filepath.Join(g.outputDir, "internal", "mcptools", outputFileName+".bad")
+			dumpPath := filepath.Join(toolDir, outputFileName+".bad")
 			_ = os.WriteFile(dumpPath, toolBuf.Bytes(), 0o644)
 			return fmt.Errorf("failed to format generated code for %s: %w (raw output written to %s)", outputFileName, err, dumpPath)
 		}
 
-		err = writeFileContent(g.outputDir+"/internal/mcptools", outputFileName, func() ([]byte, error) {
+		err = writeFileContent(toolDir, outputFileName, func() ([]byte, error) {
 			return formattedCode, nil
 		})
 
