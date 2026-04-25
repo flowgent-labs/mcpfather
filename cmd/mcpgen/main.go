@@ -23,8 +23,10 @@ func init() {
 	flag.StringVar(&outputDir, "o", "", "Path to the output MCP server directory")
 	flag.StringVar(&outputDir, "output", "", "Path to the output MCP server directory")
 	flag.BoolVar(&validation, "validation", false, "Enable OpenAPI validation")
-	flag.StringVar(&includes, "includes", "", "Comma-separated OpenAPI paths to include (e.g. /wiki/rest/api/pages,/wiki/rest/api/spaces)")
-	flag.StringVar(&excludes, "excludes", "", "Comma-separated OpenAPI paths to exclude (e.g. /wiki/rest/api/health)")
+	flag.StringVar(&includes, "I", "", "Comma-separated OpenAPI paths to include")
+	flag.StringVar(&includes, "includes", "", "Comma-separated OpenAPI paths to include")
+	flag.StringVar(&excludes, "e", "", "Comma-separated OpenAPI paths to exclude")
+	flag.StringVar(&excludes, "excludes", "", "Comma-separated OpenAPI paths to exclude")
 }
 
 func usage() {
@@ -33,8 +35,8 @@ func usage() {
 Options:
   -i, --input       Path to the OpenAPI specification file (JSON or YAML)
   -o, --output      Path to the output MCP server directory
-  --includes        Comma-separated OpenAPI paths to include
-  --excludes        Comma-separated OpenAPI paths to exclude
+  -I, --includes    Comma-separated OpenAPI paths to include
+  -e, --excludes    Comma-separated OpenAPI paths to exclude
   --validation      Enable OpenAPI validation
 `)
 }
