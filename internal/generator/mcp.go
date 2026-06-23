@@ -74,6 +74,20 @@ func (g *Generator) GenerateMCP() error {
 		fmt.Fprintf(os.Stderr, "[verbose] generated %d tool files in internal/mcptools/\n", len(config.Tools))
 	}
 
+	if err := g.GenerateToolRegistry(config); err != nil {
+		return fmt.Errorf("failed to generate tool registry: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcptools/registry.go\n")
+	}
+
+	if err := g.GenerateCLI(); err != nil {
+		return fmt.Errorf("failed to generate CLI package: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpcli/cli.go\n")
+	}
+
 	if err := g.GenerateHelpers(); err != nil {
 		return fmt.Errorf("failed to generate helpers: %w", err)
 	}
@@ -244,6 +258,93 @@ func (g *Generator) GenerateMakefile() error {
 		return []byte(makefile), nil
 	}); err != nil {
 		return fmt.Errorf("failed to write Makefile: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateToolRegistry creates a registry.go file in the mcptools package that
+// maps tool names to their Tool and Handler, allowing dynamic tool discovery
+// by both the MCP server and the CLI runner.
+func (g *Generator) GenerateToolRegistry(config *converter.MCPConfig) error {
+	var buf bytes.Buffer
+	buf.WriteString("package mcptools\n\n")
+	buf.WriteString("import (\n")
+	buf.WriteString("\t\"context\"\n\n")
+	buf.WriteString("\t\"github.com/mark3labs/mcp-go/mcp\"\n")
+	buf.WriteString(")\n\n")
+	buf.WriteString("// ToolEntry pairs an MCP tool definition with its handler function.\n")
+	buf.WriteString("type ToolEntry struct {\n")
+	buf.WriteString("\tTool    mcp.Tool\n")
+	buf.WriteString("\tHandler func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error)\n")
+	buf.WriteString("}\n\n")
+	buf.WriteString("// Registry maps tool names to their ToolEntry for dynamic tool discovery.\n")
+	buf.WriteString("var Registry = map[string]ToolEntry{\n")
+
+	for _, tool := range config.Tools {
+		capitalizedName := capitalizeFirstLetter(tool.Name)
+		fmt.Fprintf(&buf, "\t%q: {Tool: New%sMCPTool(), Handler: %sHandler},\n",
+			capitalizedName, capitalizedName, capitalizedName)
+	}
+
+	buf.WriteString("}\n")
+
+	formattedCode, err := format.Source(buf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated registry.go: %w", err)
+	}
+
+	if err := writeFileContent(g.outputDir+"/internal/mcptools", "registry.go", func() ([]byte, error) {
+		return formattedCode, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write registry.go: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateCLI creates the mcpcli package that provides a CLI interface
+// for dynamically invoking MCP tools from the command line.
+func (g *Generator) GenerateCLI() error {
+	cliTemplateContent, err := templatesFS.ReadFile("templates/cli.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read CLI template: %w", err)
+	}
+
+	tmpl, err := template.New("cli.templ").Parse(string(cliTemplateContent))
+	if err != nil {
+		return fmt.Errorf("failed to parse CLI template: %w", err)
+	}
+
+	importPath, err := BuildImportPath(g.outputDir)
+	if err != nil {
+		return fmt.Errorf("failed to build import path: %w", err)
+	}
+
+	helpersImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
+
+	data := struct {
+		MCPToolsImportPath string
+		HelpersImportPath  string
+	}{
+		MCPToolsImportPath: importPath,
+		HelpersImportPath:  helpersImportPath,
+	}
+
+	var body bytes.Buffer
+	if err := tmpl.Execute(&body, data); err != nil {
+		return fmt.Errorf("failed to render CLI template: %w", err)
+	}
+
+	formattedCode, err := format.Source(body.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated cli.go: %w", err)
+	}
+
+	if err := writeFileContent(g.outputDir+"/internal/mcpcli", "cli.go", func() ([]byte, error) {
+		return formattedCode, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write cli.go: %w", err)
 	}
 
 	return nil
