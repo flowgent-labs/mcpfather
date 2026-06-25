@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"go/format"
+	"path/filepath"
 	"text/template"
 
 	"github.com/lyeslabs/mcpgen/internal/converter"
@@ -31,10 +32,12 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 	data := struct {
 		MCPToolsImportPath string
 		HelpersImportPath  string
+		BinaryName         string
 		Tools              []ToolTemplateData
 	}{
 		MCPToolsImportPath: importPath,
 		HelpersImportPath:  helperImportPath,
+		BinaryName:         filepath.Base(g.outputDir),
 	}
 
 	for _, tool := range config.Tools {

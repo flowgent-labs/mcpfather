@@ -38,11 +38,13 @@ func Test_RenderAndWriteServerTemplate(t *testing.T) {
 		PackageName        string
 		MCPToolsImportPath string
 		HelpersImportPath  string
+		BinaryName         string
 		Tools              []ToolTemplateData
 	}{
 		PackageName:        "mytools",
 		MCPToolsImportPath: "github.com/example/project/mcptools",
 		HelpersImportPath:  "github.com/example/project/internal/helpers",
+		BinaryName:         "mytools",
 		Tools:              tools,
 	}
 

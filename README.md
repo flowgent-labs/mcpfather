@@ -52,7 +52,7 @@ The server defaults to httpbin.org which echoes requests — great for quick ver
 Set your actual upstream to enable real API calls:
 
 ```sh
-export MCP_UPSTREAM_ENDPOINT=https://example.atlassian.net/wiki/rest/api
+export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 # Option 1: pass token via env var
 MCP_UPSTREAM_TOKEN=your-token ./myconfluence-mcp --transport http --port 8080 -v 1
 
@@ -86,7 +86,7 @@ Run the MCP server as a child process — recommended for local development.
       "command": ["bash", "-c", "./myconfluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
@@ -107,7 +107,7 @@ Run the MCP server as a child process — recommended for local development.
       "command": "./myconfluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -127,7 +127,7 @@ Run the MCP server as a child process — recommended for local development.
       "command": ["bash", "-c", "./myconfluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -147,7 +147,7 @@ mcp:
       command: ./myconfluence-mcp
       args: ["--transport", "stdio"]
       env:
-        MCP_UPSTREAM_ENDPOINT: https://example.atlassian.net/wiki/rest/api
+        MCP_UPSTREAM_ENDPOINT: https://api.example.com
         MCP_UPSTREAM_TOKEN: your-token
         MCP_UPSTREAM_TOKEN_FILE: "/path/to/fallback/.credentials"
 ```
@@ -163,7 +163,7 @@ mcp:
       "command": "./myconfluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -179,7 +179,7 @@ Run the server separately and connect agents via HTTP transport. Suitable for sh
 Start the server:
 
 ```sh
-export MCP_UPSTREAM_ENDPOINT=https://example.atlassian.net/wiki/rest/api
+export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 export MCP_UPSTREAM_TOKEN=your-token
 ./myconfluence-mcp --transport http --port 8080 -v 1
 ```
@@ -195,7 +195,7 @@ export MCP_UPSTREAM_TOKEN=your-token
       "type": "remote",
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -214,7 +214,7 @@ export MCP_UPSTREAM_TOKEN=your-token
     "myconfluence-r": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -233,7 +233,7 @@ export MCP_UPSTREAM_TOKEN=your-token
     "myconfluence-r": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -252,7 +252,7 @@ mcp:
     myconfluence-r:
       url: http://localhost:8080/mcp
       env:
-        MCP_UPSTREAM_ENDPOINT: https://example.atlassian.net/wiki/rest/api
+        MCP_UPSTREAM_ENDPOINT: https://api.example.com
         MCP_UPSTREAM_TOKEN: your-token
         MCP_UPSTREAM_TOKEN_FILE: "/path/to/fallback/.credentials"
 ```
@@ -267,7 +267,7 @@ mcp:
     "myconfluence-r": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://example.atlassian.net/wiki/rest/api",
+        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
         "MCP_UPSTREAM_TOKEN": "your-token",
         "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
@@ -281,22 +281,21 @@ mcp:
 Invoke tools directly from the command line — no MCP agent needed. Useful for debugging, scripting, and manual API exploration. The CLI reuses the same `mcptools` handlers as the MCP server, so every call makes a real HTTP request upstream.
 
 ```sh
-# List all available tools
+# Set your upstream endpoint (required for real API calls)
+export MCP_UPSTREAM_ENDPOINT=https://api.example.com
+export MCP_UPSTREAM_TOKEN=your-token
+
+# First call: list available tools
 ./myconfluence-mcp -t cli list
-# Available subcommands (14):
-#   Addlabels                           Add labels to a page
-#   Createchildpage                     Create a child page under a parent page using the children API
-#   Createcomment                       Add a comment to a page using the nested children API
-#   Createpage                          Create a new page (or child page) in a Confluence space
-#   Deletepage                          Move a page to trash (soft delete) or permanently delete it
-#   ...
+
+# First tool call: fetch a page by ID
+./myconfluence-mcp -t cli Getpage --id 123456
 
 # Show tool-specific help (GNU-style usage)
 ./myconfluence-mcp -t cli Getpage --help
 
 # Call a tool with GNU-style --flag arguments
-./myconfluence-mcp -t cli Getpage --id 123456
-./myconfluence-mcp -t cli Listspaces --limit 5 --type=global
+./myconfluence-mcp -t cli Listspaces --limit=5 --type global
 ./myconfluence-mcp -t cli Searchcontent --cql 'type=page AND text~"API"' --limit 10
 
 # Call a tool without arguments (for tools that have no required params)

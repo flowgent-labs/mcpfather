@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"gopkg.in/yaml.v3"
 )
 
 type contextKey string
@@ -215,7 +217,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Use Authorization from request, fallback to upstream token (env/file/keychain/credmgr)
 	if req.Header.Get("Authorization") == "" {
 		if token := GetUpstreamToken(); token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Authorization", FormatAuthorizationHeader(token))
 		}
 	}
 
@@ -225,6 +227,50 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		},
 	}
 	return client.Do(req)
+}
+
+// FormatAuthorizationHeader normalizes a token for use in an HTTP Authorization header.
+// If the token already has a recognized prefix (Bearer or Basic, case-insensitive),
+// it is returned unchanged. Otherwise, "Bearer " is prepended.
+func FormatAuthorizationHeader(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return token
+	}
+	lower := strings.ToLower(token)
+	if strings.HasPrefix(lower, "bearer ") || strings.HasPrefix(lower, "basic ") {
+		return token
+	}
+	return "Bearer " + token
+}
+
+// Config represents the project configuration read from $HOME/.{binaryName}/config.yaml.
+type Config struct {
+	Tools struct {
+		Enabled []string `yaml:"enabled"`
+	} `yaml:"tools"`
+}
+
+// LoadConfig reads the optional config.yaml from $HOME/.{binaryName}/config.yaml.
+// Returns nil if the config file does not exist (all tools enabled by default).
+func LoadConfig(binaryName string) (*Config, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, nil
+	}
+	configPath := filepath.Join(home, "."+binaryName, "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read config %s: %w", configPath, err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config %s: %w", configPath, err)
+	}
+	return &cfg, nil
 }
 
 // valueToString converts an interface{} to a string suitable for URLs and
