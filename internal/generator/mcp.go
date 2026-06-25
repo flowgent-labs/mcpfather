@@ -131,15 +131,6 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate .gitignore: %w", err)
 	}
 
-	// Download dependencies and generate go.sum so the user can build
-	// without network access to proxy.golang.org.
-	if err := g.RunGoModTidy(); err != nil {
-		return fmt.Errorf("failed to run go mod tidy: %w", err)
-	}
-	if g.verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] go mod tidy completed\n")
-	}
-
 	return nil
 }
 
@@ -252,7 +243,37 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 // GenerateMakefile creates a Makefile for building and running the MCP server
 func (g *Generator) GenerateMakefile() error {
 	binName := filepath.Base(g.outputDir)
-	makefile := fmt.Sprintf(".PHONY: build run clean test\n\nbuild:\n\t@mkdir -p bin\n\t@go build -o bin/%s .\n\nrun: build\n\t@bin/%s\n\nclean:\n\t@rm -f bin/%s\n\ntest:\n\t@go test ./...\n", binName, binName, binName)
+	makefile := fmt.Sprintf(`.PHONY: build build-all run clean test
+
+BINARY_NAME := %s
+BUILD_FLAGS := -v -trimpath
+
+GOOS ?= $(shell go env GOOS)
+GOARCH ?= $(shell go env GOARCH)
+
+build: go.sum
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME) .
+
+build-all: go.sum
+	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64   .
+	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64   .
+	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64  .
+	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64  .
+	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe .
+	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64.exe .
+
+go.sum: go.mod
+	go mod tidy
+
+run: build
+	@bin/$(BINARY_NAME)
+
+clean:
+	@rm -f bin/$(BINARY_NAME)
+
+test:
+	@go test ./...
+`, binName)
 
 	if err := writeFileContent(g.outputDir, "Makefile", func() ([]byte, error) {
 		return []byte(makefile), nil
@@ -359,7 +380,7 @@ func (g *Generator) GenerateReadme() error {
 
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"### Build from source\n\n" +
-		"```sh\nmake\n```\n\n" +
+		"```sh\ngo mod tidy\nmake\n```\n\n" +
 		"### Usage with CLI mode (example)\n\n" +
 		"```sh\n" +
 		"# Set your upstream endpoint\n" +
