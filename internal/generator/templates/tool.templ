@@ -47,8 +47,6 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	startTime := time.Now()
 	upstreamURL := upstream + "{{.RequestPath}}"
 
-	mcputils.LogRequest("{{.Method}}", upstreamURL, nil, nil, nil)
-
 	req, err := http.NewRequestWithContext(ctx, "{{.Method}}", upstreamURL, bytes.NewReader(fileData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upstream request: %w", err)
@@ -58,7 +56,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	if forwarded := mcputils.GetHTTPHeaders(ctx); forwarded != nil {
 		for key, values := range forwarded {
 			lowerKey := strings.ToLower(key)
-			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" {
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "content-length" {
 				continue
 			}
 			for _, v := range values {
@@ -71,6 +69,8 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 			req.Header.Set("Authorization", mcputils.FormatAuthorizationHeader(token))
 		}
 	}
+
+	mcputils.LogRequest("{{.Method}}", upstreamURL, nil, req.Header, nil)
 
 	client := &http.Client{
 		Transport: &http.Transport{

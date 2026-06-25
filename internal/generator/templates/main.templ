@@ -66,6 +66,13 @@ func (l *loggingWriter) WriteHeader(code int) {
 	l.ResponseWriter.WriteHeader(code)
 }
 
+// Flush implements http.Flusher by delegating to the underlying ResponseWriter.
+func (l *loggingWriter) Flush() {
+	if f, ok := l.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
 func truncate(s string, max int) string {
 	if len(s) > max {
 		return s[:max] + "..."
@@ -99,11 +106,6 @@ CLI Mode:
 func printDefaultConfigYAML() {
 	fmt.Println("# {{ .BinaryName }} MCP server configuration")
 	fmt.Println("# Place this file at: $HOME/." + "{{ .BinaryName }}" + "/config.yaml")
-	fmt.Println()
-	fmt.Println("# tools:")
-	fmt.Println("#   include:")
-	fmt.Println("#     - Listspaces")
-	fmt.Println("#     - Searchcontent")
 	fmt.Println()
 	fmt.Println("tools:")
 	fmt.Println("  # List of operationId values to register as MCP tools.")

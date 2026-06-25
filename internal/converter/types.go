@@ -14,6 +14,7 @@ type ServerConfig struct {
 // Tool represents an MCP tool configuration
 type Tool struct {
 	Name            string
+	OperationID     string // original operationId from the OpenAPI spec
 	Description     string
 	Args            []Arg
 	RequestTemplate RequestTemplate

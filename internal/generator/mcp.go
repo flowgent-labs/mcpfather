@@ -246,21 +246,25 @@ func (g *Generator) GenerateMakefile() error {
 	makefile := fmt.Sprintf(`.PHONY: build build-all run clean test
 
 BINARY_NAME := %s
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -v -trimpath
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
+BIN := bin/$(BINARY_NAME)-$(GOOS)-$(GOARCH)-$(VERSION)$(if $(filter windows,$(GOOS)),.exe,)
+
 build: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME) .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o $(BIN) .
+	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-all: go.sum
-	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64   .
-	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64   .
-	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64  .
-	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64  .
-	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe .
-	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64.exe .
+	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
+	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
+	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
+	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
+	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
+	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
 
 go.sum: go.mod
 	go mod tidy
@@ -269,7 +273,7 @@ run: build
 	@bin/$(BINARY_NAME)
 
 clean:
-	@rm -f bin/$(BINARY_NAME)
+	@rm -f bin/$(BINARY_NAME)*
 
 test:
 	@go test ./...
@@ -410,7 +414,7 @@ func (g *Generator) GenerateReadme() error {
 		"./bin/" + binName + " --print-default-config > ~/." + binName + "/config.yaml\n" +
 		"```\n\n" +
 		"Edit `~/." + binName + "/config.yaml` and set `tools.include` to the operation IDs you want:\n\n" +
-		"```yaml\ntools:\n  include:\n    - Listspaces\n    - Searchcontent\n```\n\n" +
+		"```yaml\ntools:\n  include:\n    - ListSpaces\n    - SearchContent\n```\n\n" +
 		"When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.\n\n" +
 		"## Agent Integration\n\n" +
 		"### Local Mode (stdio)\n\n" +

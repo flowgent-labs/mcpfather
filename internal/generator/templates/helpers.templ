@@ -188,9 +188,6 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		bodyReader = strings.NewReader(string(bodyBytes))
 	}
 
-	// Log outgoing request according to verbosity level (all methods)
-	LogRequest(method, upstreamURL, query, nil, bodyBytes)
-
 	req, err := http.NewRequestWithContext(ctx, method, upstreamURL, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create upstream request: %w", err)
@@ -205,7 +202,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		for key, values := range forwarded {
 			// Skip hop-by-hop headers
 			lowerKey := strings.ToLower(key)
-			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" {
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "content-length" {
 				continue
 			}
 			for _, v := range values {
@@ -220,6 +217,9 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 			req.Header.Set("Authorization", FormatAuthorizationHeader(token))
 		}
 	}
+
+	// Log outgoing request with final headers
+	LogRequest(method, upstreamURL, query, req.Header, bodyBytes)
 
 	client := &http.Client{
 		Transport: &http.Transport{
@@ -397,7 +397,7 @@ func SaveBinaryResponse(resp *http.Response, body []byte, defaultName string) (s
 	}
 
 	fileName := DetermineFileName(resp, defaultName)
-	downloadDir := os.Getenv("MCP_DOWNLOAD_DIR")
+	downloadDir := os.Getenv("MCP_SERVER_DOWNLOAD_DIR")
 	if downloadDir == "" {
 		exe, err := os.Executable()
 		binName := "mcpgen-server"

@@ -1,0 +1,49 @@
+openapi: "3.0.3"
+info:
+  title: Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /echo:
+    get:
+      operationId: echoHeaders
+      summary: Echo back request headers
+      description: Returns the request headers that were sent to the upstream
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /download:
+    get:
+      operationId: downloadReport
+      summary: Download a binary report
+      description: Returns a binary file download
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /hello:
+    get:
+      operationId: sayHello
+      summary: Say hello
+      description: Returns a greeting
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

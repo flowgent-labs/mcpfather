@@ -1,0 +1,20 @@
+openapi: "3.0.3"
+info:
+  title: Binary Download Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0
+paths:
+  /bytes/1024:
+    get:
+      operationId: downloadBytes
+      summary: Download random bytes
+      description: Returns N random bytes of binary data
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
