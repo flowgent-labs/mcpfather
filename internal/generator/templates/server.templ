@@ -75,7 +75,7 @@ func truncate(s string, max int) string {
 }
 
 // NewMCPServer creates and returns an MCP server with all tools registered.
-// If $HOME/.{binaryName}/config.yaml has tools.enabled, only those tools are registered.
+// If $HOME/.{binaryName}/config.yaml has tools.include, only those tools are registered.
 func NewMCPServer() *server.MCPServer {
 	s := server.NewMCPServer(
 		"MCP Server",
@@ -88,8 +88,8 @@ func NewMCPServer() *server.MCPServer {
 	// Load optional config to filter enabled tools
 	cfg, _ := mcputils.LoadConfig("{{.BinaryName}}")
 	enabled := make(map[string]bool)
-	if cfg != nil && len(cfg.Tools.Enabled) > 0 {
-		for _, name := range cfg.Tools.Enabled {
+	if cfg != nil && len(cfg.Tools.Include) > 0 {
+		for _, name := range cfg.Tools.Include {
 			enabled[name] = true
 		}
 	}

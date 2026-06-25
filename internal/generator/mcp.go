@@ -326,9 +326,11 @@ func (g *Generator) GenerateCLI() error {
 	data := struct {
 		MCPToolsImportPath string
 		HelpersImportPath  string
+		BinaryName         string
 	}{
 		MCPToolsImportPath: importPath,
 		HelpersImportPath:  helpersImportPath,
+		BinaryName:         filepath.Base(g.outputDir),
 	}
 
 	var body bytes.Buffer
@@ -378,6 +380,17 @@ func (g *Generator) GenerateReadme() error {
 		"4. macOS Keychain / Windows Credential Manager\n\n" +
 		"To use the `.credentials` file:\n\n" +
 		"```sh\necho -n \"your-token\" > .credentials\nexport MCP_UPSTREAM_TOKEN_FILE=.credentials\n```\n\n" +
+		"### Tool filtering\n\n" +
+		"For APIs with many operations, limit which tools AI agents discover:\n\n" +
+		"```sh\n# Print the default config template\n" +
+		"./bin/" + binName + " --print-default-config\n\n" +
+		"# Create and edit your config\n" +
+		"mkdir -p ~/." + binName + "\n" +
+		"./bin/" + binName + " --print-default-config > ~/." + binName + "/config.yaml\n" +
+		"```\n\n" +
+		"Edit `~/." + binName + "/config.yaml` and set `tools.include` to the operation IDs you want:\n\n" +
+		"```yaml\ntools:\n  include:\n    - Listspaces\n    - Searchcontent\n```\n\n" +
+		"When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.\n\n" +
 		"## Agent Integration\n\n" +
 		"### Local Mode (stdio)\n\n" +
 		"Run the MCP server as a child process — recommended for local development.\n\n" +

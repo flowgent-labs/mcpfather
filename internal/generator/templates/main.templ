@@ -101,7 +101,7 @@ func printDefaultConfigYAML() {
 	fmt.Println("# Place this file at: $HOME/." + "{{ .BinaryName }}" + "/config.yaml")
 	fmt.Println()
 	fmt.Println("# tools:")
-	fmt.Println("#   enabled:")
+	fmt.Println("#   include:")
 	fmt.Println("#     - Listspaces")
 	fmt.Println("#     - Searchcontent")
 	fmt.Println()
@@ -109,7 +109,7 @@ func printDefaultConfigYAML() {
 	fmt.Println("  # List of operationId values to register as MCP tools.")
 	fmt.Println("  # When empty or absent, all tools are registered.")
 	fmt.Println("  # Use this to limit what AI agents can discover.")
-	fmt.Println("  enabled: []")
+	fmt.Println("  include: []")
 }
 
 func main() {
