@@ -10,7 +10,7 @@ import (
 
 // Config represents the aggregated tools configuration.
 type Config struct {
-	AggregatedTools []AggregatedToolConfig `yaml:"aggregatedTools"`
+	AggregateTools []AggregatedToolConfig `yaml:"aggregateTools"`
 }
 
 // AggregatedToolConfig defines a single aggregated MCP tool.
