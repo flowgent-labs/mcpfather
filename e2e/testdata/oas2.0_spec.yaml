@@ -1,0 +1,201 @@
+# Swagger 2.0 specification — Blogs Platform API
+# Used for OAS 2.0 compatibility testing (should raise an error since
+# mcpgen requires OpenAPI 3.x).
+swagger: "2.0"
+info:
+  title: Blogs Platform API (Swagger 2.0)
+  version: 1.0.0
+  description: |
+    Swagger 2.0 version of the Blogs Platform API.
+    This spec is used to verify that mcpgen correctly detects and reports
+    unsupported specification versions.
+
+host: api.blogs.example.com
+basePath: /api/v1
+schemes:
+  - https
+
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      summary: List all blog posts
+      description: Returns a paginated list of blog posts.
+      parameters:
+        - name: limit
+          in: query
+          type: integer
+          minimum: 0
+          maximum: 200
+          default: 25
+        - name: status
+          in: query
+          type: string
+          enum:
+            - draft
+            - published
+            - archived
+      responses:
+        "200":
+          description: Paginated list of posts
+          schema:
+            type: object
+            properties:
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Post'
+    post:
+      operationId: createPost
+      summary: Create a new blog post
+      description: Creates a new post.
+      parameters:
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/PostCreate'
+      responses:
+        "201":
+          description: Post created
+          schema:
+            $ref: '#/definitions/Post'
+
+  /posts/{id}:
+    get:
+      operationId: getPost
+      summary: Get a blog post by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: integer
+          format: int64
+      responses:
+        "200":
+          description: The requested post
+          schema:
+            $ref: '#/definitions/Post'
+    put:
+      operationId: updatePost
+      summary: Update a blog post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: integer
+          format: int64
+        - name: body
+          in: body
+          required: true
+          schema:
+            $ref: '#/definitions/PostUpdate'
+      responses:
+        "200":
+          description: Post updated
+          schema:
+            $ref: '#/definitions/Post'
+    delete:
+      operationId: deletePost
+      summary: Delete a blog post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          type: integer
+          format: int64
+      responses:
+        "204":
+          description: Post deleted
+
+  /search:
+    get:
+      operationId: searchPosts
+      summary: Search blog posts by keyword
+      parameters:
+        - name: q
+          in: query
+          required: true
+          type: string
+          description: Search query string
+      responses:
+        "200":
+          description: Search results
+          schema:
+            type: object
+            properties:
+              results:
+                type: array
+                items:
+                  $ref: '#/definitions/Post'
+
+definitions:
+  Post:
+    type: object
+    properties:
+      id:
+        type: integer
+        format: int64
+      title:
+        type: string
+      body:
+        type: string
+      status:
+        type: string
+        enum:
+          - draft
+          - published
+          - archived
+      tags:
+        type: array
+        items:
+          $ref: '#/definitions/Tag'
+      createdAt:
+        type: string
+        format: date-time
+
+  PostCreate:
+    type: object
+    required:
+      - title
+      - body
+    properties:
+      title:
+        type: string
+        minLength: 1
+        maxLength: 255
+      body:
+        type: string
+      status:
+        type: string
+        enum:
+          - draft
+          - published
+      tags:
+        type: array
+        items:
+          type: string
+
+  PostUpdate:
+    type: object
+    properties:
+      title:
+        type: string
+        minLength: 1
+        maxLength: 255
+      body:
+        type: string
+      status:
+        type: string
+        enum:
+          - draft
+          - published
+          - archived
+
+  Tag:
+    type: object
+    properties:
+      id:
+        type: integer
+      name:
+        type: string

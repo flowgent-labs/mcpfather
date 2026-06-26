@@ -2,21 +2,152 @@ package converter
 
 import (
 	"context"
-	"os"
 	"regexp"
 	"strings"
 	"testing"
 )
 
+// testSpecOAS31 is a minimal OAS 3.1 spec with features that the preprocessor
+// must convert or strip so kin-openapi (OAS 3.0) can parse them.
+const testSpecOAS31 = `openapi: 3.1.0
+info:
+  title: Blogs API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      summary: List all blog posts
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            exclusiveMinimum: 0
+            exclusiveMaximum: 201
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Post'
+    post:
+      operationId: createPost
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PostCreate'
+      responses:
+        "201":
+          description: OK
+  /posts/{id}:
+    get:
+      operationId: getPost
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            exclusiveMinimum: 0
+      responses:
+        "200":
+          description: OK
+    delete:
+      operationId: deletePost
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            exclusiveMinimum: 0
+      responses:
+        "204":
+          description: OK
+  /attachments:
+    post:
+      operationId: uploadAttachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+          exclusiveMinimum: 0
+        title:
+          type: string
+        tags:
+          type: array
+          prefixItems:
+            - type: string
+            - type: string
+        metadata:
+          type: ["object", "null"]
+          unevaluatedProperties: false
+        status:
+          type: string
+          const: published
+        category:
+          type: ["string", "null"]
+          if:
+            properties:
+              type:
+                const: featured
+          then:
+            required: [title]
+    PostList:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+          minContains: 0
+          maxContains: 100
+          contains:
+            type: object
+            properties:
+              id:
+                type: integer
+    PostCreate:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+        body:
+          type: ["string", "null"]
+`
+
 // TestOAS31Preprocessor verifies that OAS 3.1 features are correctly converted
 // or removed so kin-openapi (OAS 3.0) can parse them.
 func TestOAS31Preprocessor(t *testing.T) {
-	data, err := os.ReadFile("../../testdata/example_confluence_oas_v3.1.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	normalized, err := preprocessSpec(data)
+	normalized, err := preprocessSpec([]byte(testSpecOAS31))
 	if err != nil {
 		t.Fatalf("preprocessSpec error: %v", err)
 	}
@@ -111,12 +242,12 @@ func TestOAS31Preprocessor(t *testing.T) {
 			t.Fatalf("kin-openapi validation error: %v", err)
 		}
 
-		if p.GetInfo().Title != "Confluence Cloud REST API" {
+		if p.GetInfo().Title != "Blogs API" {
 			t.Errorf("unexpected title: %s", p.GetInfo().Title)
 		}
 
-		if len(p.GetPaths()) != 12 {
-			t.Errorf("expected 12 paths, got %d", len(p.GetPaths()))
+		if len(p.GetPaths()) != 3 {
+			t.Errorf("expected 3 paths, got %d", len(p.GetPaths()))
 		}
 	})
 }
@@ -125,29 +256,30 @@ func TestOAS31Preprocessor(t *testing.T) {
 // and validate correctly through the converter.
 func TestOASCompatibility(t *testing.T) {
 	specs := []struct {
-		name, path       string
-		expectedTitle    string
-		expectedPaths    int
+		name          string
+		data          []byte
+		expectedTitle string
+		expectedPaths int
 	}{
 		{
-			name:          "OAS 3.0 Confluence",
-			path:          "../../testdata/example_confluence_oas_v3.0.yaml",
-			expectedTitle: "Confluence Cloud REST API",
-			expectedPaths: 12,
+			name:          "OAS 3.0 Blogs",
+			data:          []byte(testSpecOAS30),
+			expectedTitle: "Blogs API",
+			expectedPaths: 5,
 		},
 		{
-			name:          "OAS 3.1 Confluence",
-			path:          "../../testdata/example_confluence_oas_v3.1.yaml",
-			expectedTitle: "Confluence Cloud REST API",
-			expectedPaths: 12,
+			name:          "OAS 3.1 Blogs",
+			data:          []byte(testSpecOAS31),
+			expectedTitle: "Blogs API",
+			expectedPaths: 3,
 		},
 	}
 
 	for _, sp := range specs {
 		t.Run(sp.name, func(t *testing.T) {
 			p := NewParser(true)
-			if err := p.ParseFile(sp.path); err != nil {
-				t.Fatalf("ParseFile error: %v", err)
+			if err := p.Parse(sp.data); err != nil {
+				t.Fatalf("Parse error: %v", err)
 			}
 
 			doc := p.GetDocument()

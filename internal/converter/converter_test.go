@@ -2,11 +2,132 @@ package converter
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
-var specPath = filepath.Join("..", "..", "testdata", "example_confluence_oas_v3.0.yaml")
+// testSpecOAS30 is a minimal OpenAPI 3.0 spec used by unit tests in this package.
+const testSpecOAS30 = `openapi: "3.0.3"
+info:
+  title: Blogs API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      summary: List all blog posts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostList'
+  /posts/{id}:
+    get:
+      operationId: getPost
+      summary: Get a blog post by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+    delete:
+      operationId: deletePost
+      summary: Delete a blog post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: OK
+  /attachments:
+    post:
+      operationId: uploadAttachment
+      summary: Upload an attachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OK
+  /attachments/{id}:
+    get:
+      operationId: downloadAttachment
+      summary: Download an attachment
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /search:
+    get:
+      operationId: searchPosts
+      summary: Search blog posts
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: OK
+components:
+  schemas:
+    PostList:
+      type: object
+      properties:
+        posts:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              title:
+                  type: string
+`
+
+// writeTestSpecOAS30 writes the test spec to a temp file and returns its path.
+func writeTestSpecOAS30(t *testing.T) string {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "testspec-*.yaml")
+	if err != nil {
+		t.Fatalf("Failed to create temp spec file: %v", err)
+	}
+	if _, err := f.WriteString(testSpecOAS30); err != nil {
+		f.Close()
+		t.Fatalf("Failed to write temp spec file: %v", err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatalf("Failed to close temp spec file: %v", err)
+	}
+	return f.Name()
+}
 
 func TestNewConverter(t *testing.T) {
 	parser := NewParser(false)
@@ -26,16 +147,8 @@ func TestNewConverter(t *testing.T) {
 }
 
 func TestConverter_Convert(t *testing.T) {
-	// Load a real OpenAPI spec
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("Test setup error: fixture file %s does not exist. Please create it.", specPath)
-	}
-	data, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("could not read %s: %v", specPath, err)
-	}
 	parser := NewParser(false)
-	if err := parser.Parse(data); err != nil {
+	if err := parser.Parse([]byte(testSpecOAS30)); err != nil {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
@@ -91,21 +204,13 @@ func TestCleanOperationId(t *testing.T) {
 }
 
 func TestConverter_Convert_IncludeExcludeByOperationId(t *testing.T) {
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("fixture file %s does not exist", specPath)
-	}
-	data, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("could not read %s: %v", specPath, err)
-	}
-
 	parser := NewParser(false)
-	if err := parser.Parse(data); err != nil {
+	if err := parser.Parse([]byte(testSpecOAS30)); err != nil {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
-	// Include only "listSpaces"
-	c, err := NewConverter(parser, []string{"listSpaces"}, nil, false)
+	// Include only "listPosts"
+	c, err := NewConverter(parser, []string{"listPosts"}, nil, false)
 	if err != nil {
 		t.Fatalf("NewConverter failed: %v", err)
 	}
@@ -116,8 +221,8 @@ func TestConverter_Convert_IncludeExcludeByOperationId(t *testing.T) {
 	if len(config.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
 	}
-	if config.Tools[0].Name != "ListSpaces" {
-		t.Errorf("expected tool ListSpaces, got %s", config.Tools[0].Name)
+	if config.Tools[0].Name != "ListPosts" {
+		t.Errorf("expected tool ListPosts, got %s", config.Tools[0].Name)
 	}
 }
 
@@ -134,13 +239,8 @@ func TestConverter_Convert_NoDocument(t *testing.T) {
 }
 
 func TestConverter_UploadDownloadDetection(t *testing.T) {
-	data, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("could not read %s: %v", specPath, err)
-	}
-
 	parser := NewParser(false)
-	if err := parser.Parse(data); err != nil {
+	if err := parser.Parse([]byte(testSpecOAS30)); err != nil {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
@@ -177,5 +277,73 @@ func TestConverter_UploadDownloadDetection(t *testing.T) {
 	}
 	if downloadTool.UploadContentType != "" {
 		t.Error("download tool should not have UploadContentType set")
+	}
+}
+
+// testSpecDuplicateOpIDs is a spec where two paths share the same operationId.
+const testSpecDuplicateOpIDs = `openapi: "3.0.3"
+info:
+  title: API with Duplicate OperationIds
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /agile/sprint/{sprintId}/properties/{propertyKey}:
+    delete:
+      operationId: deleteProperty_1
+      summary: Delete sprint property
+      responses:
+        "204":
+          description: OK
+  /dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}:
+    delete:
+      operationId: deleteProperty_1
+      summary: Delete dashboard item property
+      responses:
+        "204":
+          description: OK
+  /agile/issue/{issueIdOrKey}:
+    get:
+      operationId: getIssue
+      summary: Get issue (agile)
+      responses:
+        "200":
+          description: OK
+  /api/issue/{issueIdOrKey}:
+    get:
+      operationId: getIssue
+      summary: Get issue (api)
+      responses:
+        "200":
+          description: OK
+`
+
+func TestConverter_DuplicateOperationIds_GetUniqueToolNames(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecDuplicateOpIDs)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	// Should have 4 tools (2 pairs of duplicate operationIds)
+	if len(config.Tools) != 4 {
+		t.Fatalf("expected 4 tools, got %d", len(config.Tools))
+	}
+
+	// All tool names must be unique
+	seen := make(map[string]bool)
+	for _, tool := range config.Tools {
+		if seen[tool.Name] {
+			t.Errorf("duplicate tool name: %s", tool.Name)
+		}
+		seen[tool.Name] = true
 	}
 }

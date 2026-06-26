@@ -129,14 +129,19 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 	// Two different operationIds (e.g. "addLabels" and "addlabels") can produce
 	// PascalCase names that differ only in case (AddLabels vs Addlabels), which
 	// collide on case-insensitive filesystems and in Go packages.
+	// Also handles exact duplicates where two paths share the same operationId
+	// (e.g. deleteProperty on /agile/sprint/... and /dashboard/...).
 	if len(config.Tools) > 1 {
 		nameFreq := make(map[string]int, len(config.Tools))
 		for i := range config.Tools {
 			nameFreq[strings.ToLower(config.Tools[i].Name)]++
 		}
+		collisionIdx := make(map[string]int)
 		for i, t := range config.Tools {
 			if nameFreq[strings.ToLower(t.Name)] > 1 {
-				h := sha256.Sum256([]byte(t.OperationID))
+				collisionIdx[strings.ToLower(t.Name)]++
+				input := fmt.Sprintf("%s#%d", t.OperationID, collisionIdx[strings.ToLower(t.Name)])
+				h := sha256.Sum256([]byte(input))
 				config.Tools[i].Name = t.Name + "_" + fmt.Sprintf("%x", h[:4])
 				if c.verbose {
 					fmt.Fprintf(os.Stderr, "[verbose] disambiguated tool %q -> %s\n", t.OperationID, config.Tools[i].Name)
