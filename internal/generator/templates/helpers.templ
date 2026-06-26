@@ -81,6 +81,26 @@ func GetUpstreamToken() string {
 	return upstreamTokenVal
 }
 
+var upstreamCookieVal string
+var upstreamCookieOnce sync.Once
+
+// GetUpstreamCookie returns the upstream cookie using the following priority:
+//   1. MCP_UPSTREAM_COOKIE environment variable
+//   2. MCP_UPSTREAM_COOKIE_FILE (read cookie from file)
+func GetUpstreamCookie() string {
+	upstreamCookieOnce.Do(func() {
+		upstreamCookieVal = os.Getenv("MCP_UPSTREAM_COOKIE")
+		if upstreamCookieVal == "" {
+			if f := os.Getenv("MCP_UPSTREAM_COOKIE_FILE"); f != "" {
+				if data, err := os.ReadFile(f); err == nil {
+					upstreamCookieVal = strings.TrimSpace(string(data))
+				}
+			}
+		}
+	})
+	return upstreamCookieVal
+}
+
 // DetermineFileName extracts a filename from the HTTP response, falling back to a
 // default name with an extension derived from the response Content-Type.
 func DetermineFileName(resp *http.Response, defaultName string) string {
@@ -202,7 +222,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		for key, values := range forwarded {
 			// Skip hop-by-hop headers
 			lowerKey := strings.ToLower(key)
-			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "content-length" {
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "cookie" || lowerKey == "content-length" {
 				continue
 			}
 			for _, v := range values {
@@ -216,6 +236,11 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		if token := GetUpstreamToken(); token != "" {
 			req.Header.Set("Authorization", FormatAuthorizationHeader(token))
 		}
+	}
+
+	// Attach upstream cookie (for session-based auth like JSESSIONID)
+	if cookie := GetUpstreamCookie(); cookie != "" {
+		req.Header.Set("Cookie", cookie)
 	}
 
 	// Log outgoing request with final headers

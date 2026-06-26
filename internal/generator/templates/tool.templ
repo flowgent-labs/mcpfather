@@ -56,7 +56,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	if forwarded := mcputils.GetHTTPHeaders(ctx); forwarded != nil {
 		for key, values := range forwarded {
 			lowerKey := strings.ToLower(key)
-			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "content-length" {
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "cookie" || lowerKey == "content-length" {
 				continue
 			}
 			for _, v := range values {
@@ -68,6 +68,10 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 		if token := mcputils.GetUpstreamToken(); token != "" {
 			req.Header.Set("Authorization", mcputils.FormatAuthorizationHeader(token))
 		}
+	}
+
+	if cookie := mcputils.GetUpstreamCookie(); cookie != "" {
+		req.Header.Set("Cookie", cookie)
 	}
 
 	mcputils.LogRequest("{{.Method}}", upstreamURL, nil, req.Header, nil)
