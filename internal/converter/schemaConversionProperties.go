@@ -15,7 +15,8 @@ func buildPropertySchema(arg Arg) (map[string]interface{}, error) {
 		if arg.Schema == nil {
 			return nil, nil
 		}
-		propSchema, err = schemaToDraft7Map(arg.Schema)
+		visited := make(map[*Schema]bool)
+		propSchema, err = schemaToDraft7Map(arg.Schema, visited)
 	}
 	if err != nil || propSchema == nil {
 		return propSchema, err
@@ -37,17 +38,18 @@ func buildBodySchema(arg Arg) (map[string]interface{}, error) {
 	if len(arg.ContentTypes) == 0 {
 		return nil, nil
 	}
+	visited := make(map[*Schema]bool)
 	if len(arg.ContentTypes) == 1 {
 		// Only one content type, use its schema directly
 		for _, schema := range arg.ContentTypes {
-			return schemaToDraft7Map(schema)
+			return schemaToDraft7Map(schema, visited)
 		}
 	}
 
 	// Multiple content types: use oneOf
 	oneOfSchemas := []map[string]interface{}{}
 	for contentType, schema := range arg.ContentTypes {
-		branchSchema, err := schemaToDraft7Map(schema)
+		branchSchema, err := schemaToDraft7Map(schema, visited)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"failed to convert body schema branch for content type '%s': %w",

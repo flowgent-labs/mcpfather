@@ -264,7 +264,7 @@ func TestWriteAdditionalProperties_WithSchema(t *testing.T) {
 	}
 
 	var b strings.Builder
-	c.writeAdditionalProperties(&b, schema, 1)
+	c.writeAdditionalProperties(&b, schema, 1, nil)
 	out := b.String()
 	if !strings.Contains(out, "  - **Additional Properties**:") {
 		t.Errorf("expected Additional Properties header, got: %q", out)
@@ -285,7 +285,7 @@ func TestWriteAdditionalProperties_WithHasTrue(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeAdditionalProperties(&b, schema, 2)
+	c.writeAdditionalProperties(&b, schema, 2, nil)
 	out := b.String()
 	if !strings.Contains(out, "    - **Allows Additional Properties**") {
 		t.Errorf("expected Allows Additional Properties, got: %q", out)
@@ -299,7 +299,7 @@ func TestWriteAdditionalProperties_NonObject(t *testing.T) {
 		Type: &schemaType,
 	}
 	var b strings.Builder
-	c.writeAdditionalProperties(&b, schema, 0)
+	c.writeAdditionalProperties(&b, schema, 0, nil)
 	out := b.String()
 	if out != "" {
 		t.Errorf("expected no output for non-object, got: %q", out)
@@ -317,7 +317,7 @@ func TestWriteAdditionalProperties_NilAndFalse(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeAdditionalProperties(&b, schema, 0)
+	c.writeAdditionalProperties(&b, schema, 0, nil)
 	out := b.String()
 	if out != "" {
 		t.Errorf("expected no output for Has=false, got: %q", out)
@@ -328,7 +328,7 @@ func TestWriteAdditionalProperties_NilAndFalse(t *testing.T) {
 		Type: &schemaType,
 	}
 	var b2 strings.Builder
-	c.writeAdditionalProperties(&b2, schema2, 0)
+	c.writeAdditionalProperties(&b2, schema2, 0, nil)
 	out2 := b2.String()
 	if out2 != "" {
 		t.Errorf("expected no output for zero-value AdditionalProperties, got: %q", out2)
@@ -345,7 +345,7 @@ func TestWriteSchemaCombinators_OneOf(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 1)
+	c.writeSchemaCombinators(&b, schema, 1, nil)
 	out := b.String()
 	if !strings.Contains(out, "  - **One Of the following structures**:") {
 		t.Errorf("expected One Of header, got: %q", out)
@@ -364,7 +364,7 @@ func TestWriteSchemaCombinators_AnyOf(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 0)
+	c.writeSchemaCombinators(&b, schema, 0, nil)
 	out := b.String()
 	if !strings.Contains(out, "- **Any Of the following structures**:") {
 		t.Errorf("expected Any Of header, got: %q", out)
@@ -383,7 +383,7 @@ func TestWriteSchemaCombinators_AllOf(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 2)
+	c.writeSchemaCombinators(&b, schema, 2, nil)
 	out := b.String()
 	if !strings.Contains(out, "    - **Combines All Of the following structures**:") {
 		t.Errorf("expected All Of header, got: %q", out)
@@ -401,7 +401,7 @@ func TestWriteSchemaCombinators_Not(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 0)
+	c.writeSchemaCombinators(&b, schema, 0, nil)
 	out := b.String()
 	if !strings.Contains(out, "- **Not**: Cannot be the following structure:") {
 		t.Errorf("expected Not header, got: %q", out)
@@ -428,7 +428,7 @@ func TestWriteSchemaCombinators_AllCombinators(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 0)
+	c.writeSchemaCombinators(&b, schema, 0, nil)
 	out := b.String()
 	for _, want := range []string{
 		"**One Of the following structures**",
@@ -450,7 +450,7 @@ func TestWriteSchemaCombinators_None(t *testing.T) {
 	c := &Converter{}
 	schema := &openapi3.Schema{}
 	var b strings.Builder
-	c.writeSchemaCombinators(&b, schema, 0)
+	c.writeSchemaCombinators(&b, schema, 0, nil)
 	out := b.String()
 	if out != "" {
 		t.Errorf("expected no output for empty combinators, got: %q", out)
@@ -469,7 +469,7 @@ func TestWriteSchemaProperties_ObjectProperties(t *testing.T) {
 		},
 	}
 	var b strings.Builder
-	c.writeSchemaProperties(&b, schema, 0)
+	c.writeSchemaProperties(&b, schema, 0, nil)
 	out := b.String()
 	if !strings.Contains(out, "Foo property") {
 		t.Errorf("expected Foo property description, got: %q", out)
@@ -487,7 +487,7 @@ func TestWriteSchemaProperties_ArrayItems(t *testing.T) {
 		Items: &openapi3.SchemaRef{Value: &openapi3.Schema{Description: "Array item schema"}},
 	}
 	var b strings.Builder
-	c.writeSchemaProperties(&b, schema, 1)
+	c.writeSchemaProperties(&b, schema, 1, nil)
 	out := b.String()
 	if !strings.Contains(out, "Array item schema") {
 		t.Errorf("expected array item schema description, got: %q", out)
@@ -515,7 +515,7 @@ func TestWriteSchemaProperties_ObjectAndArray(t *testing.T) {
 	}
 	// Test object schema (should only print properties, not items)
 	var b1 strings.Builder
-	c.writeSchemaProperties(&b1, objSchema, 0)
+	c.writeSchemaProperties(&b1, objSchema, 0, nil)
 	out1 := b1.String()
 	if !strings.Contains(out1, "Foo property") {
 		t.Errorf("expected Foo property description, got: %q", out1)
@@ -525,7 +525,7 @@ func TestWriteSchemaProperties_ObjectAndArray(t *testing.T) {
 	}
 	// Test array schema (should only print items, not properties)
 	var b2 strings.Builder
-	c.writeSchemaProperties(&b2, arrSchema, 0)
+	c.writeSchemaProperties(&b2, arrSchema, 0, nil)
 	out2 := b2.String()
 	if !strings.Contains(out2, "Array item schema") {
 		t.Errorf("expected array item schema description, got: %q", out2)
@@ -539,7 +539,7 @@ func TestWriteSchemaProperties_Neither(t *testing.T) {
 	c := &Converter{}
 	schema := &openapi3.Schema{}
 	var b strings.Builder
-	c.writeSchemaProperties(&b, schema, 0)
+	c.writeSchemaProperties(&b, schema, 0, nil)
 	out := b.String()
 	if out != "" {
 		t.Errorf("expected no output for schema with no properties or items, got: %q", out)
@@ -614,7 +614,7 @@ func TestWriteSchemaMarkdown_FieldNameAndDescription(t *testing.T) {
 		Description: "A number",
 	}
 	var b strings.Builder
-	c.writeSchemaMarkdown(&b, schema, 1, "count")
+	c.writeSchemaMarkdown(&b, schema, 1, "count", nil)
 	out := b.String()
 	if !strings.Contains(out, "- **count**: A number (Type: integer):") {
 		t.Errorf("expected field name and description, got: %q", out)
@@ -628,7 +628,7 @@ func TestWriteSchemaMarkdown_FieldNameNoDescription(t *testing.T) {
 		Type: &schemaType,
 	}
 	var b strings.Builder
-	c.writeSchemaMarkdown(&b, schema, 2, "flag")
+	c.writeSchemaMarkdown(&b, schema, 2, "flag", nil)
 	out := b.String()
 	if !strings.Contains(out, "- **flag** (Type: boolean):") {
 		t.Errorf("expected field name and type, got: %q", out)
@@ -638,7 +638,7 @@ func TestWriteSchemaMarkdown_FieldNameNoDescription(t *testing.T) {
 func TestWriteSchemaMarkdown_NilSchema(t *testing.T) {
 	c := &Converter{}
 	var b strings.Builder
-	c.writeSchemaMarkdown(&b, nil, 0, "")
+	c.writeSchemaMarkdown(&b, nil, 0, "", nil)
 	out := b.String()
 	if out != "" {
 		t.Errorf("expected no output for nil schema, got: %q", out)

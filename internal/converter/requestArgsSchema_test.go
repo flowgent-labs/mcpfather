@@ -10,7 +10,7 @@ import (
 func TestCreateObjectValidation_NoProperties(t *testing.T) {
 	c := &Converter{}
 	schema := &openapi3.Schema{}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -30,7 +30,7 @@ func TestCreateObjectValidation_WithProperties(t *testing.T) {
 			"foo": {Value: propSchema},
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -55,7 +55,7 @@ func TestCreateObjectValidation_RequiredAndMinMax(t *testing.T) {
 			"bar": {Value: &openapi3.Schema{}},
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestCreateObjectValidation_PropertyNilSchemaRef(t *testing.T) {
 			"foo": nil,
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestCreateObjectValidation_PropertyNilValue(t *testing.T) {
 			"foo": {Value: nil},
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -112,7 +112,7 @@ func TestCreateObjectValidation_AdditionalProperties_HasFalse(t *testing.T) {
 			Has: &has,
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -132,7 +132,7 @@ func TestCreateObjectValidation_AdditionalProperties_HasTrue(t *testing.T) {
 			Has: &has,
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -152,7 +152,7 @@ func TestCreateObjectValidation_AdditionalProperties_Schema(t *testing.T) {
 			Schema: &openapi3.SchemaRef{Value: propSchema},
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -171,7 +171,7 @@ func TestCreateObjectValidation_AdditionalProperties_SchemaNilValue(t *testing.T
 			Schema: &openapi3.SchemaRef{Value: nil},
 		},
 	}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -183,7 +183,7 @@ func TestCreateObjectValidation_AdditionalProperties_SchemaNilValue(t *testing.T
 func TestCreateObjectValidation_AdditionalProperties_ZeroValue(t *testing.T) {
 	c := &Converter{}
 	schema := &openapi3.Schema{}
-	obj, err := c.createObjectValidation(schema)
+	obj, err := c.createObjectValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -267,7 +267,7 @@ func TestCreateNumberValidation_Fields(t *testing.T) {
 
 func TestCreateArrayValidation_Nil(t *testing.T) {
 	c := &Converter{}
-	arr, err := c.createArrayValidation(nil)
+	arr, err := c.createArrayValidation(nil, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -285,7 +285,7 @@ func TestCreateArrayValidation_Fields(t *testing.T) {
 		UniqueItems: true,
 		Items:       &openapi3.SchemaRef{Value: itemSchema},
 	}
-	arr, err := c.createArrayValidation(schema)
+	arr, err := c.createArrayValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -313,7 +313,7 @@ func TestCreateArrayValidation_ItemsNil(t *testing.T) {
 	schema := &openapi3.Schema{
 		Items: nil,
 	}
-	arr, err := c.createArrayValidation(schema)
+	arr, err := c.createArrayValidation(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -327,7 +327,7 @@ func TestCreateArrayValidation_ItemsNil(t *testing.T) {
 
 func TestApplySchema_NilInput(t *testing.T) {
 	c := &Converter{}
-	_, err := c.applySchema(nil)
+	_, err := c.applySchema(nil, nil)
 	if err == nil {
 		t.Fatal("expected error for nil schema")
 	}
@@ -346,7 +346,7 @@ func TestApplySchema_MetadataFields(t *testing.T) {
 		WriteOnly:   true,
 		Type:        &openapi3.Types{"string"},
 	}
-	result, err := c.applySchema(schema)
+	result, err := c.applySchema(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -368,7 +368,7 @@ func TestApplySchema_TypesAndNullable(t *testing.T) {
 	schema := &openapi3.Schema{
 		Type: &openapi3.Types{"string"},
 	}
-	result, err := c.applySchema(schema)
+	result, err := c.applySchema(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -381,7 +381,7 @@ func TestApplySchema_TypesAndNullable(t *testing.T) {
 		Type:     &openapi3.Types{"string"},
 		Nullable: true,
 	}
-	result2, err := c.applySchema(schema2)
+	result2, err := c.applySchema(schema2, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -394,7 +394,7 @@ func TestApplySchema_TypesAndNullable(t *testing.T) {
 		Type:     &openapi3.Types{"string", "null"},
 		Nullable: true,
 	}
-	result3, err := c.applySchema(schema3)
+	result3, err := c.applySchema(schema3, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -406,7 +406,7 @@ func TestApplySchema_TypesAndNullable(t *testing.T) {
 	schema4 := &openapi3.Schema{
 		Nullable: true,
 	}
-	result4, err := c.applySchema(schema4)
+	result4, err := c.applySchema(schema4, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -425,7 +425,7 @@ func TestApplySchema_StringNumberArrayObject(t *testing.T) {
 		MaxLength: &maxLen,
 		Pattern:   "abc",
 	}
-	result, err := c.applySchema(schema)
+	result, err := c.applySchema(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -445,7 +445,7 @@ func TestApplySchema_StringNumberArrayObject(t *testing.T) {
 		ExclusiveMin: true,
 		ExclusiveMax: true,
 	}
-	result2, err := c.applySchema(schema2)
+	result2, err := c.applySchema(schema2, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -466,7 +466,7 @@ func TestApplySchema_StringNumberArrayObject(t *testing.T) {
 		UniqueItems: true,
 		Items:       &openapi3.SchemaRef{Value: itemSchema},
 	}
-	result3, err := c.applySchema(schema3)
+	result3, err := c.applySchema(schema3, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -485,7 +485,7 @@ func TestApplySchema_StringNumberArrayObject(t *testing.T) {
 			"foo": {Value: propSchema},
 		},
 	}
-	result4, err := c.applySchema(schema4)
+	result4, err := c.applySchema(schema4, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -503,7 +503,7 @@ func TestApplySchema_OneOf_AnyOf_AllOf_Not(t *testing.T) {
 			{Value: &openapi3.Schema{Title: "OneB"}},
 		},
 	}
-	result, err := c.applySchema(schema)
+	result, err := c.applySchema(schema, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestApplySchema_OneOf_AnyOf_AllOf_Not(t *testing.T) {
 			{Value: &openapi3.Schema{Title: "AnyB"}},
 		},
 	}
-	result2, err := c.applySchema(schema2)
+	result2, err := c.applySchema(schema2, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -533,7 +533,7 @@ func TestApplySchema_OneOf_AnyOf_AllOf_Not(t *testing.T) {
 			{Value: &openapi3.Schema{Title: "AllB"}},
 		},
 	}
-	result3, err := c.applySchema(schema3)
+	result3, err := c.applySchema(schema3, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -545,7 +545,7 @@ func TestApplySchema_OneOf_AnyOf_AllOf_Not(t *testing.T) {
 	schema4 := &openapi3.Schema{
 		Not: &openapi3.SchemaRef{Value: &openapi3.Schema{Title: "NotA"}},
 	}
-	result4, err := c.applySchema(schema4)
+	result4, err := c.applySchema(schema4, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
