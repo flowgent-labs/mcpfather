@@ -58,9 +58,9 @@ func TestSchemaToDraft7Map_Basic(t *testing.T) {
         },
     }
 
-    got, err := schemaToDraft7Map(schema)
+    got, err := schemaToDraft7Map(schema, nil)
     if err != nil {
-        t.Fatalf("schemaToDraft7Map() error = %v", err)
+        t.Fatalf("schemaToDraft7Map(, nil) error = %v", err)
     }
 
     want := map[string]interface{}{
@@ -98,7 +98,7 @@ func TestSchemaToDraft7Map_Basic(t *testing.T) {
     // Only check for keys we expect (since the function may add more)
     for k, v := range want {
         if !reflect.DeepEqual(got[k], v) {
-            t.Errorf("schemaToDraft7Map()[%q] = %v, want %v", k, got[k], v)
+            t.Errorf("schemaToDraft7Map(, nil)[%q] = %v, want %v", k, got[k], v)
         }
     }
 }
@@ -149,22 +149,22 @@ func TestAddCombinators(t *testing.T) {
         Not: &Schema{Title: "E"},
     }
     result := make(map[string]interface{})
-    err := addCombinators(result, s)
+    err := addCombinators(result, s, nil)
     if err != nil {
-        t.Fatalf("addCombinators() error = %v", err)
+        t.Fatalf("addCombinators(, nil) error = %v", err)
     }
     // Only check keys exist and are correct type
     if _, ok := result["oneOf"]; !ok {
-        t.Error("addCombinators() missing oneOf")
+        t.Error("addCombinators(, nil) missing oneOf")
     }
     if _, ok := result["anyOf"]; !ok {
-        t.Error("addCombinators() missing anyOf")
+        t.Error("addCombinators(, nil) missing anyOf")
     }
     if _, ok := result["allOf"]; !ok {
-        t.Error("addCombinators() missing allOf")
+        t.Error("addCombinators(, nil) missing allOf")
     }
     if _, ok := result["not"]; !ok {
-        t.Error("addCombinators() missing not")
+        t.Error("addCombinators(, nil) missing not")
     }
 }
 
@@ -174,15 +174,15 @@ func TestConvertSubSchemas(t *testing.T) {
         {Title: "A"},
         {Title: "B"},
     }
-    got, err := convertSubSchemas(subs)
+    got, err := convertSubSchemas(subs, nil)
     if err != nil {
-        t.Fatalf("convertSubSchemas() error = %v", err)
+        t.Fatalf("convertSubSchemas(, nil) error = %v", err)
     }
     if len(got) != 2 {
-        t.Errorf("convertSubSchemas() length = %d, want 2", len(got))
+        t.Errorf("convertSubSchemas(, nil) length = %d, want 2", len(got))
     }
     if got[0]["title"] != "A" || got[1]["title"] != "B" {
-        t.Errorf("convertSubSchemas() = %v", got)
+        t.Errorf("convertSubSchemas(, nil) = %v", got)
     }
 }
 
@@ -262,22 +262,22 @@ func TestAddArrayValidation(t *testing.T) {
         },
     }
     result := make(map[string]interface{})
-    err := addArrayValidation(result, s)
+    err := addArrayValidation(result, s, nil)
     if err != nil {
-        t.Fatalf("addArrayValidation() error = %v", err)
+        t.Fatalf("addArrayValidation(, nil) error = %v", err)
     }
     if result["minItems"] != uint64(1) {
-        t.Errorf("addArrayValidation() minItems = %v, want 1", result["minItems"])
+        t.Errorf("addArrayValidation(, nil) minItems = %v, want 1", result["minItems"])
     }
     if result["maxItems"] != maxItems {
-        t.Errorf("addArrayValidation() maxItems = %v, want %v", result["maxItems"], maxItems)
+        t.Errorf("addArrayValidation(, nil) maxItems = %v, want %v", result["maxItems"], maxItems)
     }
     if result["uniqueItems"] != true {
-        t.Errorf("addArrayValidation() uniqueItems = %v, want true", result["uniqueItems"])
+        t.Errorf("addArrayValidation(, nil) uniqueItems = %v, want true", result["uniqueItems"])
     }
     items, ok := result["items"].(map[string]interface{})
     if !ok || items["type"] != "integer" {
-        t.Errorf("addArrayValidation() items = %v, want type=integer", result["items"])
+        t.Errorf("addArrayValidation(, nil) items = %v, want type=integer", result["items"])
     }
 }
 
@@ -295,21 +295,21 @@ func TestAddObjectValidation(t *testing.T) {
         },
     }
     result := make(map[string]interface{})
-    err := addObjectValidation(result, s)
+    err := addObjectValidation(result, s, nil)
     if err != nil {
-        t.Fatalf("addObjectValidation() error = %v", err)
+        t.Fatalf("addObjectValidation(, nil) error = %v", err)
     }
     if result["minProperties"] != uint64(1) {
-        t.Errorf("addObjectValidation() minProperties = %v, want 1", result["minProperties"])
+        t.Errorf("addObjectValidation(, nil) minProperties = %v, want 1", result["minProperties"])
     }
     if result["maxProperties"] != maxProps {
-        t.Errorf("addObjectValidation() maxProperties = %v, want %v", result["maxProperties"], maxProps)
+        t.Errorf("addObjectValidation(, nil) maxProperties = %v, want %v", result["maxProperties"], maxProps)
     }
     if result["additionalProperties"] != false {
-        t.Errorf("addObjectValidation() additionalProperties = %v, want false", result["additionalProperties"])
+        t.Errorf("addObjectValidation(, nil) additionalProperties = %v, want false", result["additionalProperties"])
     }
     props, ok := result["properties"].(map[string]interface{})
     if !ok || props["foo"] == nil {
-        t.Errorf("addObjectValidation() properties = %v, want foo", result["properties"])
+        t.Errorf("addObjectValidation(, nil) properties = %v, want foo", result["properties"])
     }
 }

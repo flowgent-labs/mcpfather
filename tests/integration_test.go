@@ -1020,3 +1020,192 @@ func TestCLI_ListShowsTools(t *testing.T) {
 		t.Error("expected SayHello in tool list")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// 7. Cyclic $ref detection (regression: LinkGroup.groups → LinkGroup)
+// ---------------------------------------------------------------------------
+
+const cyclicSpecFixture = "testdata/cyclic_spec.yaml"
+
+// TestCyclicRef_GenerationSucceeds verifies that mcpgen does NOT hang when the
+// OpenAPI spec contains a self-referencing schema (LinkGroup.groups → LinkGroup).
+// Before the cycle-detection fix, the recursive schema walkers would recurse
+// infinitely and the process would OOM or hang.
+func TestCyclicRef_GenerationSucceeds(t *testing.T) {
+	bin := mcpgenBin(t)
+	dir := t.TempDir()
+	spec := filepath.Join(repoRoot(t), "tests", cyclicSpecFixture)
+
+	cmd := exec.Command(bin, "-i", spec, "-o", dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpgen failed for cyclic spec: %v\n%s", err, out)
+	}
+
+	// Both tools should be generated
+	expected := []string{"ListItems.go", "HealthCheck.go"}
+	for _, name := range expected {
+		fp := filepath.Join(dir, "internal", "mcptools", name)
+		if _, err := os.Stat(fp); os.IsNotExist(err) {
+			t.Errorf("expected tool file %s was not generated", name)
+		}
+	}
+}
+
+// TestCyclicRef_ResponseTemplateHasCyclicMarker verifies that the generated
+// response template for a cyclic schema contains the [cyclic reference] marker.
+func TestCyclicRef_ResponseTemplateHasCyclicMarker(t *testing.T) {
+	bin := mcpgenBin(t)
+	dir := t.TempDir()
+	spec := filepath.Join(repoRoot(t), "tests", cyclicSpecFixture)
+
+	cmd := exec.Command(bin, "-i", spec, "-o", dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpgen failed: %v\n%s", err, out)
+	}
+
+	// Read the ListItems tool file which has the cyclic LinkGroup schema
+	toolFile := filepath.Join(dir, "internal", "mcptools", "ListItems.go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("failed to read ListItems.go: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "[cyclic reference]") {
+		t.Error("expected '[cyclic reference]' marker in ListItems.go response template, but not found")
+	}
+}
+
+// TestCyclicRef_NonCyclicSchemaNoSpuriousMarker verifies that non-cyclic schemas
+// do NOT get a false-positive [cyclic reference] marker. The HealthCheck tool uses
+// a simple HealthStatus schema with no self-references.
+func TestCyclicRef_NonCyclicSchemaNoSpuriousMarker(t *testing.T) {
+	bin := mcpgenBin(t)
+	dir := t.TempDir()
+	spec := filepath.Join(repoRoot(t), "tests", cyclicSpecFixture)
+
+	cmd := exec.Command(bin, "-i", spec, "-o", dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpgen failed: %v\n%s", err, out)
+	}
+
+	// Read the HealthCheck tool file which uses a flat HealthStatus schema
+	toolFile := filepath.Join(dir, "internal", "mcptools", "HealthCheck.go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("failed to read HealthCheck.go: %v", err)
+	}
+	content := string(data)
+
+	if strings.Contains(content, "[cyclic reference]") {
+		t.Error("HealthCheck.go should NOT contain '[cyclic reference]' — false positive for acyclic schema")
+	}
+
+	// The response template should still describe the status and uptime fields
+	if !strings.Contains(content, "status") {
+		t.Error("expected 'status' field in HealthCheck response template")
+	}
+	if !strings.Contains(content, "uptime") {
+		t.Error("expected 'uptime' field in HealthCheck response template")
+	}
+}
+
+// TestCyclicRef_BuildsAndRuns verifies that a server generated from a cyclic spec
+// builds successfully and can invoke a tool against a mock upstream at runtime.
+func TestCyclicRef_BuildsAndRuns(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	binPath := buildServer(t, genProjectWithSpec(t, cyclicSpecFixture, "", ""))
+	stdout, _ := runCLI(t, binPath,
+		[]string{"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL},
+		"-t", "cli", "HealthCheck",
+	)
+
+	if !strings.Contains(stdout, `"status":"ok"`) {
+		t.Errorf("expected upstream response, got: %s", stdout)
+	}
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached mock upstream")
+	}
+}
+
+// TestRegression_MinimalSpecResponseTemplate is a regression test ensuring the
+// cycle-detection changes did not alter the output for non-cyclic schemas. The
+// response template for echoHeaders must contain its usual structure.
+func TestRegression_MinimalSpecResponseTemplate(t *testing.T) {
+	dir := genProject(t, "echoHeaders", "")
+
+	toolFile := filepath.Join(dir, "internal", "mcptools", "EchoHeaders.go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("failed to read EchoHeaders.go: %v", err)
+	}
+	content := string(data)
+
+	// The response template should describe the response structure
+	if !strings.Contains(content, "# API Response Information") {
+		t.Error("expected '# API Response Information' header in response template")
+	}
+	if !strings.Contains(content, "**Status Code:** 200") {
+		t.Error("expected '**Status Code:** 200' in response template")
+	}
+	if !strings.Contains(content, "**Content-Type:** application/json") {
+		t.Error("expected '**Content-Type:** application/json' in response template")
+	}
+	// Must NOT have spurious cyclic markers
+	if strings.Contains(content, "[cyclic reference]") {
+		t.Error("EchoHeaders.go should NOT contain '[cyclic reference]' — regression in cycle detection")
+	}
+}
+
+// TestRegression_SayHelloRequestSchema verifies the request arg schema for a
+// tool with query parameters is still generated correctly after cycle-detection
+// changes (visited map is threaded through requestArgsSchema path).
+func TestRegression_SayHelloRequestSchema(t *testing.T) {
+	dir := genProject(t, "sayHello", "")
+
+	toolFile := filepath.Join(dir, "internal", "mcptools", "SayHello.go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("failed to read SayHello.go: %v", err)
+	}
+	content := string(data)
+
+	// The InputSchema must describe the "name" query parameter.
+	// The JSON schema is embedded as an escaped Go string literal,
+	// so we match the escaped form: \"name\" and \"type\": \"string\".
+	if !strings.Contains(content, `\"name\"`) {
+		t.Errorf("expected 'name' property in InputSchema, content:\n%s", content)
+	}
+	if !strings.Contains(content, `\"type\": \"string\"`) {
+		t.Errorf("expected 'type: string' in InputSchema for name parameter, content:\n%s", content)
+	}
+}
+
+// TestRegression_FullBuildAndCLI verifies the full end-to-end flow still works:
+// generate → build → CLI invoke with the minimal spec. This is the broadest
+// regression smoke test for the cycle-detection changes.
+func TestRegression_FullBuildAndCLI(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders,sayHello", ""))
+	stdout, _ := runCLI(t, bin,
+		[]string{"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL},
+		"-t", "cli", "SayHello", "--name=RegressionTest",
+	)
+
+	if !strings.Contains(stdout, `"status":"ok"`) {
+		t.Errorf("expected upstream response, got: %s", stdout)
+	}
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached mock upstream")
+	}
+	if !strings.Contains(mock.requests[0].URL, "name=RegressionTest") {
+		t.Errorf("query param 'name=RegressionTest' not found in URL: %s", mock.requests[0].URL)
+	}
+}

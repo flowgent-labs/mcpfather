@@ -1,0 +1,67 @@
+openapi: "3.0.3"
+info:
+  title: Cyclic Reference Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /items:
+    get:
+      operationId: listItems
+      summary: List items with nested groups
+      description: Returns a list of items where groups are self-referencing
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResults'
+  /health:
+    get:
+      operationId: healthCheck
+      summary: Simple health check
+      description: Returns a simple status object with no cycles
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthStatus'
+components:
+  schemas:
+    SearchResults:
+      type: object
+      properties:
+        issues:
+          type: array
+          items:
+            $ref: '#/components/schemas/Item'
+    Item:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkGroup'
+    LinkGroup:
+      type: object
+      properties:
+        name:
+          type: string
+        groups:
+          type: array
+          items:
+            $ref: '#/components/schemas/LinkGroup'
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+        uptime:
+          type: integer

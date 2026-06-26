@@ -2,9 +2,16 @@ package converter
 
 import "fmt"
 
-func schemaToDraft7Map(s *Schema) (map[string]interface{}, error) {
+func schemaToDraft7Map(s *Schema, visited map[*Schema]bool) (map[string]interface{}, error) {
 	if s == nil {
 		return nil, nil
+	}
+
+	if visited != nil && visited[s] {
+		return map[string]interface{}{}, nil
+	}
+	if visited != nil {
+		visited[s] = true
 	}
 
 	result := make(map[string]interface{})
@@ -14,13 +21,13 @@ func schemaToDraft7Map(s *Schema) (map[string]interface{}, error) {
 	addStringValidation(result, s)
 	addNumberValidation(result, s)
 
-	if err := addCombinators(result, s); err != nil {
+	if err := addCombinators(result, s, visited); err != nil {
 		return nil, err
 	}
-	if err := addArrayValidation(result, s); err != nil {
+	if err := addArrayValidation(result, s, visited); err != nil {
 		return nil, err
 	}
-	if err := addObjectValidation(result, s); err != nil {
+	if err := addObjectValidation(result, s, visited); err != nil {
 		return nil, err
 	}
 
@@ -54,30 +61,30 @@ func addBasicMetadata(result map[string]interface{}, s *Schema) {
 	}
 }
 
-func addCombinators(result map[string]interface{}, s *Schema) error {
+func addCombinators(result map[string]interface{}, s *Schema, visited map[*Schema]bool) error {
 	if len(s.OneOf) > 0 {
-		oneOfSchemas, err := convertSubSchemas(s.OneOf)
+		oneOfSchemas, err := convertSubSchemas(s.OneOf, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert oneOf: %w", err)
 		}
 		result["oneOf"] = oneOfSchemas
 	}
 	if len(s.AnyOf) > 0 {
-		anyOfSchemas, err := convertSubSchemas(s.AnyOf)
+		anyOfSchemas, err := convertSubSchemas(s.AnyOf, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert anyOf: %w", err)
 		}
 		result["anyOf"] = anyOfSchemas
 	}
 	if len(s.AllOf) > 0 {
-		allOfSchemas, err := convertSubSchemas(s.AllOf)
+		allOfSchemas, err := convertSubSchemas(s.AllOf, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert allOf: %w", err)
 		}
 		result["allOf"] = allOfSchemas
 	}
 	if s.Not != nil {
-		notSchemaMap, err := schemaToDraft7Map(s.Not)
+		notSchemaMap, err := schemaToDraft7Map(s.Not, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert not sub-schema: %w", err)
 		}
@@ -89,10 +96,10 @@ func addCombinators(result map[string]interface{}, s *Schema) error {
 	return nil
 }
 
-func convertSubSchemas(subSchemas []*Schema) ([]map[string]interface{}, error) {
+func convertSubSchemas(subSchemas []*Schema, visited map[*Schema]bool) ([]map[string]interface{}, error) {
 	result := make([]map[string]interface{}, len(subSchemas))
 	for i, subSchema := range subSchemas {
-		subSchemaMap, err := schemaToDraft7Map(subSchema)
+		subSchemaMap, err := schemaToDraft7Map(subSchema, visited)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert sub-schema at index %d: %w", i, err)
 		}
@@ -150,12 +157,12 @@ func addNumberValidation(result map[string]interface{}, s *Schema) {
 	}
 }
 
-func addArrayValidation(result map[string]interface{}, s *Schema) error {
+func addArrayValidation(result map[string]interface{}, s *Schema, visited map[*Schema]bool) error {
 	if s.Array == nil {
 		return nil
 	}
 	if s.Array.Items != nil {
-		itemsSchemaMap, err := schemaToDraft7Map(s.Array.Items)
+		itemsSchemaMap, err := schemaToDraft7Map(s.Array.Items, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert array items schema: %w", err)
 		}
@@ -175,14 +182,14 @@ func addArrayValidation(result map[string]interface{}, s *Schema) error {
 	return nil
 }
 
-func addObjectValidation(result map[string]interface{}, s *Schema) error {
+func addObjectValidation(result map[string]interface{}, s *Schema, visited map[*Schema]bool) error {
 	if s.Object == nil {
 		return nil
 	}
 	if len(s.Object.Properties) > 0 {
 		propertiesMap := make(map[string]interface{})
 		for propName, propSchema := range s.Object.Properties {
-			propSchemaMap, err := schemaToDraft7Map(propSchema)
+			propSchemaMap, err := schemaToDraft7Map(propSchema, visited)
 			if err != nil {
 				return fmt.Errorf("failed to convert property '%s': %w", propName, err)
 			}
@@ -208,7 +215,7 @@ func addObjectValidation(result map[string]interface{}, s *Schema) error {
 	if s.Object.DisallowAdditionalProperties {
 		result["additionalProperties"] = false
 	} else if s.Object.AdditionalProperties != nil {
-		addPropSchemaMap, err := schemaToDraft7Map(s.Object.AdditionalProperties)
+		addPropSchemaMap, err := schemaToDraft7Map(s.Object.AdditionalProperties, visited)
 		if err != nil {
 			return fmt.Errorf("failed to convert additionalProperties schema: %w", err)
 		}

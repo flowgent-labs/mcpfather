@@ -23,12 +23,13 @@ func (c *Converter) convertRequestBody(requestBodyRef *openapi3.RequestBodyRef) 
 
 	// Process each content type
 	validContent := false
+	visited := make(map[*openapi3.Schema]bool)
 	for contentType, mediaType := range requestBody.Content {
 		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
 			continue
 		}
 
-		schema, err := c.applySchema(mediaType.Schema.Value)
+		schema, err := c.applySchema(mediaType.Schema.Value, visited)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert schema for content type %s: %w", contentType, err)
 		}
@@ -63,7 +64,8 @@ func (c *Converter) convertParameters(parameters openapi3.Parameters) ([]Arg, er
 		}
 
 		// Convert the schema using our new function
-		schema, err := c.applySchema(param.Schema.Value)
+		visited := make(map[*openapi3.Schema]bool)
+		schema, err := c.applySchema(param.Schema.Value, visited)
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert schema for parameter %s (index %d): %w",
 				param.Name, i, err)
