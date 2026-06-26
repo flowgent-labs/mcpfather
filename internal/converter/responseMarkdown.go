@@ -23,7 +23,8 @@ func (c *Converter) buildResponseMarkdown(
 		b.WriteString(fmt.Sprintf("> %s\n\n", desc))
 	}
 	b.WriteString("## Response Structure\n\n")
-	c.writeSchemaMarkdown(&b, schema, 0, "")
+	visited := make(map[*openapi3.Schema]bool)
+	c.writeSchemaMarkdown(&b, schema, 0, "", visited)
 	return b.String()
 }
 
@@ -33,9 +34,18 @@ func (c *Converter) writeSchemaMarkdown(
 	schema *openapi3.Schema,
 	indent int,
 	fieldName string,
+	visited map[*openapi3.Schema]bool,
 ) {
 	if schema == nil {
 		return
+	}
+	if visited != nil && visited[schema] {
+		ind := strings.Repeat("  ", indent)
+		b.WriteString(fmt.Sprintf("%s- **[cyclic reference]**\n", ind))
+		return
+	}
+	if visited != nil {
+		visited[schema] = true
 	}
 	ind := strings.Repeat("  ", indent)
 	typeDesc := schemaTypeDescription(schema)
@@ -57,9 +67,9 @@ func (c *Converter) writeSchemaMarkdown(
 	}
 
 	c.writeSchemaDetails(b, schema, indent+1)
-	c.writeSchemaProperties(b, schema, indent)
-	c.writeSchemaCombinators(b, schema, indent)
-	c.writeAdditionalProperties(b, schema, indent)
+	c.writeSchemaProperties(b, schema, indent, visited)
+	c.writeSchemaCombinators(b, schema, indent, visited)
+	c.writeAdditionalProperties(b, schema, indent, visited)
 }
 
 // writeSchemaProperties documents object properties and array items.
@@ -67,18 +77,19 @@ func (c *Converter) writeSchemaProperties(
 	b *strings.Builder,
 	schema *openapi3.Schema,
 	indent int,
+	visited map[*openapi3.Schema]bool,
 ) {
 	// Object properties
 	if isObject(schema) && len(schema.Properties) > 0 {
 		for propName, propRef := range schema.Properties {
 			if propRef != nil && propRef.Value != nil {
-				c.writeSchemaMarkdown(b, propRef.Value, indent+1, propName)
+				c.writeSchemaMarkdown(b, propRef.Value, indent+1, propName, visited)
 			}
 		}
 	}
 	// Array items
 	if isArray(schema) && schema.Items != nil && schema.Items.Value != nil {
-		c.writeSchemaMarkdown(b, schema.Items.Value, indent+1, "Items")
+		c.writeSchemaMarkdown(b, schema.Items.Value, indent+1, "Items", visited)
 	}
 }
 
@@ -87,29 +98,30 @@ func (c *Converter) writeSchemaCombinators(
 	b *strings.Builder,
 	schema *openapi3.Schema,
 	indent int,
+	visited map[*openapi3.Schema]bool,
 ) {
 	ind := strings.Repeat("  ", indent)
 	if len(schema.OneOf) > 0 {
 		b.WriteString(fmt.Sprintf("%s  - **One Of the following structures**:\n", ind))
 		for i, sub := range schema.OneOf {
-			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Option %d", i+1))
+			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Option %d", i+1), visited)
 		}
 	}
 	if len(schema.AnyOf) > 0 {
 		b.WriteString(fmt.Sprintf("%s  - **Any Of the following structures**:\n", ind))
 		for i, sub := range schema.AnyOf {
-			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Option %d", i+1))
+			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Option %d", i+1), visited)
 		}
 	}
 	if len(schema.AllOf) > 0 {
 		b.WriteString(fmt.Sprintf("%s  - **Combines All Of the following structures**:\n", ind))
 		for i, sub := range schema.AllOf {
-			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Part %d", i+1))
+			c.writeSchemaMarkdown(b, sub.Value, indent+2, fmt.Sprintf("Part %d", i+1), visited)
 		}
 	}
 	if schema.Not != nil && schema.Not.Value != nil {
 		b.WriteString(fmt.Sprintf("%s  - **Not**: Cannot be the following structure:\n", ind))
-		c.writeSchemaMarkdown(b, schema.Not.Value, indent+2, "Forbidden Structure")
+		c.writeSchemaMarkdown(b, schema.Not.Value, indent+2, "Forbidden Structure", visited)
 	}
 }
 
@@ -118,11 +130,12 @@ func (c *Converter) writeAdditionalProperties(
 	b *strings.Builder,
 	schema *openapi3.Schema,
 	indent int,
+	visited map[*openapi3.Schema]bool,
 ) {
 	ind := strings.Repeat("  ", indent)
 	if isObject(schema) && schema.AdditionalProperties.Schema != nil && schema.AdditionalProperties.Schema.Value != nil {
 		b.WriteString(fmt.Sprintf("%s  - **Additional Properties**:\n", ind))
-		c.writeSchemaMarkdown(b, schema.AdditionalProperties.Schema.Value, indent+2, "property value")
+		c.writeSchemaMarkdown(b, schema.AdditionalProperties.Schema.Value, indent+2, "property value", visited)
 	} else if isObject(schema) && schema.AdditionalProperties.Has != nil && *schema.AdditionalProperties.Has {
 		b.WriteString(fmt.Sprintf("%s  - **Allows Additional Properties**\n", ind))
 	}

@@ -7,9 +7,16 @@ import (
 )
 
 // applySchemaMetadata applies basic schema metadata to create a Schema
-func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
+func (c *Converter) applySchema(schema *openapi3.Schema, visited map[*openapi3.Schema]bool) (*Schema, error) {
 	if schema == nil {
 		return nil, fmt.Errorf("cannot apply metadata to nil schema")
+	}
+
+	if visited != nil && visited[schema] {
+		return &Schema{}, nil
+	}
+	if visited != nil {
+		visited[schema] = true
 	}
 
 	// Create a new Schema
@@ -60,14 +67,14 @@ func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
 	}
 
 	if hasArrayType(schema) {
-		result.Array, err = c.createArrayValidation(schema)
+		result.Array, err = c.createArrayValidation(schema, visited)
 		if err != nil {
 			return nil, fmt.Errorf("error creating array validation: %w", err)
 		}
 	}
 
 	if hasObjectType(schema) {
-		result.Object, err = c.createObjectValidation(schema)
+		result.Object, err = c.createObjectValidation(schema, visited)
 		if err != nil {
 			return nil, fmt.Errorf("error creating object validation: %w", err)
 		}
@@ -80,7 +87,7 @@ func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
 			if subSchemaRef == nil || subSchemaRef.Value == nil {
 				return nil, fmt.Errorf("oneOf contains a nil schema reference or value at index %d", i)
 			}
-			subSchema, err := c.applySchema(subSchemaRef.Value) // Recursive call
+			subSchema, err := c.applySchema(subSchemaRef.Value, visited)
 			if err != nil {
 				return nil, fmt.Errorf("error processing oneOf sub-schema at index %d: %w", i, err)
 			}
@@ -101,7 +108,7 @@ func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
 			if subSchemaRef == nil || subSchemaRef.Value == nil {
 				return nil, fmt.Errorf("anyOf contains a nil schema reference or value at index %d", i)
 			}
-			subSchema, err := c.applySchema(subSchemaRef.Value)
+			subSchema, err := c.applySchema(subSchemaRef.Value, visited)
 			if err != nil {
 				return nil, fmt.Errorf("error processing anyOf sub-schema at index %d: %w", i, err)
 			}
@@ -120,7 +127,7 @@ func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
 			if subSchemaRef == nil || subSchemaRef.Value == nil {
 				return nil, fmt.Errorf("allOf contains a nil schema reference or value at index %d", i)
 			}
-			subSchema, err := c.applySchema(subSchemaRef.Value)
+			subSchema, err := c.applySchema(subSchemaRef.Value, visited)
 			if err != nil {
 				return nil, fmt.Errorf("error processing allOf sub-schema at index %d: %w", i, err)
 			}
@@ -134,7 +141,7 @@ func (c *Converter) applySchema(schema *openapi3.Schema) (*Schema, error) {
 
 	// Handle Not
 	if schema.Not != nil && schema.Not.Value != nil {
-		notSchema, err := c.applySchema(schema.Not.Value)
+		notSchema, err := c.applySchema(schema.Not.Value, visited)
 		if err != nil {
 			return nil, fmt.Errorf("error processing not sub-schema: %w", err)
 		}
@@ -175,7 +182,7 @@ func (c *Converter) createNumberValidation(schema *openapi3.Schema) *NumberValid
 }
 
 // createArrayValidation creates array-specific validations
-func (c *Converter) createArrayValidation(schema *openapi3.Schema) (*ArrayValidation, error) {
+func (c *Converter) createArrayValidation(schema *openapi3.Schema, visited map[*openapi3.Schema]bool) (*ArrayValidation, error) {
 	if schema == nil {
 		return nil, nil
 	}
@@ -186,7 +193,7 @@ func (c *Converter) createArrayValidation(schema *openapi3.Schema) (*ArrayValida
 	}
 
 	if schema.Items != nil && schema.Items.Value != nil {
-		itemsSchema, err := c.applySchema(schema.Items.Value)
+		itemsSchema, err := c.applySchema(schema.Items.Value, visited)
 		if err != nil {
 			return nil, fmt.Errorf("error processing array items schema: %w", err)
 		}
@@ -197,7 +204,7 @@ func (c *Converter) createArrayValidation(schema *openapi3.Schema) (*ArrayValida
 }
 
 // createObjectValidation creates object-specific validations
-func (c *Converter) createObjectValidation(schema *openapi3.Schema) (*ObjectValidation, error) {
+func (c *Converter) createObjectValidation(schema *openapi3.Schema, visited map[*openapi3.Schema]bool) (*ObjectValidation, error) {
 	if schema == nil {
 		return nil, nil
 	}
@@ -213,7 +220,7 @@ func (c *Converter) createObjectValidation(schema *openapi3.Schema) (*ObjectVali
 		for propName, propSchemaRef := range schema.Properties {
 			if propSchemaRef != nil {
 				if propSchemaRef.Value != nil {
-					propSchema, err := c.applySchema(propSchemaRef.Value)
+					propSchema, err := c.applySchema(propSchemaRef.Value, visited)
 					if err != nil {
 						return nil, fmt.Errorf("error processing property '%s': %w", propName, err)
 					}
@@ -244,7 +251,7 @@ func (c *Converter) createObjectValidation(schema *openapi3.Schema) (*ObjectVali
 	} else if schema.AdditionalProperties.Schema != nil {
 		// Case 2: additionalProperties is a schema object (or meant to be)
 		if schema.AdditionalProperties.Schema.Value != nil {
-			addPropSchema, err := c.applySchema(schema.AdditionalProperties.Schema.Value)
+			addPropSchema, err := c.applySchema(schema.AdditionalProperties.Schema.Value, visited)
 			if err != nil {
 				return nil, fmt.Errorf("error processing additionalProperties schema: %w", err)
 			}
