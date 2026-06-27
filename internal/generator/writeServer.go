@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/lyeslabs/mcpgen/internal/converter"
+	"github.com/wl4g-ai/mcpgen/internal/converter"
 )
 
 // GenerateServerFile creates a server.go file in the same package as the tools
@@ -28,16 +28,19 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 	}
 
 	helperImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
+	aggregatorImportPath := BuildModuleName(g.outputDir) + "/internal/mcpaggregator"
 
 	data := struct {
-		MCPToolsImportPath string
-		HelpersImportPath  string
-		BinaryName         string
-		Tools              []ToolTemplateData
+		MCPToolsImportPath     string
+		HelpersImportPath      string
+		AggregatorImportPath   string
+		BinaryName             string
+		Tools                  []ToolTemplateData
 	}{
-		MCPToolsImportPath: importPath,
-		HelpersImportPath:  helperImportPath,
-		BinaryName:         filepath.Base(g.outputDir),
+		MCPToolsImportPath:   importPath,
+		HelpersImportPath:    helperImportPath,
+		AggregatorImportPath: aggregatorImportPath,
+		BinaryName:           filepath.Base(g.outputDir),
 	}
 
 	for _, tool := range config.Tools {

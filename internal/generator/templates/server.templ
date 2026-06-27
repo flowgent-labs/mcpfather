@@ -13,6 +13,9 @@ import (
 	{{- end }}
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+
+	"{{.AggregatorImportPath}}/engine"
+	"{{.AggregatorImportPath}}/pipeline"
 )
 
 // requestLoggerMiddleware logs MCP tool requests and responses
@@ -74,8 +77,46 @@ func truncate(s string, max int) string {
 	return s
 }
 
+// registryAdapter bridges native MCP tools to the aggregated tool engine.
+type registryAdapter struct{}
+
+func (r *registryAdapter) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
+	entry, ok := mcptools.Registry[name]
+	if !ok {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+	result, err := entry.Handler(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return convertResult(result), nil
+}
+
+func convertResult(r *mcp.CallToolResult) *pipeline.CallToolResult {
+	out := &pipeline.CallToolResult{IsError: r.IsError}
+	for _, c := range r.Content {
+		if tc, ok := c.(mcp.TextContent); ok {
+			out.Content = append(out.Content, pipeline.ContentItem{Type: "text", Text: tc.Text})
+		}
+	}
+	return out
+}
+
+func convertAggResult(r *pipeline.CallToolResult) *mcp.CallToolResult {
+	out := &mcp.CallToolResult{IsError: r.IsError}
+	for _, c := range r.Content {
+		out.Content = append(out.Content, mcp.TextContent{Type: c.Type, Text: c.Text})
+	}
+	return out
+}
+
 // NewMCPServer creates and returns an MCP server with all tools registered.
-// If $HOME/.{binaryName}/config.yaml has tools.include, only those tools are registered.
 func NewMCPServer() *server.MCPServer {
 	s := server.NewMCPServer(
 		"MCP Server",
@@ -85,7 +126,6 @@ func NewMCPServer() *server.MCPServer {
 		server.WithToolHandlerMiddleware(requestLoggerMiddleware),
 	)
 
-	// Load optional config to filter enabled tools
 	cfg, _ := mcputils.LoadConfig("{{.BinaryName}}")
 	enabled := make(map[string]bool)
 	if cfg != nil && len(cfg.Tools.Include) > 0 {
@@ -100,5 +140,46 @@ func NewMCPServer() *server.MCPServer {
 		}
 	}
 
+	// Register aggregated tools from config
+	aggConfigPath := mcputils.AggregatedConfigPath("{{.BinaryName}}")
+	aggEngine, err := engine.New(aggConfigPath, &registryAdapter{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load aggregated tools: %v\n", err)
+	} else {
+		aggTools, err := aggEngine.Tools()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to build aggregated tools: %v\n", err)
+		} else {
+			for _, entry := range aggTools {
+				tool := buildAggregatedMCPTool(entry)
+				handler := buildAggregatedHandler(entry)
+				s.AddTool(tool, handler)
+			}
+		}
+	}
+
 	return s
+}
+
+func buildAggregatedMCPTool(entry pipeline.AggregatedToolEntry) mcp.Tool {
+	schemaBytes, _ := json.Marshal(entry.InputSchema)
+	desc := entry.Description
+	if desc == "" {
+		desc = entry.Name
+	}
+	return mcp.NewToolWithRawSchema(entry.Name, desc, schemaBytes)
+}
+
+func buildAggregatedHandler(entry pipeline.AggregatedToolEntry) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := request.GetArguments()
+		if args == nil {
+			args = make(map[string]interface{})
+		}
+		result, err := entry.Handler(ctx, args)
+		if err != nil {
+			return nil, err
+		}
+		return convertAggResult(result), nil
+	}
 }

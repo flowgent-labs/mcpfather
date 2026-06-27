@@ -1,4 +1,4 @@
-module github.com/lyeslabs/mcpgen
+module github.com/wl4g-ai/mcpgen
 
 go 1.23.4
 

@@ -73,7 +73,7 @@ MCP_UPSTREAM_TOKEN_FILE=.credentials ./myconfluence-mcp --transport http --port 
 
 - Server edition
   - https://developer.atlassian.com/server
-  - https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json (basic same as Cloud edition)
+  - https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json (Basic Same as Cloud edition)
 
 - Cloud edition
   - https://developer.atlassian.com/cloud/jira/software/rest/intro/#introduction
@@ -83,7 +83,7 @@ MCP_UPSTREAM_TOKEN_FILE=.credentials ./myconfluence-mcp --transport http --port 
 
 - Server edition
   - https://developer.atlassian.com/server/confluence/rest/v10214/intro/#about
-  - https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json?_v=1.1153.144
+  - https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json
 
 - Could edition
   - https://developer.atlassian.com/cloud/confluence/rest/v2/intro/
