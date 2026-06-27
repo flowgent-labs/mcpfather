@@ -17,7 +17,11 @@ var (
 	includes   string
 	excludes   string
 	verbose    bool
+	version    bool
 )
+
+// version is set at build time via -ldflags "-X main.version=1.2.3"
+var versionStr = "dev"
 
 func init() {
 	flag.StringVar(&inputFile, "i", "", "Path to the OpenAPI specification file (JSON or YAML)")
@@ -31,6 +35,7 @@ func init() {
 	flag.StringVar(&excludes, "excludes", "", "Comma-separated OpenAPI paths to exclude")
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
+	flag.BoolVar(&version, "version", false, "Print version and exit")
 }
 
 func usage() {
@@ -43,12 +48,18 @@ Options:
   -e, --excludes    Comma-separated OpenAPI paths to exclude
   --validation      Enable OpenAPI validation
   -v, --verbose     Enable verbose logging
+  --version         Print version and exit
 `)
 }
 
 func main() {
 	flag.Usage = usage
 	flag.Parse()
+
+	if version {
+		fmt.Println(versionStr)
+		return
+	}
 
 	if inputFile == "" {
 		fmt.Fprintln(os.Stderr, "Error: --input is required")
@@ -94,6 +105,7 @@ func main() {
 	fmt.Printf("Successfully generated MCP server in: %s\n\n", outputDir)
 	fmt.Printf("To build and run:\n")
 	fmt.Printf("  cd %s\n", outputDir)
+	fmt.Printf("  go mod tidy\n")
 	fmt.Printf("  make\n")
 	fmt.Printf("  bin/%s --transport http --port 8080\n", filepath.Base(outputDir))
 }

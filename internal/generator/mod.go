@@ -49,7 +49,7 @@ func GenerateGoMod(outputDir string) error {
 		goVersion = strings.Join(parts[:2], ".")
 	}
 
-	content := fmt.Sprintf("module %s\n\ngo %s\n\nrequire github.com/mark3labs/mcp-go v0.48.0\n", moduleName, goVersion)
+	content := fmt.Sprintf("module %s\n\ngo %s\n\nrequire (\n\tgithub.com/mark3labs/mcp-go v0.48.0\n\tgopkg.in/yaml.v3 v3.0.1\n)\n", moduleName, goVersion)
 
 	goModPath := filepath.Join(outputDir, "go.mod")
 	return os.WriteFile(goModPath, []byte(content), 0644)
