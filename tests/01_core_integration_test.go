@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -22,6 +23,23 @@ import (
 
 const specFixture = "testdata/minimal_spec.yaml"
 
+// testProxyEnv returns the proxy URL and the env vars to set for child commands.
+// It checks MCPGEN_TEST_PROXY first, then HTTPS_PROXY, and defaults to http://:8800.
+// The effective proxy URL is logged so developers can see why a build is timing out.
+func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
+	t.Helper()
+	proxyURL = os.Getenv("MCPGEN_TEST_PROXY")
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTPS_PROXY")
+	}
+	if proxyURL == "" {
+		proxyURL = "http://:8800"
+	}
+	t.Logf("[proxy] MCPGEN_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+		os.Getenv("MCPGEN_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
+	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
+}
+
 // mcpgenBin returns the path to the mcpgen binary, building it if needed.
 func mcpgenBin(t *testing.T) string {
 	t.Helper()
@@ -31,7 +49,9 @@ func mcpgenBin(t *testing.T) string {
 	}
 	bin := filepath.Join(root, "bin", "mcpgen")
 	if _, err := os.Stat(bin); os.IsNotExist(err) {
+		_, proxyEnv := testProxyEnv(t)
 		cmd := exec.Command("make", "-C", root, "build")
+		cmd.Env = append(os.Environ(), proxyEnv...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make build failed: %v\n%s", err, out)
 		}
@@ -96,14 +116,17 @@ func repoRoot(t *testing.T) string {
 // buildServer runs go mod tidy + go build in the generated project dir.
 func buildServer(t *testing.T, projectDir string) string {
 	t.Helper()
+	_, proxyEnv := testProxyEnv(t)
 	binName := filepath.Base(projectDir)
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(), proxyEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
 	}
 	cmd = exec.Command("go", "build", "-o", filepath.Join("bin", binName), ".")
 	cmd.Dir = projectDir
+	cmd.Env = append(os.Environ(), proxyEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
@@ -112,6 +135,7 @@ func buildServer(t *testing.T, projectDir string) string {
 
 // mockUpstream starts an httptest server that records requests.
 type mockUpstream struct {
+	mu       sync.Mutex
 	server   *httptest.Server
 	requests []recordedRequest
 }
@@ -128,6 +152,7 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 	m := &mockUpstream{}
 	m.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
+		m.mu.Lock()
 		m.requests = append(m.requests, recordedRequest{
 			Method:        r.Method,
 			URL:           r.URL.String(),
@@ -135,6 +160,7 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 			Headers:       r.Header.Clone(),
 			Body:          body,
 		})
+		m.mu.Unlock()
 		handler(w, r)
 	}))
 	return m
@@ -142,6 +168,12 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 
 func (m *mockUpstream) Close() {
 	m.server.Close()
+}
+
+func (m *mockUpstream) requestCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.requests)
 }
 
 // okHandler returns a handler that writes a simple JSON response (no echo).

@@ -298,6 +298,16 @@ func LoadConfig(binaryName string) (*Config, error) {
 	return &cfg, nil
 }
 
+// AggregatedConfigPath returns the path to the config file used by the aggregated
+// tool engine. This is the same config.yaml that LoadConfig reads from.
+func AggregatedConfigPath(binaryName string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "."+binaryName, "config.yaml")
+}
+
 // valueToString converts an interface{} to a string suitable for URLs and
 // query parameters. It handles float64 values (from JSON unmarshalling)
 // without scientific notation, which would break integer path parameters.
