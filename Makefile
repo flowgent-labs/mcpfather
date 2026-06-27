@@ -32,11 +32,11 @@ install:
 clean:
 	rm -rf bin/
 
-# gen-config-dsl-schema regenerates the JSON Schema for aggregated tool configuration
-# from the Go struct definitions in internal/generator/mcpaggregator/.
-# Output is written to the skill resources directory for use by the aggregate-tool-creator skill.
+# gen-config-dsl-schema regenerates the JSON Schema for virtual tool configuration
+# from the Go struct definitions in internal/generator/mcpvirtual/.
+# Output is written to the skill resources directory for use by the virtual-tool-creator skill.
 gen-config-dsl-schema:
 	@mkdir -p bin
 	@go build -o bin/gen-config-dsl-schema ./cmd/gen-config-dsl-schema/
-	@./bin/gen-config-dsl-schema --output .agents/skills/aggregate-tool-creator/resources/dsl-schema.json
-	@echo "==> Schema updated: .agents/skills/aggregate-tool-creator/resources/dsl-schema.json"
+	@./bin/gen-config-dsl-schema --output .agents/skills/virtual-tool-creator/resources/dsl-schema.json
+	@echo "==> Schema updated: .agents/skills/virtual-tool-creator/resources/dsl-schema.json"

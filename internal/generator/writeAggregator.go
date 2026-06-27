@@ -8,17 +8,17 @@ import (
 	"strings"
 )
 
-// aggregatorSrcPrefix is the import path used in the embedded aggregator source files.
-const aggregatorSrcPrefix = "github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator"
+// virtualSrcPrefix is the import path used in the embedded virtual engine source files.
+const virtualSrcPrefix = "github.com/wl4g-ai/mcpgen/internal/generator/mcpvirtual"
 
-// GenerateAggregator copies the aggregated tool engine source files into the
-// generated project as internal/mcpaggregator/, rewriting import paths.
-func (g *Generator) GenerateAggregator() error {
-	destDir := filepath.Join(g.outputDir, "internal", "mcpaggregator")
+// GenerateVirtual copies the virtual tool engine source files into the
+// generated project as internal/mcpvirtual/, rewriting import paths.
+func (g *Generator) GenerateVirtual() error {
+	destDir := filepath.Join(g.outputDir, "internal", "mcpvirtual")
 	moduleName := BuildModuleName(g.outputDir)
-	destImportPrefix := moduleName + "/internal/mcpaggregator"
+	destImportPrefix := moduleName + "/internal/mcpvirtual"
 
-	return fs.WalkDir(templatesFS, "mcpaggregator", func(path string, d fs.DirEntry, err error) error {
+	return fs.WalkDir(templatesFS, "mcpvirtual", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -35,10 +35,10 @@ func (g *Generator) GenerateAggregator() error {
 		}
 
 		// Rewrite import paths
-		src := strings.ReplaceAll(string(content), aggregatorSrcPrefix, destImportPrefix)
+		src := strings.ReplaceAll(string(content), virtualSrcPrefix, destImportPrefix)
 
-		// Compute destination path: strip "mcpaggregator/" prefix
-		relPath := strings.TrimPrefix(path, "mcpaggregator/")
+		// Compute destination path: strip "mcpvirtual/" prefix
+		relPath := strings.TrimPrefix(path, "mcpvirtual/")
 		destPath := filepath.Join(destDir, relPath)
 
 		if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
