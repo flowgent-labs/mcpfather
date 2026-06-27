@@ -178,11 +178,11 @@ func (g *Generator) GenerateMainGo() error {
 
 // ClientToolInfo holds the data needed to generate client examples for a single tool
 type ClientToolInfo struct {
-	Name         string
-	Description  string
-	Method       string
-	ExampleArgs  string
-	UploadCT     string // non-empty if this is an upload tool
+	Name        string
+	Description string
+	Method      string
+	ExampleArgs string
+	UploadCT    string // non-empty if this is an upload tool
 }
 
 // GenerateClientSh creates a client.sh script for quick manual testing
@@ -199,11 +199,11 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 	}
 	for _, tool := range config.Tools[:limit] {
 		info := ClientToolInfo{
-			Name:         capitalizeFirstLetter(tool.Name),
-			Description:  tool.Description,
-			Method:       tool.RequestTemplate.Method,
-			ExampleArgs:  generateExampleArgs(tool),
-			UploadCT:     tool.UploadContentType,
+			Name:        capitalizeFirstLetter(tool.Name),
+			Description: tool.Description,
+			Method:      tool.RequestTemplate.Method,
+			ExampleArgs: generateExampleArgs(tool),
+			UploadCT:    tool.UploadContentType,
 		}
 		tools = append(tools, info)
 	}
@@ -380,30 +380,37 @@ func (g *Generator) GenerateCLI() error {
 // GenerateReadme creates a README.md for the generated MCP server project
 func (g *Generator) GenerateReadme() error {
 	binName := filepath.Base(g.outputDir)
-	mcpName := "myconfluence"
+	mcpName := binName
 
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"### Build from source\n\n" +
 		"```sh\ngo mod tidy\nmake\n```\n\n" +
 		"### Usage with CLI mode (example)\n\n" +
 		"```sh\n" +
-		"# Set your upstream endpoint\n" +
+		"# Set your upstream endpoint and authentication\n" +
 		"export MCP_UPSTREAM_ENDPOINT=https://api.example.com\n" +
-		"export MCP_UPSTREAM_TOKEN=your-token\n\n" +
+		"# Token-based authentication\n" +
+		"export MCP_UPSTREAM_TOKEN='your-token'\n" +
+		"# Cookie-based authentication (for legacy app compatibility)\n" +
+		"#export MCP_UPSTREAM_COOKIE='JSESSIONID=your-session-id'\n\n" +
 		"# Run the server\n" +
 		"./bin/" + binName + " --transport http --port 8080 &\n\n" +
-		"# First call: list available tools\n" +
+		"# List available tools\n" +
 		"./bin/" + binName + " -t cli list\n\n" +
-		"# First tool call: fetch a page by ID\n" +
-		"./bin/" + binName + " -t cli Getpage --id 123456\n" +
 		"```\n\n" +
-		"## Token Configuration\n\n" +
-		"The server retrieves the upstream Bearer token using the following priority:\n\n" +
+		"## Authentication\n\n" +
+		"### Bearer / Basic Token (Authorization header)\n\n" +
+		"The server attaches an Authorization header to upstream requests using this priority:\n\n" +
 		"1. Authorization header from the client request (forwarded)\n" +
 		"2. `MCP_UPSTREAM_TOKEN` environment variable\n" +
-		"3. `.credentials` file (set `MCP_UPSTREAM_TOKEN_FILE=.credentials`)\n" +
+		"3. `MCP_UPSTREAM_TOKEN_FILE` file (set `MCP_UPSTREAM_TOKEN_FILE=.credentials`)\n" +
 		"4. macOS Keychain / Windows Credential Manager\n\n" +
-		"To use the `.credentials` file:\n\n" +
+		"### Cookie / Session (Cookie header)\n\n" +
+		"For session-based auth (e.g. JSESSIONID), set a Cookie header on upstream requests:\n\n" +
+		"- `MCP_UPSTREAM_COOKIE` environment variable\n" +
+		"- `MCP_UPSTREAM_COOKIE_FILE` file (read cookie value from file)\n\n" +
+		"Both token and cookie can be set simultaneously — they are independent headers.\n\n" +
+		"To use a credentials file for your token:\n\n" +
 		"```sh\necho -n \"your-token\" > .credentials\nexport MCP_UPSTREAM_TOKEN_FILE=.credentials\n```\n\n" +
 		"### Tool filtering\n\n" +
 		"For APIs with many operations, limit which tools AI agents discover:\n\n" +
@@ -417,6 +424,7 @@ func (g *Generator) GenerateReadme() error {
 		"```yaml\ntools:\n  include:\n    - ListSpaces\n    - SearchContent\n```\n\n" +
 		"When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.\n\n" +
 		"## Agent Integration\n\n" +
+		"All env vars from [Authentication](#authentication) above (including `MCP_UPSTREAM_COOKIE` / `MCP_UPSTREAM_COOKIE_FILE`) can be set in the `env` block of any agent config below.\n\n" +
 		"### Local Mode (stdio)\n\n" +
 		"Run the MCP server as a child process — recommended for local development.\n\n" +
 		"### OpenCode\n\n" +
@@ -650,11 +658,11 @@ func generateExampleArgs(tool converter.Tool) string {
 		}
 	}
 
-		// Always include body args in the example (input schema always has "body" property)
-		if len(bodyArgs) > 0 {
-			// bodyArgs entries have key="body" and value=body-object-JSON, use the value directly
-			topArgs = append(topArgs, argEntry{key: "body", value: bodyArgs[0].value})
-		}
+	// Always include body args in the example (input schema always has "body" property)
+	if len(bodyArgs) > 0 {
+		// bodyArgs entries have key="body" and value=body-object-JSON, use the value directly
+		topArgs = append(topArgs, argEntry{key: "body", value: bodyArgs[0].value})
+	}
 
 	return buildArgsObject(topArgs)
 }
