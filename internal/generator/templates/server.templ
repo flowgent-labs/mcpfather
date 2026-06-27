@@ -85,10 +85,10 @@ func NewMCPServer() *server.MCPServer {
 		server.WithToolHandlerMiddleware(requestLoggerMiddleware),
 	)
 
-	// Register all tools
-	{{- range .Tools }}
-	s.AddTool(mcptools.New{{ .ToolNameOriginal }}MCPTool(), mcptools.{{ .ToolHandlerName }})
-	{{- end }}
+	// Register all tools from the shared registry
+	for _, entry := range mcptools.Registry {
+		s.AddTool(entry.Tool, entry.Handler)
+	}
 
 	return s
 }

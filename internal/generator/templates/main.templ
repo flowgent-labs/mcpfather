@@ -12,6 +12,7 @@ import (
 	"syscall"
 	"time"
 
+	mcpcli "{{ .ModuleName }}/internal/mcpcli"
 	mcputils "{{ .ModuleName }}/internal/helpers"
 	mcpserver "{{ .ModuleName }}/internal/mcpserver"
 	"github.com/mark3labs/mcp-go/server"
@@ -76,15 +77,21 @@ func truncate(s string, max int) string {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: {{ .BinaryName }} [OPTIONS]
+	fmt.Fprintf(os.Stderr, `Usage: {{ .BinaryName }} [OPTIONS] [TOOL_NAME] [JSON_ARGS]
 
 Options:
-  --transport <stdio|http>  Transport mode (default "stdio")
-  --port <number>           HTTP server port (default 8080)
-  -v, --verbose <0-10>      Request logging verbosity level
-                            0=silent, 1=access log, 2+=method+URL,
-                            3+=query, 5+=headers, 7+=body, 9+=pretty JSON
-  -h, --help                Show this help message
+  -t, --transport <stdio|http|cli>  Transport mode (default "stdio")
+                                     cli mode: invoke a tool directly from the command line
+  --port <number>                    HTTP server port (default 8080)
+  -v, --verbose <0-10>              Request logging verbosity level
+                                     0=silent, 1=access log, 2+=method+URL,
+                                     3+=query, 5+=headers, 7+=body, 9+=pretty JSON
+  -h, --help                        Show this help message
+
+CLI Mode:
+  {{ .BinaryName }} -t cli list                           List all available tools
+  {{ .BinaryName }} -t cli call <tool-name> [key=value...]  Call a tool with named arguments
+                                                             (no args: show tool details)
 `)
 }
 
@@ -100,7 +107,8 @@ func main() {
 	flag.CommandLine.SetOutput(os.Stderr)
 	flag.Usage = usage
 
-	transport := flag.String("transport", "stdio", "Transport mode: stdio or http")
+	transport := flag.String("t", "stdio", "Transport mode: stdio, http, or cli")
+	flag.StringVar(transport, "transport", "stdio", "Transport mode: stdio, http, or cli")
 	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
 	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
 	flag.IntVar(verbose, "verbose", 0, "Request logging verbosity level (0-10)")
@@ -108,10 +116,35 @@ func main() {
 
 	mcputils.SetVerbosity(*verbose)
 
-	s := mcpserver.NewMCPServer()
-
 	switch *transport {
+	case "cli":
+		if flag.NArg() == 0 {
+			flag.Usage()
+			os.Exit(1)
+		}
+		subcmd := flag.Arg(0)
+		switch subcmd {
+		case "list":
+			mcpcli.ListTools()
+		case "call":
+			if flag.NArg() < 2 {
+				fmt.Fprintf(os.Stderr, "usage: %s -t cli call <tool-name> [key=value...]\n", os.Args[0])
+				os.Exit(1)
+			}
+			toolName := flag.Arg(1)
+			args := flag.Args()[2:]
+			if err := mcpcli.Call(toolName, args); err != nil {
+				fmt.Fprintf(os.Stderr, "error: %v\n", err)
+				os.Exit(1)
+			}
+		default:
+			fmt.Fprintf(os.Stderr, "unknown cli subcommand: %s (use 'list' or 'call')\n", subcmd)
+			os.Exit(1)
+		}
+
 	case "http":
+		s := mcpserver.NewMCPServer()
+
 		mcpServer := server.NewStreamableHTTPServer(s,
 			server.WithHTTPContextFunc(func(ctx context.Context, r *http.Request) context.Context {
 				return mcputils.WithHTTPHeaders(ctx, r.Header)
@@ -142,13 +175,15 @@ func main() {
 		}
 
 	case "stdio":
+		s := mcpserver.NewMCPServer()
+
 		if err := server.ServeStdio(s); err != nil {
 			fmt.Fprintf(os.Stderr, "server error: %v\n", err)
 			os.Exit(1)
 		}
 
 	default:
-		fmt.Fprintf(os.Stderr, "unknown transport: %s (use 'stdio' or 'http')\n", *transport)
+		fmt.Fprintf(os.Stderr, "unknown transport: %s (use 'stdio', 'http', or 'cli')\n", *transport)
 		os.Exit(1)
 	}
 }

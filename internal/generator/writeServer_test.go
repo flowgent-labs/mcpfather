@@ -77,11 +77,11 @@ func Test_RenderAndWriteServerTemplate(t *testing.T) {
 	}
 	strContent := string(content)
 
-	// Check for package declaration and handler names
+	// Check for package declaration and registry-based registration
 	if !strings.Contains(strContent, "package mcpserver") {
 		t.Errorf("Generated file missing package declaration")
 	}
-	if !strings.Contains(strContent, "EchoHandler") || !strings.Contains(strContent, "ReverseHandler") {
-		t.Errorf("Generated file missing expected handler names")
+	if !strings.Contains(strContent, "mcptools.Registry") {
+		t.Errorf("Generated file missing registry-based tool registration")
 	}
 }

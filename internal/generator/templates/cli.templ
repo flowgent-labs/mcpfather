@@ -1,0 +1,128 @@
+package mcpcli
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strconv"
+	"strings"
+
+	mcptools "{{ .MCPToolsImportPath }}"
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+// parseArg parses a key=value string into the appropriate Go type.
+// Values are loosely typed: "true"/"false" → bool, integers → int,
+// floats → float64, otherwise string.
+func parseArg(raw string) (key string, val interface{}, err error) {
+	idx := strings.IndexByte(raw, '=')
+	if idx < 0 {
+		return "", nil, fmt.Errorf("argument %q must be in key=value format", raw)
+	}
+	key = raw[:idx]
+	if key == "" {
+		return "", nil, fmt.Errorf("empty key in argument %q", raw)
+	}
+	rawVal := raw[idx+1:]
+
+	// Try boolean
+	if rawVal == "true" {
+		return key, true, nil
+	}
+	if rawVal == "false" {
+		return key, false, nil
+	}
+	// Try integer
+	if n, err := strconv.ParseInt(rawVal, 10, 64); err == nil {
+		return key, float64(n), nil
+	}
+	// Try float
+	if f, err := strconv.ParseFloat(rawVal, 64); err == nil {
+		return key, f, nil
+	}
+	// Default: string
+	return key, rawVal, nil
+}
+
+// shortDesc returns the first line of a description string.
+func shortDesc(desc string) string {
+	// Take up to the first newline, then trim trailing punctuation
+	s := desc
+	if idx := strings.IndexByte(s, '\n'); idx >= 0 {
+		s = s[:idx]
+	}
+	s = strings.TrimRight(s, ". ")
+	return s
+}
+
+// ListTools prints all available tools as subcommands with one-line descriptions.
+func ListTools() {
+	names := make([]string, 0, len(mcptools.Registry))
+	for name := range mcptools.Registry {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	fmt.Printf("Available subcommands (%d):\n", len(names))
+	for _, name := range names {
+		entry := mcptools.Registry[name]
+		fmt.Printf("  %-35s %s\n", name, shortDesc(entry.Tool.Description))
+	}
+}
+
+// Call invokes a tool by name, forwarding key=value arguments as an HTTP request upstream.
+func Call(toolName string, args []string) error {
+	entry, ok := mcptools.Registry[toolName]
+	if !ok {
+		return fmt.Errorf("unknown tool %q — use -t cli list to see available tools", toolName)
+	}
+
+	mcpArgs := make(map[string]interface{})
+	for _, raw := range args {
+		key, val, err := parseArg(raw)
+		if err != nil {
+			return err
+		}
+		mcpArgs[key] = val
+	}
+
+	req := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      toolName,
+			Arguments: mcpArgs,
+		},
+	}
+
+	result, err := entry.Handler(context.Background(), req)
+	if err != nil {
+		return fmt.Errorf("tool %s failed: %w", toolName, err)
+	}
+
+	if result == nil {
+		fmt.Println("(no result)")
+		return nil
+	}
+
+	if result.IsError {
+		for _, content := range result.Content {
+			if tc, ok := content.(mcp.TextContent); ok {
+				fmt.Fprintln(os.Stderr, tc.Text)
+			}
+		}
+		return nil
+	}
+
+	for _, content := range result.Content {
+		switch c := content.(type) {
+		case mcp.TextContent:
+			fmt.Print(c.Text)
+		default:
+			data, _ := json.MarshalIndent(content, "", "  ")
+			fmt.Println(string(data))
+		}
+	}
+
+	return nil
+}
