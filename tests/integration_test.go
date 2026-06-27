@@ -417,6 +417,79 @@ func TestAuth_TokenFileWithBasicPrefix(t *testing.T) {
 	}
 }
 
+func TestAuth_CookieFromEnv(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders", ""))
+	_, _ = runCLI(t, bin,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_COOKIE=JSESSIONID=abc123",
+		},
+		"-t", "cli", "EchoHeaders",
+	)
+
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached the mock upstream")
+	}
+	if got := mock.requests[0].Headers.Get("Cookie"); got != "JSESSIONID=abc123" {
+		t.Errorf("Cookie = %q, want %q", got, "JSESSIONID=abc123")
+	}
+}
+
+func TestAuth_CookieFileFallback(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders", ""))
+	cookieFile := filepath.Join(t.TempDir(), "my-cookie.txt")
+	if err := os.WriteFile(cookieFile, []byte("JSESSIONID=fileSession456"), 0600); err != nil {
+		t.Fatalf("failed to write cookie file: %v", err)
+	}
+
+	_, _ = runCLI(t, bin,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_COOKIE=",
+			"MCP_UPSTREAM_COOKIE_FILE=" + cookieFile,
+		},
+		"-t", "cli", "EchoHeaders",
+	)
+
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached the mock upstream")
+	}
+	if got := mock.requests[0].Headers.Get("Cookie"); got != "JSESSIONID=fileSession456" {
+		t.Errorf("Cookie = %q, want %q", got, "JSESSIONID=fileSession456")
+	}
+}
+
+func TestAuth_CookieAndTokenBothSet(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders", ""))
+	_, _ = runCLI(t, bin,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_TOKEN=Bearer secretToken999",
+			"MCP_UPSTREAM_COOKIE=JSESSIONID=abc123",
+		},
+		"-t", "cli", "EchoHeaders",
+	)
+
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached the mock upstream")
+	}
+	if got := mock.requests[0].Authorization; got != "Bearer secretToken999" {
+		t.Errorf("Authorization = %q, want %q", got, "Bearer secretToken999")
+	}
+	if got := mock.requests[0].Headers.Get("Cookie"); got != "JSESSIONID=abc123" {
+		t.Errorf("Cookie = %q, want %q", got, "JSESSIONID=abc123")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 3. Logging behaviour
 // ---------------------------------------------------------------------------
@@ -467,6 +540,53 @@ func TestLogging_AuthHeaderPrintedWhenEnvSet(t *testing.T) {
 	// With MCP_LOG_PRINT_AUTHORIZATION=true, the token should appear
 	if !strings.Contains(stderr, "visibleToken") {
 		t.Error("expected Authorization value to be visible when MCP_LOG_PRINT_AUTHORIZATION=true. stderr:\n" + stderr)
+	}
+}
+
+// TestLogging_CookieRedactedByDefault verifies that the Cookie header value is
+// shown as "***" in upstream request logs at -v 10.
+func TestLogging_CookieRedactedByDefault(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders", ""))
+	_, stderr := runCLI(t, bin,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_COOKIE=JSESSIONID=secretSession",
+		},
+		"-t", "cli", "-v", "10", "EchoHeaders",
+	)
+
+	// The header line should show "Cookie: ***"
+	if !strings.Contains(stderr, "Cookie: ***") {
+		t.Error("expected 'Cookie: ***' in upstream request log, but not found. stderr:\n" + stderr)
+	}
+	// The raw cookie value must NOT appear
+	if strings.Contains(stderr, "secretSession") {
+		t.Error("Cookie value should be redacted, but 'secretSession' appears in log. stderr:\n" + stderr)
+	}
+}
+
+// TestLogging_CookiePrintedWhenEnvSet verifies that setting
+// MCP_LOG_PRINT_AUTHORIZATION=true makes the Cookie value visible.
+func TestLogging_CookiePrintedWhenEnvSet(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	bin := buildServer(t, genProject(t, "echoHeaders", ""))
+	_, stderr := runCLI(t, bin,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_COOKIE=JSESSIONID=visibleSession",
+			"MCP_LOG_PRINT_AUTHORIZATION=true",
+		},
+		"-t", "cli", "-v", "10", "EchoHeaders",
+	)
+
+	// With MCP_LOG_PRINT_AUTHORIZATION=true, the cookie value should appear
+	if !strings.Contains(stderr, "visibleSession") {
+		t.Error("expected Cookie value to be visible when MCP_LOG_PRINT_AUTHORIZATION=true. stderr:\n" + stderr)
 	}
 }
 

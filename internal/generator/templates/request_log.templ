@@ -108,10 +108,10 @@ func LogRequest(method string, url string, query map[string][]string, header htt
 	if verbosity >= 5 && header != nil {
 		printAuth := logPrintAuth()
 		for key, values := range header {
-			isAuth := strings.EqualFold(key, "Authorization")
+			isSensitive := strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie")
 			for _, v := range values {
 				val := v
-				if isAuth && !printAuth {
+				if isSensitive && !printAuth {
 					val = "***"
 				}
 				vlog(5, "%s: %s", key, val)
