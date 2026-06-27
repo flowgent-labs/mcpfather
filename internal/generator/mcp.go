@@ -252,7 +252,7 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 // GenerateMakefile creates a Makefile for building and running the MCP server
 func (g *Generator) GenerateMakefile() error {
 	binName := filepath.Base(g.outputDir)
-	makefile := fmt.Sprintf(".PHONY: build run clean test\n\nbuild:\n\t@go build -o %s .\n\nrun: build\n\t@./%s\n\nclean:\n\t@rm -f %s\n\ntest:\n\t@go test ./...\n", binName, binName, binName)
+	makefile := fmt.Sprintf(".PHONY: build run clean test\n\nbuild:\n\t@mkdir -p bin\n\t@go build -o bin/%s .\n\nrun: build\n\t@bin/%s\n\nclean:\n\t@rm -f bin/%s\n\ntest:\n\t@go test ./...\n", binName, binName, binName)
 
 	if err := writeFileContent(g.outputDir, "Makefile", func() ([]byte, error) {
 		return []byte(makefile), nil
@@ -544,7 +544,7 @@ func (g *Generator) GenerateDotCredentials() error {
 
 // GenerateDotGitignore creates a .gitignore for the generated MCP server project.
 func (g *Generator) GenerateDotGitignore() error {
-	content := ".credentials\n"
+	content := ".credentials\nbin/\n"
 	if err := writeFileContent(g.outputDir, ".gitignore", func() ([]byte, error) {
 		return []byte(content), nil
 	}); err != nil {
