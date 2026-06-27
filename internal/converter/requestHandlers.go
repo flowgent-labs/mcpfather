@@ -52,19 +52,24 @@ func truncateToolName(name string) string {
 	return result
 }
 
-// toPascalCase splits by non-alphanumeric separators, lowercases each segment,
-// and capitalises the first letter to produce a Go-style identifier.
+// toPascalCase splits on non-alphanumeric separators and camelCase boundaries,
+// lowercasing each segment and capitalising the first letter to produce a Go identifier.
 func toPascalCase(s string) string {
 	var b strings.Builder
 	capitalizeNext := true
+	var prev rune
 	for _, r := range s {
 		if unicode.IsLetter(r) || unicode.IsDigit(r) {
 			if capitalizeNext {
 				b.WriteRune(unicode.ToUpper(r))
 				capitalizeNext = false
+			} else if unicode.IsUpper(r) && unicode.IsLower(prev) {
+				// camelCase boundary: lowercase→uppercase transition marks a new word
+				b.WriteRune(r)
 			} else {
 				b.WriteRune(unicode.ToLower(r))
 			}
+			prev = r
 		} else {
 			capitalizeNext = true
 		}
@@ -107,11 +112,13 @@ func getOperations(pathItem *openapi3.PathItem) map[string]*openapi3.Operation {
 // convertOperation converts an OpenAPI operation to an MCP tool
 func (c *Converter) convertOperation(path, method string, operation *openapi3.Operation) (*Tool, error) {
 	// Generate a tool name
-	toolName := truncateToolName(c.parser.GetOperationID(path, method, operation))
+	operationID := c.parser.GetOperationID(path, method, operation)
+	toolName := truncateToolName(operationID)
 
 	// Create the tool
 	tool := &Tool{
 		Name:        toolName,
+		OperationID: operationID,
 		Description: getDescription(operation),
 		Args:        []Arg{},
 	}

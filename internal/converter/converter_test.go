@@ -116,8 +116,8 @@ func TestConverter_Convert_IncludeExcludeByOperationId(t *testing.T) {
 	if len(config.Tools) != 1 {
 		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
 	}
-	if config.Tools[0].Name != "Listspaces" {
-		t.Errorf("expected tool Listspaces, got %s", config.Tools[0].Name)
+	if config.Tools[0].Name != "ListSpaces" {
+		t.Errorf("expected tool ListSpaces, got %s", config.Tools[0].Name)
 	}
 }
 
@@ -158,9 +158,9 @@ func TestConverter_UploadDownloadDetection(t *testing.T) {
 	var downloadTool *Tool
 	for i := range config.Tools {
 		switch config.Tools[i].Name {
-		case "Uploadattachment":
+		case "UploadAttachment":
 			uploadTool = &config.Tools[i]
-		case "Downloadattachment":
+		case "DownloadAttachment":
 			downloadTool = &config.Tools[i]
 		}
 	}
