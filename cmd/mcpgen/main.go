@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lyeslabs/mcpgen/internal/generator"
+	"github.com/wl4g-ai/mcpgen/internal/generator"
 )
 
 var (
