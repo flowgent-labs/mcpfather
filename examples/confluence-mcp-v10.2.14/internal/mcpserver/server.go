@@ -1,0 +1,183 @@
+package mcpserver
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"time"
+
+	mcputils "confluence-mcp-v10.2.14/internal/helpers"
+	"confluence-mcp-v10.2.14/internal/mcptools"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
+
+	"confluence-mcp-v10.2.14/internal/mcpaggregator/engine"
+	"confluence-mcp-v10.2.14/internal/mcpaggregator/pipeline"
+)
+
+// requestLoggerMiddleware logs MCP tool requests and responses
+func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc {
+	return func(ctx context.Context, request mcp.CallToolRequest) (result *mcp.CallToolResult, err error) {
+		start := time.Now()
+		v := mcputils.GetVerbosity()
+		sessionID := mcputils.GetSessionID(ctx)
+		ts := start.Format(time.RFC3339)
+
+		if v >= 2 {
+			argsJSON, _ := json.Marshal(request.GetArguments())
+			sid := sessionID
+			if sid == "" {
+				sid = "-"
+			}
+			fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s request tool=%s args=%s\n", ts, sid, request.Params.Name, string(argsJSON))
+		}
+
+		defer func() {
+			duration := time.Since(start).Round(time.Millisecond)
+			sid := sessionID
+			if sid == "" {
+				sid = "-"
+			}
+			if v >= 1 {
+				status := 200
+				if err != nil {
+					status = 500
+				} else if result != nil && result.IsError {
+					status = 500
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s %d %s (%s) error=%v\n", time.Now().Format(time.RFC3339), sid, status, request.Params.Name, duration, err)
+				} else {
+					fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s %d %s (%s)\n", time.Now().Format(time.RFC3339), sid, status, request.Params.Name, duration)
+				}
+			}
+			if v >= 2 && result != nil {
+				resultText := ""
+				for _, c := range result.Content {
+					if tc, ok := c.(mcp.TextContent); ok {
+						resultText = tc.Text
+						break
+					}
+				}
+				fmt.Fprintf(os.Stderr, "%s [mcp] response body=%s\n", time.Now().Format(time.RFC3339), truncate(resultText, 200))
+			}
+		}()
+
+		return next(ctx, request)
+	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) > max {
+		return s[:max] + "..."
+	}
+	return s
+}
+
+// registryAdapter bridges native MCP tools to the aggregated tool engine.
+type registryAdapter struct{}
+
+func (r *registryAdapter) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
+	entry, ok := mcptools.Registry[name]
+	if !ok {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+	result, err := entry.Handler(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	return convertResult(result), nil
+}
+
+func convertResult(r *mcp.CallToolResult) *pipeline.CallToolResult {
+	out := &pipeline.CallToolResult{IsError: r.IsError}
+	for _, c := range r.Content {
+		if tc, ok := c.(mcp.TextContent); ok {
+			out.Content = append(out.Content, pipeline.ContentItem{Type: "text", Text: tc.Text})
+		}
+	}
+	return out
+}
+
+func convertAggResult(r *pipeline.CallToolResult) *mcp.CallToolResult {
+	out := &mcp.CallToolResult{IsError: r.IsError}
+	for _, c := range r.Content {
+		out.Content = append(out.Content, mcp.TextContent{Type: c.Type, Text: c.Text})
+	}
+	return out
+}
+
+// NewMCPServer creates and returns an MCP server with all tools registered.
+func NewMCPServer() *server.MCPServer {
+	s := server.NewMCPServer(
+		"MCP Server",
+		"1.0.0",
+		server.WithToolCapabilities(true),
+		server.WithLogging(),
+		server.WithToolHandlerMiddleware(requestLoggerMiddleware),
+	)
+
+	cfg, _ := mcputils.LoadConfig("confluence-mcp-v10.2.14")
+	enabled := make(map[string]bool)
+	if cfg != nil && len(cfg.Tools.Include) > 0 {
+		for _, name := range cfg.Tools.Include {
+			enabled[name] = true
+		}
+	}
+
+	for name, entry := range mcptools.Registry {
+		if len(enabled) == 0 || enabled[name] {
+			s.AddTool(entry.Tool, entry.Handler)
+		}
+	}
+
+	// Register aggregated tools from config
+	aggConfigPath := mcputils.AggregatedConfigPath("confluence-mcp-v10.2.14")
+	aggEngine, err := engine.New(aggConfigPath, &registryAdapter{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load aggregated tools: %v\n", err)
+	} else {
+		aggTools, err := aggEngine.Tools()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Warning: failed to build aggregated tools: %v\n", err)
+		} else {
+			for _, entry := range aggTools {
+				tool := buildAggregatedMCPTool(entry)
+				handler := buildAggregatedHandler(entry)
+				s.AddTool(tool, handler)
+			}
+		}
+	}
+
+	return s
+}
+
+func buildAggregatedMCPTool(entry pipeline.AggregatedToolEntry) mcp.Tool {
+	schemaBytes, _ := json.Marshal(entry.InputSchema)
+	desc := entry.Description
+	if desc == "" {
+		desc = entry.Name
+	}
+	return mcp.NewToolWithRawSchema(entry.Name, desc, schemaBytes)
+}
+
+func buildAggregatedHandler(entry pipeline.AggregatedToolEntry) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args := request.GetArguments()
+		if args == nil {
+			args = make(map[string]interface{})
+		}
+		result, err := entry.Handler(ctx, args)
+		if err != nil {
+			return nil, err
+		}
+		return convertAggResult(result), nil
+	}
+}

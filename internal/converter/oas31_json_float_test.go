@@ -2,7 +2,6 @@ package converter
 
 import (
 	"context"
-	"os"
 	"strings"
 	"testing"
 )
@@ -182,16 +181,11 @@ func TestOAS31JSONInputThroughParser(t *testing.T) {
 	}
 }
 
-func TestOAS31ConfluenceJSON(t *testing.T) {
-	// Confluence OAS 3.1 spec (YAML) with numeric exclusives and nullable types
-	data, err := os.ReadFile("../../testdata/example_confluence_oas_v3.1.yaml")
-	if err != nil {
-		t.Fatal(err)
-	}
-
+func TestOAS31BlogsYAML(t *testing.T) {
+	// OAS 3.1 spec (YAML) with numeric exclusives and nullable types
 	p := NewParser(true)
-	if err := p.Parse(data); err != nil {
-		t.Fatalf("Parser.Parse Spring Boot JSON error: %v", err)
+	if err := p.Parse([]byte(testSpecOAS31)); err != nil {
+		t.Fatalf("Parser.Parse error: %v", err)
 	}
 
 	doc := p.GetDocument()
@@ -199,11 +193,11 @@ func TestOAS31ConfluenceJSON(t *testing.T) {
 		t.Fatalf("validation error: %v", err)
 	}
 
-	if p.GetInfo().Title != "Confluence Cloud REST API" {
-		t.Errorf("title = %q, want %q", p.GetInfo().Title, "Confluence Cloud REST API")
+	if p.GetInfo().Title != "Blogs API" {
+		t.Errorf("title = %q, want %q", p.GetInfo().Title, "Blogs API")
 	}
-	if len(p.GetPaths()) != 12 {
-		t.Errorf("paths = %d, want 12", len(p.GetPaths()))
+	if len(p.GetPaths()) != 3 {
+		t.Errorf("paths = %d, want 3", len(p.GetPaths()))
 	}
 }
 

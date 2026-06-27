@@ -1,0 +1,66 @@
+package config
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+func TestLoadConfig_Valid(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	content := `
+aggregatedTools:
+  - name: test_tool
+    version: "1.0"
+    description: A test aggregated tool
+    inputSchema:
+      type: object
+      properties:
+        id:
+          type: string
+    pipeline:
+      - name: step1
+        type: call
+        call:
+          tool: native_tool
+          args:
+            id: "{{ input.id }}"
+        output: result
+      - name: done
+        type: return
+        return:
+          source: step1.output.result
+`
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	if len(cfg.AggregatedTools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(cfg.AggregatedTools))
+	}
+	tool := cfg.AggregatedTools[0]
+	if tool.Name != "test_tool" {
+		t.Errorf("name = %q, want %q", tool.Name, "test_tool")
+	}
+	if len(tool.Pipeline) != 2 {
+		t.Errorf("expected 2 pipeline steps, got %d", len(tool.Pipeline))
+	}
+}
+
+func TestLoadConfig_Empty(t *testing.T) {
+	cfg, err := LoadConfig("/nonexistent/path/config.yaml")
+	if err != nil {
+		t.Fatalf("LoadConfig should not error for missing file: %v", err)
+	}
+	if cfg == nil {
+		t.Fatal("expected non-nil config")
+	}
+	if len(cfg.AggregatedTools) != 0 {
+		t.Errorf("expected 0 tools, got %d", len(cfg.AggregatedTools))
+	}
+}

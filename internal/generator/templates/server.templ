@@ -119,7 +119,7 @@ func convertAggResult(r *pipeline.CallToolResult) *mcp.CallToolResult {
 // NewMCPServer creates and returns an MCP server with all tools registered.
 func NewMCPServer() *server.MCPServer {
 	s := server.NewMCPServer(
-		"MCP Server",
+		"{{.BinaryName}} MCP Server",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
