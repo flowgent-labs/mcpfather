@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"sort"
@@ -41,6 +42,29 @@ func NewConverter(parser *Parser, includePaths []string, excludePaths []string, 
 	for p := range includeSet {
 		if _, ok := excludeSet[p]; ok {
 			return nil, fmt.Errorf("operationId '%s' is specified in both --includes and --excludes", p)
+		}
+	}
+
+	// Collect all operationIds from the spec for validation
+	allOpIDs := make(map[string]struct{})
+	for path, pathItem := range parser.GetPaths() {
+		operations := getOperations(pathItem)
+		for method, operation := range operations {
+			opID := parser.GetOperationID(path, method, operation)
+			allOpIDs[opID] = struct{}{}
+		}
+	}
+
+	// Validate includePaths exist in the spec
+	for p := range includeSet {
+		if _, ok := allOpIDs[p]; !ok {
+			return nil, fmt.Errorf("operationId %q specified in --includes does not exist in the spec", p)
+		}
+	}
+	// Validate excludePaths exist in the spec
+	for p := range excludeSet {
+		if _, ok := allOpIDs[p]; !ok {
+			return nil, fmt.Errorf("operationId %q specified in --excludes does not exist in the spec", p)
 		}
 	}
 
@@ -98,6 +122,26 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 				fmt.Fprintf(os.Stderr, "[verbose] tool created: %s\n", tool.Name)
 			}
 			config.Tools = append(config.Tools, *tool)
+		}
+	}
+
+	// Detect case-insensitive name collisions and disambiguate with a hash suffix.
+	// Two different operationIds (e.g. "addLabels" and "addlabels") can produce
+	// PascalCase names that differ only in case (AddLabels vs Addlabels), which
+	// collide on case-insensitive filesystems and in Go packages.
+	if len(config.Tools) > 1 {
+		nameFreq := make(map[string]int, len(config.Tools))
+		for i := range config.Tools {
+			nameFreq[strings.ToLower(config.Tools[i].Name)]++
+		}
+		for i, t := range config.Tools {
+			if nameFreq[strings.ToLower(t.Name)] > 1 {
+				h := sha256.Sum256([]byte(t.OperationID))
+				config.Tools[i].Name = t.Name + "_" + fmt.Sprintf("%x", h[:4])
+				if c.verbose {
+					fmt.Fprintf(os.Stderr, "[verbose] disambiguated tool %q -> %s\n", t.OperationID, config.Tools[i].Name)
+				}
+			}
 		}
 	}
 

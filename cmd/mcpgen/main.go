@@ -105,7 +105,6 @@ func main() {
 	fmt.Printf("Successfully generated MCP server in: %s\n\n", outputDir)
 	fmt.Printf("To build and run:\n")
 	fmt.Printf("  cd %s\n", outputDir)
-	fmt.Printf("  go mod tidy\n")
 	fmt.Printf("  make\n")
 	fmt.Printf("  bin/%s --transport http --port 8080\n", filepath.Base(outputDir))
 }

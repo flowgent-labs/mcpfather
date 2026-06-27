@@ -9,17 +9,17 @@ set -euo pipefail
 #   ./client.sh                  Show this help message
 #   ./client.sh help             Show this help message
 #   ./client.sh list-tools       List all available tools
-#   ./client.sh call <tool> [args] [--file <path>]
+#   ./client.sh call <tool> [argsJson] [--file <path>]
 #
 # Environment variables:
-#   MCP_SERVER_URL        - Server URL (default: http://localhost:8080/mcp)
 #   MCP_UPSTREAM_TOKEN    - Bearer token for MCP server auth
-#   MCP_DOWNLOAD_DIR      - Directory for download responses (default: ./downloads)
+#   MCP_SERVER_ENDPOINT        - Server URL (default: http://localhost:8080/mcp)
+#   MCP_SERVER_DOWNLOAD_DIR      - Directory for download responses (default: ./downloads)
 # ============================================================
 
-SERVER_URL="${MCP_SERVER_URL:-http://localhost:8080/mcp}"
+SERVER_URL="${MCP_SERVER_ENDPOINT:-http://localhost:8080/mcp}"
 SESSION_ID=""
-DOWNLOAD_DIR="${MCP_DOWNLOAD_DIR:-downloads}"
+DOWNLOAD_DIR="${MCP_SERVER_DOWNLOAD_DIR:-downloads}"
 
 usage() {
   cat <<'USAGE'
@@ -32,19 +32,19 @@ Commands:
   (no args)           Show this help message
   help                Show this help message
   list-tools          List all available tools
-  call <tool> [args] [--file <path>]  Call a tool
+  call <tool> [argsJson] [--file <path>]  Call a tool
 
   --file <path>       Use for upload tools to specify a local file to upload
 
 Environment:
-  MCP_SERVER_URL        Override server URL (default: http://localhost:8080/mcp)
+  MCP_SERVER_ENDPOINT        Override server URL (default: http://localhost:8080/mcp)
   MCP_UPSTREAM_TOKEN    Bearer token for server auth
-  MCP_DOWNLOAD_DIR      Directory for file downloads (default: ./downloads)
+  MCP_SERVER_DOWNLOAD_DIR      Directory for file downloads (default: ./downloads)
 
 Tips:
   - Always uses --noproxy '*' to avoid proxy issues with localhost
   - If the server is running on a different port:
-      MCP_SERVER_URL=http://localhost:9090/mcp ./client.sh
+      MCP_SERVER_ENDPOINT=http://localhost:9090/mcp ./client.sh
   - If authentication is required:
       MCP_UPSTREAM_TOKEN=your-token ./client.sh call <tool>
   - Download tools auto-save to $DOWNLOAD_DIR

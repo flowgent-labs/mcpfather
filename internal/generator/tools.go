@@ -18,6 +18,22 @@ import (
 
 // GenerateToolFiles generates individual tool files while preserving existing handler implementations
 func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
+	// Remove stale tool files from previous generations (tool names may change
+	// due to camelCase fixes, collision resolution, or spec updates).
+	toolsDir := filepath.Join(g.outputDir, "internal", "mcptools")
+	keep := make(map[string]bool, len(config.Tools))
+	for _, tool := range config.Tools {
+		keep[capitalizeFirstLetter(tool.Name)+".go"] = true
+	}
+	if entries, err := os.ReadDir(toolsDir); err == nil {
+		for _, e := range entries {
+			if !e.IsDir() && strings.HasSuffix(e.Name(), ".go") && !keep[e.Name()] {
+				os.Remove(filepath.Join(toolsDir, e.Name()))
+			}
+		}
+	}
+	os.MkdirAll(toolsDir, 0755)
+
 	toolTemplateContent, err := templatesFS.ReadFile("templates/tool.templ")
 	if err != nil {
 		return fmt.Errorf("failed to read tool template file: %w", err)

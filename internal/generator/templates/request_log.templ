@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -86,7 +87,15 @@ func vlogCtx(ctx context.Context, level int, format string, args ...interface{})
 	fmt.Fprintf(os.Stderr, "%s [upstream] %s\n", prefix, msg)
 }
 
+// logPrintAuth returns true if the Authorization header should be printed in logs.
+// Controlled by MCP_LOG_PRINT_AUTHORIZATION=true environment variable (off by default).
+func logPrintAuth() bool {
+	return os.Getenv("MCP_LOG_PRINT_AUTHORIZATION") == "true"
+}
+
 // LogRequest logs an outgoing request according to the configured verbosity level.
+// When verbosity >= 5, request headers are printed. The Authorization header value is
+// redacted (shown as "***") unless MCP_LOG_PRINT_AUTHORIZATION=true.
 func LogRequest(method string, url string, query map[string][]string, header http.Header, body []byte) {
 	if verbosity < 2 {
 		return
@@ -97,9 +106,15 @@ func LogRequest(method string, url string, query map[string][]string, header htt
 		vlog(3, "query: %v", query)
 	}
 	if verbosity >= 5 && header != nil {
+		printAuth := logPrintAuth()
 		for key, values := range header {
+			isAuth := strings.EqualFold(key, "Authorization")
 			for _, v := range values {
-				vlog(5, "%s: %s", key, v)
+				val := v
+				if isAuth && !printAuth {
+					val = "***"
+				}
+				vlog(5, "%s: %s", key, val)
 			}
 		}
 	}
