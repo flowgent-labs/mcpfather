@@ -13,7 +13,7 @@ import (
 const GetConfiguredRepositoriesInputSchema = "{\n  \"properties\": {\n    \"repositoryManagerId\": {\n      \"description\": \"Enter the repository manager ID.\",\n      \"type\": \"string\"\n    },\n    \"sinceUtcTimestamp\": {\n      \"description\": \"Enter the epoch time in milliseconds when the repository was last updated.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"repositoryManagerId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetConfiguredRepositories tool (Status: 200, Content-Type: application/json)
-const GetConfiguredRepositoriesResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the configuration details of the requested repository manager.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **repositories** (Type: array):\n    - **Items** (Type: object):\n      - **quarantineEnabled** (Type: boolean):\n      - **repositoryId** (Type: string):\n      - **type** (Type: string):\n      - **auditEnabled** (Type: boolean):\n      - **format** (Type: string):\n      - **namespaceConfusionProtectionEnabled** (Type: boolean):\n      - **policyCompliantComponentSelectionEnabled** (Type: boolean):\n      - **publicId** (Type: string):\n"
+const GetConfiguredRepositoriesResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the configuration details of the requested repository manager.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **repositories** (Type: array):\n    - **Items** (Type: object):\n      - **auditEnabled** (Type: boolean):\n      - **format** (Type: string):\n      - **namespaceConfusionProtectionEnabled** (Type: boolean):\n      - **policyCompliantComponentSelectionEnabled** (Type: boolean):\n      - **publicId** (Type: string):\n      - **quarantineEnabled** (Type: boolean):\n      - **repositoryId** (Type: string):\n      - **type** (Type: string):\n"
 
 // NewGetConfiguredRepositoriesMCPTool creates the MCP Tool instance for GetConfiguredRepositories
 func NewGetConfiguredRepositoriesMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetConfiguredRepositoriesHandler(ctx context.Context, request mcp.CallToolR
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetConfiguredRepositories")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetConfiguredRepositories"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

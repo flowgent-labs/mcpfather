@@ -13,7 +13,7 @@ import (
 const GetContainerImagesInQuarantineInputSchema = "{\n  \"properties\": {\n    \"page\": {\n      \"format\": \"int32\",\n      \"minimum\": 1,\n      \"type\": \"integer\"\n    },\n    \"pageSize\": {\n      \"format\": \"int32\",\n      \"maximum\": 100,\n      \"minimum\": 1,\n      \"type\": \"integer\"\n    }\n  },\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetContainerImagesInQuarantine tool (Status: 200, Content-Type: application/json)
-const GetContainerImagesInQuarantineResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Container images in quarantine.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **total**: Total number of items (Type: integer, int64):\n  - **page**: Current page number (Type: integer, int32):\n  - **pageCount**: Total number of pages (Type: integer, int64):\n  - **pageSize**: Number of items per page (Type: integer, int32):\n  - **results**: List of items for the current page (Type: array):\n    - **Items**: List of items for the current page (Type: object):\n      - **applicationId** (Type: string):\n      - **applicationName** (Type: string):\n      - **policyViolationCount** (Type: integer, int64):\n      - **repositoryPublicId** (Type: string):\n      - **applicationPublicId** (Type: string):\n      - **threatLevel** (Type: integer, int32):\n      - **openTime** (Type: string, date-time):\n      - **scanId** (Type: string):\n      - **repositoryId** (Type: string):\n"
+const GetContainerImagesInQuarantineResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Container images in quarantine.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **page**: Current page number (Type: integer, int32):\n  - **pageCount**: Total number of pages (Type: integer, int64):\n  - **pageSize**: Number of items per page (Type: integer, int32):\n  - **results**: List of items for the current page (Type: array):\n    - **Items**: List of items for the current page (Type: object):\n      - **scanId** (Type: string):\n      - **applicationName** (Type: string):\n      - **applicationPublicId** (Type: string):\n      - **applicationId** (Type: string):\n      - **openTime** (Type: string, date-time):\n      - **policyViolationCount** (Type: integer, int64):\n      - **repositoryId** (Type: string):\n      - **threatLevel** (Type: integer, int32):\n      - **repositoryPublicId** (Type: string):\n  - **total**: Total number of items (Type: integer, int64):\n"
 
 // NewGetContainerImagesInQuarantineMCPTool creates the MCP Tool instance for GetContainerImagesInQuarantine
 func NewGetContainerImagesInQuarantineMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetContainerImagesInQuarantineHandler(ctx context.Context, request mcp.Call
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetContainerImagesInQuarantine")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetContainerImagesInQuarantine"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

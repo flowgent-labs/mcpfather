@@ -13,7 +13,7 @@ import (
 const GetCrossStagePolicyViolationByIdInputSchema = "{\n  \"properties\": {\n    \"violationId\": {\n      \"description\": \"Enter the policy " + "\x60" + "violationId" + "\x60" + ". Use the GET method described for the endpoint /api/v2/policyViolations to obtain the policy violationId. \",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"violationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetCrossStagePolicyViolationById tool (Status: 200, Content-Type: application/json)
-const GetCrossStagePolicyViolationByIdResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains violation details for all occurrences of the same policy violation across multiple stages. " + "\x60" + "stageData" + "\x60" + " indicates the name of the stages where the violationoccurred, and " + "\x60" + "reportId" + "\x60" + " where it was reported and the policy action triggered due to the violation.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **reachabilityStatus** (Type: string):\n      - Enum: ['REACHABLE', 'NON_REACHABLE', 'UNKNOWN']\n  - **openTime** (Type: string, date-time):\n  - **policyId** (Type: string):\n  - **policyName** (Type: string):\n  - **legacyViolationTime** (Type: string, date-time):\n  - **componentIdentifier** (Type: object):\n    - **coordinates** (Type: object):\n      - **Additional Properties**:\n        - **property value** (Type: string):\n    - **format** (Type: string):\n  - **policyOwner** (Type: object):\n    - **ownerName** (Type: string):\n    - **ownerPublicId** (Type: string):\n    - **ownerType** (Type: string):\n    - **ownerId** (Type: string):\n  - **applicationPublicId** (Type: string):\n  - **fixTime** (Type: string, date-time):\n  - **policyThreatCategory** (Type: string):\n  - **stageData** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: object):\n        - **actionTypeId** (Type: string):\n        - **mostRecentEvaluationTime** (Type: string, date-time):\n        - **mostRecentScanId** (Type: string):\n  - **applicationName** (Type: string):\n  - **displayName** (Type: object):\n    - **name** (Type: string):\n    - **parts** (Type: array):\n      - **Items** (Type: object):\n        - **field** (Type: string):\n        - **value** (Type: string):\n  - **hash** (Type: string):\n  - **organizationName** (Type: string):\n  - **waiveTime** (Type: string, date-time):\n  - **constraintViolations** (Type: array):\n    - **Items** (Type: object):\n      - **reasons** (Type: array):\n        - **Items** (Type: object):\n          - **reference** (Type: object):\n            - **type** (Type: string):\n                - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n            - **value** (Type: string):\n          - **reason** (Type: string):\n      - **constraintId** (Type: string):\n      - **constraintName** (Type: string):\n  - **threatLevel** (Type: integer, int32):\n  - **policyViolationId** (Type: string):\n  - **filename** (Type: string):\n"
+const GetCrossStagePolicyViolationByIdResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains violation details for all occurrences of the same policy violation across multiple stages. " + "\x60" + "stageData" + "\x60" + " indicates the name of the stages where the violationoccurred, and " + "\x60" + "reportId" + "\x60" + " where it was reported and the policy action triggered due to the violation.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **waiveTime** (Type: string, date-time):\n  - **componentIdentifier** (Type: object):\n    - **coordinates** (Type: object):\n      - **Additional Properties**:\n        - **property value** (Type: string):\n    - **format** (Type: string):\n  - **policyId** (Type: string):\n  - **applicationPublicId** (Type: string):\n  - **constraintViolations** (Type: array):\n    - **Items** (Type: object):\n      - **constraintId** (Type: string):\n      - **constraintName** (Type: string):\n      - **reasons** (Type: array):\n        - **Items** (Type: object):\n          - **reason** (Type: string):\n          - **reference** (Type: object):\n            - **value** (Type: string):\n            - **type** (Type: string):\n                - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n  - **organizationName** (Type: string):\n  - **reachabilityStatus** (Type: string):\n      - Enum: ['REACHABLE', 'NON_REACHABLE', 'UNKNOWN']\n  - **applicationName** (Type: string):\n  - **filename** (Type: string):\n  - **policyOwner** (Type: object):\n    - **ownerPublicId** (Type: string):\n    - **ownerType** (Type: string):\n    - **ownerId** (Type: string):\n    - **ownerName** (Type: string):\n  - **fixTime** (Type: string, date-time):\n  - **policyName** (Type: string):\n  - **policyThreatCategory** (Type: string):\n  - **openTime** (Type: string, date-time):\n  - **legacyViolationTime** (Type: string, date-time):\n  - **stageData** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: object):\n        - **mostRecentEvaluationTime** (Type: string, date-time):\n        - **mostRecentScanId** (Type: string):\n        - **actionTypeId** (Type: string):\n  - **threatLevel** (Type: integer, int32):\n  - **displayName** (Type: object):\n    - **name** (Type: string):\n    - **parts** (Type: array):\n      - **Items** (Type: object):\n        - **field** (Type: string):\n        - **value** (Type: string):\n  - **hash** (Type: string):\n  - **policyViolationId** (Type: string):\n"
 
 // NewGetCrossStagePolicyViolationByIdMCPTool creates the MCP Tool instance for GetCrossStagePolicyViolationById
 func NewGetCrossStagePolicyViolationByIdMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetCrossStagePolicyViolationByIdHandler(ctx context.Context, request mcp.Ca
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetCrossStagePolicyViolationById")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetCrossStagePolicyViolationById"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

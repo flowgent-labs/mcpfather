@@ -16,8 +16,8 @@ type Config struct {
 // AggregatedToolConfig defines a single aggregated MCP tool.
 type AggregatedToolConfig struct {
 	Name        string                 `yaml:"name"`
-	Version     string                 `yaml:"version"`
 	Description string                 `yaml:"description"`
+	Annotations map[string]interface{} `yaml:"annotations,omitempty"`
 	InputSchema map[string]interface{} `yaml:"inputSchema"`
 	Pipeline    []pipeline.StepConfig  `yaml:"pipeline"`
 }

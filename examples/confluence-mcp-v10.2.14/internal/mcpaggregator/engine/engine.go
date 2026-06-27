@@ -6,7 +6,6 @@ import (
 
 	"confluence-mcp-v10.2.14/internal/mcpaggregator/config"
 	"confluence-mcp-v10.2.14/internal/mcpaggregator/pipeline"
-	"confluence-mcp-v10.2.14/internal/mcpaggregator/runtime"
 )
 
 // ToolRegistry provides access to native MCP tools for the aggregated tool engine.
@@ -38,12 +37,12 @@ func NewFromConfig(cfg *config.Config, registry ToolRegistry) (*Engine, error) {
 // Tools returns all aggregated tool entries for registration with an MCP server.
 // Returns an error if any tool's configuration is invalid.
 func (e *Engine) Tools() ([]AggregatedToolEntry, error) {
-	if e.config == nil || len(e.config.AggregatedTools) == 0 {
+	if e.config == nil || len(e.config.AggregateTools) == 0 {
 		return nil, nil
 	}
 
 	var entries []AggregatedToolEntry
-	for _, at := range e.config.AggregatedTools {
+	for _, at := range e.config.AggregateTools {
 		entry, err := e.buildTool(at)
 		if err != nil {
 			return nil, fmt.Errorf("aggregated tool %q: %w", at.Name, err)
@@ -67,6 +66,7 @@ func (e *Engine) buildTool(at config.AggregatedToolConfig) (AggregatedToolEntry,
 		Name:        at.Name,
 		Description: at.Description,
 		InputSchema: at.InputSchema,
+		Annotations: at.Annotations,
 		Handler:     handler,
 	}, nil
 }
@@ -76,7 +76,7 @@ func (e *Engine) buildHandler(at config.AggregatedToolConfig) func(ctx context.C
 		if args == nil {
 			args = make(map[string]interface{})
 		}
-		executor := runtime.NewExecutor(e.registry)
+		executor := NewExecutor(e.registry)
 		return executor.Execute(ctx, at.Pipeline, args)
 	}
 }

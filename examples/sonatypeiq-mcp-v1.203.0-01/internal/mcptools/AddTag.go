@@ -13,7 +13,7 @@ import (
 const AddTagInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Specify the the name, description and color for the new application category to be  created. The application category id is not required to create a new application category  and should not be included.\",\n      \"properties\": {\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"description\": {\n          \"type\": \"string\"\n        },\n        \"id\": {\n          \"type\": \"string\"\n        },\n        \"name\": {\n          \"type\": \"string\"\n        },\n        \"organizationId\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"organizationId\": {\n      \"description\": \"The organizationId assigned by IQ Server, for which you want to create the application category.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"organizationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the AddTag tool (Status: 200, Content-Type: application/json)
-const AddTagResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful creation of the new application category and its details.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **description** (Type: string):\n  - **id** (Type: string):\n  - **name** (Type: string):\n  - **organizationId** (Type: string):\n  - **color** (Type: string):\n"
+const AddTagResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful creation of the new application category and its details.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: string):\n  - **name** (Type: string):\n  - **organizationId** (Type: string):\n  - **color** (Type: string):\n  - **description** (Type: string):\n"
 
 // NewAddTagMCPTool creates the MCP Tool instance for AddTag
 func NewAddTagMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func AddTagHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "AddTag")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "AddTag"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

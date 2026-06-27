@@ -13,7 +13,7 @@ import (
 const GetAutoPolicyWaiverStatusInputSchema = "{\n  \"properties\": {\n    \"ownerId\": {\n      \"description\": \"Enter the corresponding id for the ownerType specified above.\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Enter the ownerType to specify the scope. The response will contain status details for the active auto policy waiver, if any, that is within the scope specified.\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ownerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAutoPolicyWaiverStatus tool (Status: 200, Content-Type: application/json)
-const GetAutoPolicyWaiverStatusResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains auto policy waiver status details for the specified ownerType and the corresponding ownerId.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **hasNoPathForward** (Type: boolean):\n  - **hasNotReachable** (Type: boolean):\n  - **isAutoWaiverEnabled** (Type: boolean):\n  - **createTime** (Type: string, date-time):\n  - **isInherited** (Type: boolean):\n  - **scopesOperatorAny** (Type: boolean):\n  - **threatLevel** (Type: integer, int32):\n  - **autoPolicyWaiverId** (Type: string):\n  - **autoPolicyWaiverOwnerId** (Type: string):\n  - **autoPolicyWaiverOwnerName** (Type: string):\n  - **autoPolicyWaiverOwnerType** (Type: string):\n"
+const GetAutoPolicyWaiverStatusResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains auto policy waiver status details for the specified ownerType and the corresponding ownerId.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **autoPolicyWaiverId** (Type: string):\n  - **hasNotReachable** (Type: boolean):\n  - **isAutoWaiverEnabled** (Type: boolean):\n  - **isInherited** (Type: boolean):\n  - **createTime** (Type: string, date-time):\n  - **autoPolicyWaiverOwnerId** (Type: string):\n  - **autoPolicyWaiverOwnerName** (Type: string):\n  - **autoPolicyWaiverOwnerType** (Type: string):\n  - **hasNoPathForward** (Type: boolean):\n  - **scopesOperatorAny** (Type: boolean):\n  - **threatLevel** (Type: integer, int32):\n"
 
 // NewGetAutoPolicyWaiverStatusMCPTool creates the MCP Tool instance for GetAutoPolicyWaiverStatus
 func NewGetAutoPolicyWaiverStatusMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetAutoPolicyWaiverStatusHandler(ctx context.Context, request mcp.CallToolR
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetAutoPolicyWaiverStatus")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetAutoPolicyWaiverStatus"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

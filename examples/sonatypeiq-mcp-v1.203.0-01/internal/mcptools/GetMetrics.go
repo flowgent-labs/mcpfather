@@ -13,7 +13,7 @@ import (
 const GetMetricsInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"properties\": {\n        \"applicationIds\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        },\n        \"firstTimePeriod\": {\n          \"type\": \"string\"\n        },\n        \"lastTimePeriod\": {\n          \"type\": \"string\"\n        },\n        \"organizationIds\": {\n          \"items\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        },\n        \"timePeriod\": {\n          \"enum\": [\n            \"WEEK\",\n            \"MONTH\"\n          ],\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    }\n  },\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetMetrics tool (Status: 200, Content-Type: application/json)
-const GetMetricsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Select the media type JSON or csv for the preferred output format.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **applicationPublicId** (Type: string):\n    - **organizationId** (Type: string):\n    - **organizationName** (Type: string):\n    - **aggregations** (Type: array):\n      - **Items** (Type: object):\n        - **mttrCriticalThreat** (Type: integer, int64):\n        - **mttrLowThreat** (Type: integer, int64):\n        - **openCountsAtTimePeriodEnd** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **discoveredCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **mttrModerateThreat** (Type: integer, int64):\n        - **timePeriodStart** (Type: string):\n        - **evaluationCount** (Type: integer, int32):\n        - **fixedCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **mttrSevereThreat** (Type: integer, int64):\n        - **waivedCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n    - **applicationId** (Type: string):\n    - **applicationName** (Type: string):\n"
+const GetMetricsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Select the media type JSON or csv for the preferred output format.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **aggregations** (Type: array):\n      - **Items** (Type: object):\n        - **openCountsAtTimePeriodEnd** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **evaluationCount** (Type: integer, int32):\n        - **mttrModerateThreat** (Type: integer, int64):\n        - **discoveredCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **mttrLowThreat** (Type: integer, int64):\n        - **timePeriodStart** (Type: string):\n        - **waivedCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **fixedCounts** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: object):\n              - **Additional Properties**:\n                - **property value** (Type: integer, int32):\n        - **mttrCriticalThreat** (Type: integer, int64):\n        - **mttrSevereThreat** (Type: integer, int64):\n    - **applicationId** (Type: string):\n    - **applicationName** (Type: string):\n    - **applicationPublicId** (Type: string):\n    - **organizationId** (Type: string):\n    - **organizationName** (Type: string):\n"
 
 // NewGetMetricsMCPTool creates the MCP Tool instance for GetMetrics
 func NewGetMetricsMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetMetricsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetMetrics")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetMetrics"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

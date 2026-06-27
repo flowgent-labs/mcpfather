@@ -13,7 +13,7 @@ import (
 const GetApplicableTagsByApplicationPublicIdInputSchema = "{\n  \"properties\": {\n    \"applicationPublicId\": {\n      \"description\": \"Provide the application public ID assigned by IQ Server.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"applicationPublicId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetApplicableTagsByApplicationPublicId tool (Status: 200, Content-Type: application/json)
-const GetApplicableTagsByApplicationPublicIdResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns all application categories or tags that can be applied to this application,  by providing the application public ID.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **name** (Type: string):\n    - **organizationId** (Type: string):\n    - **color** (Type: string):\n    - **description** (Type: string):\n    - **id** (Type: string):\n"
+const GetApplicableTagsByApplicationPublicIdResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns all application categories or tags that can be applied to this application,  by providing the application public ID.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **id** (Type: string):\n    - **name** (Type: string):\n    - **organizationId** (Type: string):\n    - **color** (Type: string):\n    - **description** (Type: string):\n"
 
 // NewGetApplicableTagsByApplicationPublicIdMCPTool creates the MCP Tool instance for GetApplicableTagsByApplicationPublicId
 func NewGetApplicableTagsByApplicationPublicIdMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetApplicableTagsByApplicationPublicIdHandler(ctx context.Context, request 
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetApplicableTagsByApplicationPublicId")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetApplicableTagsByApplicationPublicId"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

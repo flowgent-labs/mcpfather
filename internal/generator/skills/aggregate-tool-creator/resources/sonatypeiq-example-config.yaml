@@ -1,0 +1,252 @@
+aggregateTools:
+  - name: get_scan_violations_recommends
+    description: >
+      Retrieve policy violations for a scan, keep components at or above a
+      threat threshold, enrich each component with remediation suggestions.
+
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: true
+
+    inputSchema:
+      type: object
+      required:
+        - applicationPublicId
+        - scanId
+
+      properties:
+        applicationPublicId:
+          type: string
+          default: 12609073_bff_peak_transformation_service_fxscenario
+          description: Sonatype IQ application public id.
+
+        scanId:
+          type: string
+          default: b3a29500a885473ca6b4b5c759c39bf2
+          description: Report id / scan id to inspect.
+
+        minThreatLevel:
+          type: integer
+          default: 5
+          minimum: 0
+          maximum: 10
+          description: Minimum policy threat level used to keep violations and components.
+
+        includeViolationTimes:
+          type: boolean
+          default: true
+          description: Include policy violation times in the policy report request.
+
+        historyLimit:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 100
+          description: Number of recent application reports used to resolve the scan stage.
+
+        includeParentRemediation:
+          type: boolean
+          default: true
+          description: Include parent remediation suggestions for transitive dependencies.
+
+        remediationConcurrency:
+          type: integer
+          default: 4
+          minimum: 1
+          maximum: 16
+          description: Maximum remediation lookups to run concurrently.
+
+    pipeline:
+
+      - id: policy
+        kind: call
+        spec:
+          tool: GetPolicyViolations1
+          parse: json
+          args:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            includeViolationTimes: $input.includeViolationTimes
+
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $policy
+          expr: .application.id
+        require:
+          nonEmpty: true
+          message: Cannot find internal application id in policy response.
+
+      - id: history
+        kind: call
+        spec:
+          tool: GetReportHistoryForApplication
+          parse: json
+          args:
+            applicationId: $appInternal
+            limit: $input.historyLimit
+
+      - id: stage
+        kind: jq
+        spec:
+          from: $history
+          vars:
+            scanId: $input.scanId
+          expr: |
+            ([.reports[]
+              | select(.scanId == $scanId)
+              | .stage][0] // null)
+        require:
+          nonEmpty: true
+          message: Cannot find stage for scanId=$input.scanId.
+
+      - id: threatComponents
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            minThreatLevel: $input.minThreatLevel
+          expr: |
+            [
+              .components[]?
+              | select(
+                  (.violations // [])
+                  | any(.policyThreatLevel >= $minThreatLevel)
+                )
+              | {
+                  displayName,
+                  packageUrl,
+                  hash,
+                  sha256,
+                  componentIdentifier,
+
+                  maxThreatLevel:
+                    ([.violations[]?.policyThreatLevel] | max),
+
+                  active:
+                    any(
+                      .violations[];
+                      .policyThreatLevel >= $minThreatLevel
+                      and (.waived != true)
+                    ),
+
+                  violations:
+                    [
+                      .violations[]?
+                      | select(.policyThreatLevel >= $minThreatLevel)
+                      | {
+                          policyViolationId,
+                          policyName,
+                          policyThreatLevel,
+                          policyThreatCategory,
+                          waived,
+
+                          constraints:
+                            [
+                              .constraints[]?
+                              | {
+                                  constraintName,
+                                  conditions:
+                                    [
+                                      .conditions[]?.conditionReason
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+
+                  remediationRequest:
+                    {
+                      packageUrl,
+                      hash,
+                      sha256,
+                      componentIdentifier,
+                      displayName,
+                      proprietary,
+                      thirdParty,
+                      originalPurl
+                    }
+                }
+            ]
+
+      - id: components
+        kind: foreach
+        spec:
+          in: $threatComponents
+          as: component
+          concurrency: $input.remediationConcurrency
+          preserveOrder: true
+
+          pipeline:
+
+            - id: remediation
+              kind: call
+              spec:
+                tool: GetSuggestedRemediationForComponent
+                parse: json
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  stageId: $stage
+                  scanId: $input.scanId
+                  includeParentRemediation: $input.includeParentRemediation
+                  body: $component.remediationRequest
+
+            - id: enrichedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation
+                expr: |
+                  (. | del(.remediationRequest))
+                  +
+                  {
+                    remediation:
+                      [
+                        ($remediation.remediation.versionChanges // [])[]
+                        | {
+                            type,
+                            recommendedDisplayName:
+                              .data.component.displayName,
+                            recommendedPackageUrl:
+                              .data.component.packageUrl,
+                            recommendedVersion:
+                              .data.component.componentIdentifier.coordinates.version
+                          }
+                      ]
+                  }
+
+      - id: report
+        kind: return
+        spec:
+          from: $components
+          vars:
+            appPublic: $input.applicationPublicId
+            appInternal: $appInternal
+            scanId: $input.scanId
+            stage: $stage
+          expr: |
+            {
+              application: {
+                publicId: $appPublic,
+                internalId: $appInternal
+              },
+
+              scan: {
+                scanId: $scanId,
+                stage: $stage
+              },
+
+              summary: {
+                threatComponentCount: length,
+                activeThreatComponentCount:
+                  ([ .[]
+                     | select(.active == true)
+                   ] | length)
+              },
+
+              components: .
+            }

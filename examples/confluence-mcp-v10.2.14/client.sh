@@ -6,10 +6,10 @@ set -euo pipefail
 # Quick test helper for the generated MCP server.
 #
 # Usage:
-#   ./client.sh                  Show this help message
-#   ./client.sh help             Show this help message
-#   ./client.sh list-tools       List all available tools
-#   ./client.sh call <tool> [argsJson] [--file <path>]
+#   ./mcpclient.sh                  Show this help message
+#   ./mcpclient.sh help             Show this help message
+#   ./mcpclient.sh list-tools       List all available tools
+#   ./mcpclient.sh call <tool> [argsJson] [--file <path>]
 #
 # Environment variables:
 #   MCP_UPSTREAM_TOKEN    - Bearer token for MCP server auth
@@ -23,10 +23,10 @@ DOWNLOAD_DIR="${MCP_SERVER_DOWNLOAD_DIR:-downloads}"
 
 usage() {
   cat <<'USAGE'
-client.sh — MCP Server Client Script
+mcpclient.sh — MCP Server Client Script
 
 Usage:
-  ./client.sh [command] [arguments]
+  ./mcpclient.sh [command] [arguments]
 
 Commands:
   (no args)           Show this help message
@@ -44,9 +44,9 @@ Environment:
 Tips:
   - Always uses --noproxy '*' to avoid proxy issues with localhost
   - If the server is running on a different port:
-      MCP_SERVER_ENDPOINT=http://localhost:9090/mcp ./client.sh
+      MCP_SERVER_ENDPOINT=http://localhost:9090/mcp ./mcpclient.sh
   - If authentication is required:
-      MCP_UPSTREAM_TOKEN=your-token ./client.sh call <tool>
+      MCP_UPSTREAM_TOKEN=your-token ./mcpclient.sh call <tool>
   - Download tools auto-save to $DOWNLOAD_DIR
   - The script auto-initializes a session on first call
 
@@ -54,83 +54,83 @@ Examples:
 USAGE
   cat <<'EOEX'
   # Add (POST)
-  ./client.sh call Add '{"labelName": "labelName_value", "spaceKey": "spaceKey_value"}'
+  ./mcpclient.sh call Add '{"labelName": "labelName_value", "spaceKey": "spaceKey_value"}'
 EOEX
   cat <<'EOEX'
   # AddContentWatcher (POST)
-  ./client.sh call AddContentWatcher '{"contentId": "contentId_value", "key": "value", "username": "username_value"}'
+  ./mcpclient.sh call AddContentWatcher '{"contentId": "contentId_value", "key": "value", "username": "username_value"}'
 EOEX
   cat <<'EOEX'
   # AddLabels (POST)
-  ./client.sh call AddLabels '{"id": "id_value", "body": "value"}'
+  ./mcpclient.sh call AddLabels '{"id": "id_value", "body": "value"}'
 EOEX
   cat <<'EOEX'
   # AddSpaceWatch (POST)
-  ./client.sh call AddSpaceWatch '{"contentType": [], "key": "value", "spaceKey": "spaceKey_value", "username": "username_value"}'
+  ./mcpclient.sh call AddSpaceWatch '{"contentType": [], "key": "value", "spaceKey": "spaceKey_value", "username": "username_value"}'
 EOEX
   cat <<'EOEX'
   # Archive (PUT)
-  ./client.sh call Archive '{"spaceKey": "spaceKey_value"}'
+  ./mcpclient.sh call Archive '{"spaceKey": "spaceKey_value"}'
 EOEX
   cat <<'EOEX'
   # ByOperation (GET)
-  ./client.sh call ByOperation '{"expand": "expand_value", "id": "id_value"}'
+  ./mcpclient.sh call ByOperation '{"expand": "expand_value", "id": "id_value"}'
 EOEX
   cat <<'EOEX'
   # CancelAllQueuedJobs (PUT)
-  ./client.sh call CancelAllQueuedJobs '{}'
+  ./mcpclient.sh call CancelAllQueuedJobs '{}'
 EOEX
   cat <<'EOEX'
   # CancelJob (PUT)
-  ./client.sh call CancelJob '{"jobId": 0}'
+  ./mcpclient.sh call CancelJob '{"jobId": 0}'
 EOEX
   cat <<'EOEX'
   # ChangePassword (POST)
-  ./client.sh call ChangePassword '{"username": "username_value", "body": {"password": "password"}}'
+  ./mcpclient.sh call ChangePassword '{"username": "username_value", "body": {"password": "password"}}'
 EOEX
   cat <<'EOEX'
   # ChangePassword1 (POST)
-  ./client.sh call ChangePassword1 '{"body": {"newPassword": "newPassword", "oldPassword": "oldPassword"}}'
+  ./mcpclient.sh call ChangePassword1 '{"body": {"newPassword": "newPassword", "oldPassword": "oldPassword"}}'
 EOEX
   cat <<'EOEX'
   # Children (GET)
-  ./client.sh call Children '{"expand": "expand_value", "id": "id_value", "limit": 25, "parentVersion": 0, "start": 0}'
+  ./mcpclient.sh call Children '{"expand": "expand_value", "id": "id_value", "limit": 25, "parentVersion": 0, "start": 0}'
 EOEX
   cat <<'EOEX'
   # ChildrenOfType (GET)
-  ./client.sh call ChildrenOfType '{"expand": "expand_value", "id": "id_value", "limit": 25, "parentVersion": 0, "start": 0, "type": "type_value"}'
+  ./mcpclient.sh call ChildrenOfType '{"expand": "expand_value", "id": "id_value", "limit": 25, "parentVersion": 0, "start": 0, "type": "type_value"}'
 EOEX
   cat <<'EOEX'
   # CommentsOfContent (GET)
-  ./client.sh call CommentsOfContent '{"depth": "depth_value", "expand": "expand_value", "id": "id_value", "limit": 25, "location": [], "parentVersion": 0, "start": 0}'
+  ./mcpclient.sh call CommentsOfContent '{"depth": "depth_value", "expand": "expand_value", "id": "id_value", "limit": 25, "location": [], "parentVersion": 0, "start": 0}'
 EOEX
   cat <<'EOEX'
   # Contents (GET)
-  ./client.sh call Contents '{"depth": "depth_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value", "start": 0}'
+  ./mcpclient.sh call Contents '{"depth": "depth_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value", "start": 0}'
 EOEX
   cat <<'EOEX'
   # ContentsWithType (GET)
-  ./client.sh call ContentsWithType '{"cursor": "cursor_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value"}'
+  ./mcpclient.sh call ContentsWithType '{"cursor": "cursor_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value"}'
 EOEX
   cat <<'EOEX'
   # ContentsWithType1 (GET)
-  ./client.sh call ContentsWithType1 '{"depth": "depth_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value", "start": 0, "type": "type_value"}'
+  ./mcpclient.sh call ContentsWithType1 '{"depth": "depth_value", "expand": "expand_value", "limit": 25, "spaceKey": "spaceKey_value", "start": 0, "type": "type_value"}'
 EOEX
   cat <<'EOEX'
   # Convert (POST)
-  ./client.sh call Convert '{"expand": "expand_value", "to": "to_value", "body": "value"}'
+  ./mcpclient.sh call Convert '{"expand": "expand_value", "to": "to_value", "body": "value"}'
 EOEX
   cat <<'EOEX'
   # Create (POST)
-  ./client.sh call Create '{"body": "value"}'
+  ./mcpclient.sh call Create '{"body": "value"}'
 EOEX
   cat <<'EOEX'
   # Create1 (POST)
-  ./client.sh call Create1 '{"id": "id_value", "body": "value"}'
+  ./mcpclient.sh call Create1 '{"id": "id_value", "body": "value"}'
 EOEX
   cat <<'EOEX'
   # Create2 (POST)
-  ./client.sh call Create2 '{"id": "id_value", "key": "key_value", "body": "value"}'
+  ./mcpclient.sh call Create2 '{"id": "id_value", "key": "key_value", "body": "value"}'
 EOEX
 }
 
