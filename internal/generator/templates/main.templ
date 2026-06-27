@@ -89,9 +89,9 @@ Options:
   -h, --help                        Show this help message
 
 CLI Mode:
-  {{ .BinaryName }} -t cli list                           List all available tools
-  {{ .BinaryName }} -t cli call <tool-name> [key=value...]  Call a tool with named arguments
-                                                             (no args: show tool details)
+  {{ .BinaryName }} -t cli list                   List all available tools
+  {{ .BinaryName }} -t cli <tool-name> [OPTIONS]   Invoke a tool with GNU-style options
+                                                   Use --help for tool-specific help
 `)
 }
 
@@ -119,27 +119,28 @@ func main() {
 	switch *transport {
 	case "cli":
 		if flag.NArg() == 0 {
-			flag.Usage()
+			fmt.Fprintf(os.Stderr, "Usage: %s -t cli <tool-name> [OPTIONS]\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "       %s -t cli list\n", os.Args[0])
+			fmt.Fprintf(os.Stderr, "\nUse -t cli <tool-name> --help for tool-specific help.\n")
 			os.Exit(1)
 		}
 		subcmd := flag.Arg(0)
 		switch subcmd {
 		case "list":
 			mcpcli.ListTools()
-		case "call":
-			if flag.NArg() < 2 {
-				fmt.Fprintf(os.Stderr, "usage: %s -t cli call <tool-name> [key=value...]\n", os.Args[0])
-				os.Exit(1)
+		default:
+			if subcmd == "--help" || subcmd == "-h" {
+				fmt.Fprintf(os.Stderr, "Usage: %s -t cli <tool-name> [OPTIONS]\n", os.Args[0])
+				fmt.Fprintf(os.Stderr, "       %s -t cli list\n", os.Args[0])
+				fmt.Fprintf(os.Stderr, "\nUse -t cli <tool-name> --help for tool-specific help.\n")
+				os.Exit(0)
 			}
-			toolName := flag.Arg(1)
-			args := flag.Args()[2:]
-			if err := mcpcli.Call(toolName, args); err != nil {
+			toolName := subcmd
+			args := flag.Args()[1:]
+			if err := mcpcli.Call(os.Args[0], toolName, args); err != nil {
 				fmt.Fprintf(os.Stderr, "error: %v\n", err)
 				os.Exit(1)
 			}
-		default:
-			fmt.Fprintf(os.Stderr, "unknown cli subcommand: %s (use 'list' or 'call')\n", subcmd)
-			os.Exit(1)
 		}
 
 	case "http":
