@@ -82,10 +82,11 @@ func usage() {
 Options:
   -t, --transport <stdio|http|cli>  Transport mode (default "stdio")
                                      cli mode: invoke a tool directly from the command line
-  --port <number>                    HTTP server port (default 8080)
+  -p, --port <number>                HTTP server port (default 8080)
   -v, --verbose <0-10>              Request logging verbosity level
                                      0=silent, 1=access log, 2+=method+URL,
                                      3+=query, 5+=headers, 7+=body, 9+=pretty JSON
+  --print-default-config             Print default config.yaml to stdout and exit
   -h, --help                        Show this help message
 
 CLI Mode:
@@ -95,7 +96,40 @@ CLI Mode:
 `)
 }
 
+func printDefaultConfigYAML() {
+	fmt.Println("# {{ .BinaryName }} MCP server configuration")
+	fmt.Println("# Place this file at: $HOME/." + "{{ .BinaryName }}" + "/config.yaml")
+	fmt.Println()
+	fmt.Println("# tools:")
+	fmt.Println("#   enabled:")
+	fmt.Println("#     - Listspaces")
+	fmt.Println("#     - Searchcontent")
+	fmt.Println()
+	fmt.Println("tools:")
+	fmt.Println("  # List of operationId values to register as MCP tools.")
+	fmt.Println("  # When empty or absent, all tools are registered.")
+	fmt.Println("  # Use this to limit what AI agents can discover.")
+	fmt.Println("  enabled: []")
+}
+
 func main() {
+	flag.CommandLine.SetOutput(os.Stderr)
+	flag.Usage = usage
+
+	transport := flag.String("t", "stdio", "Transport mode: stdio, http, or cli")
+	flag.StringVar(transport, "transport", "stdio", "Transport mode: stdio, http, or cli")
+	port := flag.Int("p", 8080, "HTTP server port (only used when transport=http)")
+	flag.IntVar(port, "port", 8080, "HTTP server port (only used when transport=http)")
+	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
+	flag.IntVar(verbose, "verbose", 0, "Request logging verbosity level (0-10)")
+	printDefaultConfig := flag.Bool("print-default-config", false, "Print default config.yaml to stdout and exit")
+	flag.Parse()
+
+	if *printDefaultConfig {
+		printDefaultConfigYAML()
+		return
+	}
+
 	upstreamEndpoint := mcputils.GetUpstreamEndpoint()
 	isDefault := mcputils.IsDefaultUpstreamEndpoint()
 
@@ -103,16 +137,6 @@ func main() {
 	if isDefault {
 		fmt.Fprintln(os.Stderr, "Warning: MCP_UPSTREAM_ENDPOINT is not set. Using default (httpbin.org/anything) which echoes requests. Set it to your actual upstream service endpoint.")
 	}
-
-	flag.CommandLine.SetOutput(os.Stderr)
-	flag.Usage = usage
-
-	transport := flag.String("t", "stdio", "Transport mode: stdio, http, or cli")
-	flag.StringVar(transport, "transport", "stdio", "Transport mode: stdio, http, or cli")
-	port := flag.Int("port", 8080, "HTTP server port (only used when transport=http)")
-	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
-	flag.IntVar(verbose, "verbose", 0, "Request logging verbosity level (0-10)")
-	flag.Parse()
 
 	mcputils.SetVerbosity(*verbose)
 

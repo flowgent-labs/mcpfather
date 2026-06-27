@@ -68,7 +68,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 	if req.Header.Get("Authorization") == "" {
 		if token := mcputils.GetUpstreamToken(); token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
+			req.Header.Set("Authorization", mcputils.FormatAuthorizationHeader(token))
 		}
 	}
 
