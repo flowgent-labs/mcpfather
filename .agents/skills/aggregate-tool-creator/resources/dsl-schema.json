@@ -1,0 +1,280 @@
+{
+  "$defs": {
+    "AggregatedTool": {
+      "additionalProperties": false,
+      "properties": {
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "pipeline"
+      ],
+      "type": "object"
+    },
+    "CallConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool"
+      ],
+      "type": "object"
+    },
+    "MapConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "pipeline"
+      ],
+      "type": "object"
+    },
+    "MergeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "type": "string"
+        },
+        "to": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "to"
+      ],
+      "type": "object"
+    },
+    "ReturnConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "call"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "call"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "map"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "map"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "transform"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "transform"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "merge"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "merge"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "type": {
+                "const": "return"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "return"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "call": {
+          "$ref": "#/$defs/CallConfig"
+        },
+        "map": {
+          "$ref": "#/$defs/MapConfig"
+        },
+        "merge": {
+          "$ref": "#/$defs/MergeConfig"
+        },
+        "name": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "return": {
+          "$ref": "#/$defs/ReturnConfig"
+        },
+        "transform": {
+          "$ref": "#/$defs/TransformConfig"
+        },
+        "type": {
+          "enum": [
+            "call",
+            "map",
+            "transform",
+            "merge",
+            "return"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "type": "object"
+    },
+    "TransformConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "copy": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "default": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "flatten": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "move": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "project": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "remove": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "rename": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "source": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://mcpgen/schemas/aggregated-tool-config",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Schema for mcpgen aggregated tool pipeline configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs: config/config.go, pipeline/types.go, pipeline/validator.go",
+  "properties": {
+    "aggregatedTools": {
+      "items": {
+        "$ref": "#/$defs/AggregatedTool"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "required": [
+    "aggregatedTools"
+  ],
+  "title": "AggregatedToolConfig",
+  "type": "object"
+}
