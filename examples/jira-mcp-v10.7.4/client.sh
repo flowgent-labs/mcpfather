@@ -66,7 +66,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddComment (POST)
-  ./client.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "updateAuthor": {}, "id": "10000", "updated": "2012-07-06T18:30:00.000+0000", "author": "value", "properties": [], "visibility": {}, "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "created": "2012-07-06T18:30:00.000+0000", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper."}}'
+  ./client.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"created": "2012-07-06T18:30:00.000+0000", "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "updated": "2012-07-06T18:30:00.000+0000", "visibility": {}, "author": {}, "updateAuthor": "value", "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "properties": [], "id": "10000", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper."}}'
 EOEX
   cat <<'EOEX'
   # AddField (POST)
@@ -86,11 +86,11 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddSharePermission (POST)
-  ./client.sh call AddSharePermission '{"id": "id_value", "body": {"view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value", "userKey": "userKey_value"}}'
+  ./client.sh call AddSharePermission '{"id": "id_value", "body": {"type": "type_value", "userKey": "userKey_value", "view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddTab (POST)
-  ./client.sh call AddTab '{"screenId": 0, "body": {"name": "Fields Tab", "id": 10000}}'
+  ./client.sh call AddTab '{"screenId": 0, "body": {"id": 10000, "name": "Fields Tab"}}'
 EOEX
   cat <<'EOEX'
   # AddUserToApplication1 (POST)
@@ -110,7 +110,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddWorklog (POST)
-  ./client.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"issueId": "10002", "started": "2010-07-14T18:23:23.733+0000", "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "timeSpent": "3h 20m", "updateAuthor": "value", "author": {}, "visibility": {}, "timeSpentSeconds": 12000, "comment": "I did some work here.", "updated": "2010-07-14T18:23:23.733+0000", "created": "2010-07-14T18:23:23.733+0000", "id": "100028"}}'
+  ./client.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"timeSpent": "3h 20m", "created": "2010-07-14T18:23:23.733+0000", "comment": "I did some work here.", "started": "2010-07-14T18:23:23.733+0000", "visibility": {}, "author": "value", "id": "100028", "issueId": "10002", "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "timeSpentSeconds": 12000, "updated": "2010-07-14T18:23:23.733+0000", "updateAuthor": {}}}'
 EOEX
   cat <<'EOEX'
   # ApplyEmailTemplates (POST)

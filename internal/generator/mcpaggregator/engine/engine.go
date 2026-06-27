@@ -38,12 +38,12 @@ func NewFromConfig(cfg *config.Config, registry ToolRegistry) (*Engine, error) {
 // Tools returns all aggregated tool entries for registration with an MCP server.
 // Returns an error if any tool's configuration is invalid.
 func (e *Engine) Tools() ([]AggregatedToolEntry, error) {
-	if e.config == nil || len(e.config.AggregatedTools) == 0 {
+	if e.config == nil || len(e.config.AggregateTools) == 0 {
 		return nil, nil
 	}
 
 	var entries []AggregatedToolEntry
-	for _, at := range e.config.AggregatedTools {
+	for _, at := range e.config.AggregateTools {
 		entry, err := e.buildTool(at)
 		if err != nil {
 			return nil, fmt.Errorf("aggregated tool %q: %w", at.Name, err)

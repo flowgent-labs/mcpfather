@@ -5,7 +5,6 @@
 ### Build from source
 
 ```sh
-go mod tidy
 make
 ```
 

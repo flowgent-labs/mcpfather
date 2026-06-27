@@ -264,7 +264,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Schema for mcpgen aggregated tool pipeline configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs: config/config.go, pipeline/types.go, pipeline/validator.go",
   "properties": {
-    "aggregatedTools": {
+    "aggregateTools": {
       "items": {
         "$ref": "#/$defs/AggregatedTool"
       },
@@ -273,7 +273,7 @@
     }
   },
   "required": [
-    "aggregatedTools"
+    "aggregateTools"
   ],
   "title": "AggregatedToolConfig",
   "type": "object"

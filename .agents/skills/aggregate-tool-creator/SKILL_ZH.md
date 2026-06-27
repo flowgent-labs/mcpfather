@@ -5,7 +5,7 @@ description: 根据开发者描述的业务场景，自动生成符合 mcpgen ag
 
 # Aggregate Tool Creator
 
-根据开发者的自然语言描述或现有脚本（bash/jq/yq），生成符合 [dsl-schema.json](resources/dsl-schema.json) 规范的 `aggregatedTools` YAML 配置。
+根据开发者的自然语言描述或现有脚本（bash/jq/yq），生成符合 [dsl-schema.json](resources/dsl-schema.json) 规范的 `aggregateTools` YAML 配置。
 
 ## 两种工作模式
 
@@ -59,7 +59,7 @@ Schema 过时时运行：`make gen-aggregatetool-dsl-schema`
 ### Phase 4: 交付
 
 输出内容：
-1. 完整 `aggregatedTools` YAML 配置
+1. 完整 `aggregateTools` YAML 配置
 2. 部署路径：`$HOME/.<binary-name>/config.yaml`
 3. 与原始需求相比的差异/限制说明（尤其是 DSL 不支持的部分）
 

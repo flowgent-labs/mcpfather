@@ -109,9 +109,9 @@ func generate() schema {
 			sourceFiles(),
 		),
 		"type":     "object",
-		"required": []string{"aggregatedTools"},
+		"required": []string{"aggregateTools"},
 		"properties": schema{
-			"aggregatedTools": schema{
+			"aggregateTools": schema{
 				"type":     "array",
 				"minItems": 1,
 				"items":    ref("#/$defs/AggregatedTool"),

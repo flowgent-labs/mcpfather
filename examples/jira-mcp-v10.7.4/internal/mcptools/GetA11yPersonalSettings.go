@@ -13,7 +13,7 @@ import (
 const GetA11yPersonalSettingsInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetA11yPersonalSettings tool (Status: 200, Content-Type: application/json)
-const GetA11yPersonalSettingsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned when validation succeeded.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **key** (Type: string):\n      - Example: 'a11y-setting-underlined-links'\n  - **enabled** (Type: boolean):\n"
+const GetA11yPersonalSettingsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned when validation succeeded.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **enabled** (Type: boolean):\n  - **key** (Type: string):\n      - Example: 'a11y-setting-underlined-links'\n"
 
 // NewGetA11yPersonalSettingsMCPTool creates the MCP Tool instance for GetA11yPersonalSettings
 func NewGetA11yPersonalSettingsMCPTool() mcp.Tool {
