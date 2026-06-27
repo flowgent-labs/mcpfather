@@ -385,7 +385,7 @@ func (g *Generator) GenerateReadme() error {
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"### Build from source\n\n" +
 		"```sh\ngo mod tidy\nmake\n```\n\n" +
-		"### Usage with CLI mode (example)\n\n" +
+		"### Usage example\n\n" +
 		"```sh\n" +
 		"# Set your upstream endpoint and authentication\n" +
 		"export MCP_UPSTREAM_ENDPOINT=https://api.example.com\n" +
@@ -393,9 +393,9 @@ func (g *Generator) GenerateReadme() error {
 		"export MCP_UPSTREAM_TOKEN='your-token'\n" +
 		"# Cookie-based authentication (for legacy app compatibility)\n" +
 		"#export MCP_UPSTREAM_COOKIE='JSESSIONID=your-session-id'\n\n" +
-		"# Run the server\n" +
+		"# Run the HTTP mode\n" +
 		"./bin/" + binName + " --transport http --port 8080 &\n\n" +
-		"# List available tools\n" +
+		"# Run the CLI mode\n" +
 		"./bin/" + binName + " -t cli list\n\n" +
 		"```\n\n" +
 		"## Authentication\n\n" +
@@ -603,7 +603,7 @@ func (g *Generator) GenerateDotCredentials() error {
 
 // GenerateDotGitignore creates a .gitignore for the generated MCP server project.
 func (g *Generator) GenerateDotGitignore() error {
-	content := ".credentials\nbin/\n"
+	content := ".credentials\nbin/\n*.exe\n*.dll\n*.so\n*.dylib\n*.test\n*.out\n"
 	if err := writeFileContent(g.outputDir, ".gitignore", func() ([]byte, error) {
 		return []byte(content), nil
 	}); err != nil {
