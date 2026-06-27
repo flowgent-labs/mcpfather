@@ -12,11 +12,12 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/lyeslabs/mcpgen/internal/converter"
+	"github.com/wl4g-ai/mcpgen/internal/converter"
 )
 
 //go:embed templates/*.templ
 //go:embed templates/_credentials/*
+//go:embed mcpaggregator/*/*.go
 var templatesFS embed.FS
 
 // ToolTemplateData holds the data to pass to the template for a single tool
@@ -93,6 +94,13 @@ func (g *Generator) GenerateMCP() error {
 	}
 	if g.verbose {
 		fmt.Fprintf(os.Stderr, "[verbose] generated internal/helpers/\n")
+	}
+
+	if err := g.GenerateAggregator(); err != nil {
+		return fmt.Errorf("failed to generate aggregator: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpaggregator/\n")
 	}
 
 	if err := g.GenerateCredentials(); err != nil {
