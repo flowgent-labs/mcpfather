@@ -1,4 +1,4 @@
-.PHONY: build build-all test install clean
+.PHONY: build build-all test install clean gen-aggregatetool-dsl-schema
 
 BINARY_NAME := mcpgen
 CMD_PATH := ./cmd/mcpgen
@@ -31,3 +31,10 @@ install:
 
 clean:
 	rm -rf bin/
+
+# gen-aggregatetool-dsl-schema regenerates the JSON Schema for aggregated tool configuration
+# from the Go struct definitions in internal/generator/mcpaggregator/.
+# Output is written to the skill resources directory for use by the aggregate-tool-creator skill.
+gen-aggregatetool-dsl-schema:
+	@go run ./cmd/aggregate-tool-dsl-schema-gen/ --output .agents/skills/aggregate-tool-creator/resources/dsl-schema.json
+	@echo "==> Schema updated: .agents/skills/aggregate-tool-creator/resources/dsl-schema.json"
