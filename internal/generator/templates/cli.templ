@@ -10,14 +10,26 @@ import (
 	"strings"
 
 	mcptools "{{ .MCPToolsImportPath }}"
+	mcputils "{{ .HelpersImportPath }}"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
 // ListTools prints all available tools as subcommands with one-line descriptions.
+// Respects the config.yaml tools.enabled filter if present.
 func ListTools() {
+	cfg, _ := mcputils.LoadConfig("{{ .BinaryName }}")
+	enabled := make(map[string]bool)
+	if cfg != nil && len(cfg.Tools.Include) > 0 {
+		for _, name := range cfg.Tools.Include {
+			enabled[name] = true
+		}
+	}
+
 	names := make([]string, 0, len(mcptools.Registry))
 	for name := range mcptools.Registry {
-		names = append(names, name)
+		if len(enabled) == 0 || enabled[name] {
+			names = append(names, name)
+		}
 	}
 	sort.Strings(names)
 
@@ -33,6 +45,20 @@ func Call(binName, toolName string, args []string) error {
 	entry, ok := mcptools.Registry[toolName]
 	if !ok {
 		return fmt.Errorf("unknown tool %q — use -t cli list to see available tools", toolName)
+	}
+
+	cfg, _ := mcputils.LoadConfig("{{ .BinaryName }}")
+	if cfg != nil && len(cfg.Tools.Include) > 0 {
+		found := false
+		for _, name := range cfg.Tools.Include {
+			if name == toolName {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("tool %q is not enabled in config.yaml", toolName)
+		}
 	}
 
 	// Check for --help / -h

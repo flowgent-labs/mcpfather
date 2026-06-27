@@ -247,7 +247,7 @@ func FormatAuthorizationHeader(token string) string {
 // Config represents the project configuration read from $HOME/.{binaryName}/config.yaml.
 type Config struct {
 	Tools struct {
-		Enabled []string `yaml:"enabled"`
+		Include []string `yaml:"include"`
 	} `yaml:"tools"`
 }
 
