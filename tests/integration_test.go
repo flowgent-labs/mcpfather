@@ -228,6 +228,74 @@ func TestGenerator_ValidOperationId_Succeeds(t *testing.T) {
 	}
 }
 
+// TestGenerator_VeryLongOperationId_Succeeds tests the common enterprise
+// scenario where operationIds are extremely long with dash/underscore
+// separators (e.g. auto-generated from API gateways). The generator must:
+//  1. Convert to PascalCase correctly (dashes/underscores → word boundaries)
+//  2. Truncate to ≤125 chars with a hash suffix to keep the Go identifier unique
+//  3. Produce a buildable server where the tool is registered under its truncated name
+func TestGenerator_VeryLongOperationId_Succeeds(t *testing.T) {
+	longOpID := "get-a-very-long-operation-id-with-dashes-and_underscores_that_exceeds_the_maximum_tool_name_limit_set_by_opencode_and_other_mcp_integrations_in_the_enterprise_environment"
+	spec := filepath.Join(repoRoot(t), "testdata", "example_confluence_oas_v3.1.yaml")
+	if _, err := os.Stat(spec); os.IsNotExist(err) {
+		t.Skipf("confluence OAS 3.1 spec not found at %s", spec)
+	}
+
+	// Generate with just this long operationId
+	bin := mcpgenBin(t)
+	dir := t.TempDir()
+	cmd := exec.Command(bin, "-i", spec, "-o", dir, "--includes", longOpID)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpgen failed for very-long operationId: %v\n%s", err, out)
+	}
+
+	// The tool file should exist (with a truncated, hash-suffixed name).
+	// Exclude registry.go which is always generated alongside tools.
+	var toolFiles []string
+	files, _ := filepath.Glob(filepath.Join(dir, "internal", "mcptools", "*.go"))
+	for _, f := range files {
+		if filepath.Base(f) != "registry.go" {
+			toolFiles = append(toolFiles, f)
+		}
+	}
+	if len(toolFiles) != 1 {
+		t.Fatalf("expected exactly 1 tool file, got %d: %v", len(toolFiles), toolFiles)
+	}
+	toolFileName := filepath.Base(toolFiles[0])
+	toolName := strings.TrimSuffix(toolFileName, ".go")
+	t.Logf("generated tool file: %s (name length: %d)", toolFileName, len(toolName))
+
+	// Tool name must be ≤125 chars (MCP limit)
+	if len(toolName) > 125 {
+		t.Errorf("tool name %q is %d chars, exceeds 125-char limit", toolName, len(toolName))
+	}
+	// Must retain a recognisable prefix from the original operationId
+	if !strings.HasPrefix(strings.ToLower(toolName), "getaverylong") {
+		t.Errorf("tool name %q doesn't start with expected PascalCase prefix of original operationId", toolName)
+	}
+
+	// Build and smoke-test against mock upstream
+	binPath := buildServer(t, dir)
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	stdout, _ := runCLI(t, binPath,
+		[]string{
+			"MCP_UPSTREAM_ENDPOINT=" + mock.server.URL,
+			"MCP_UPSTREAM_TOKEN=test-token",
+		},
+		"-t", "cli", toolName, "--id=12345",
+	)
+
+	if !strings.Contains(stdout, `"status":"ok"`) {
+		t.Errorf("expected upstream response, got: %s", stdout)
+	}
+	if len(mock.requests) == 0 {
+		t.Fatal("no request reached mock upstream")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // 2. Auth / token behaviour
 // ---------------------------------------------------------------------------
