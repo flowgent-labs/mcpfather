@@ -10,17 +10,10 @@ import (
 // This assumes you have NewGenerator as in your previous code.
 
 func TestGenerateHTTPClient_WithFixture(t *testing.T) {
-	// Path to your OpenAPI fixture
-	specPath := filepath.Join("../..", "testdata", "example_confluence_oas_v3.0.yaml")
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("Fixture file %s does not exist. Please create it.", specPath)
-	}
-
 	packageName := "testpkg"
 	outputDir := t.TempDir()
 
-	// Create a real Generator using the fixture
-	gen, err := NewGenerator(specPath, true, packageName, outputDir, nil, nil, false)
+	gen, err := NewGenerator(createTempSpecFileWithContent(t, testSpecOAS30Gen), true, packageName, outputDir, nil, nil, false)
 	if err != nil {
 		t.Fatalf("Failed to create generator: %v", err)
 	}

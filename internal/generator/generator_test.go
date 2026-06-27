@@ -24,14 +24,53 @@ func createTempSpecFileWithContent(t *testing.T, content string) string {
 	}
 	return tempFile.Name()
 }
-func TestNewGenerator_Success_WithValidFile(t *testing.T) {
-	// Assumes testdata/example_confluence_oas_v3.0.yaml exists relative to this test file
-	specPath := filepath.Join("../..", "testdata", "example_confluence_oas_v3.0.yaml")
+const testSpecOAS30Gen = `openapi: "3.0.3"
+info:
+  title: Blogs API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /posts:
+    get:
+      operationId: listPosts
+      summary: List all blog posts
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /posts/{id}:
+    get:
+      operationId: getPost
+      summary: Get a blog post by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: OK
+    delete:
+      operationId: deletePost
+      summary: Delete a blog post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: OK
+`
 
-	// Check if the fixture file exists
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("Test setup error: fixture file %s does not exist. Please create it.", specPath)
-	}
+func TestNewGenerator_Success_WithValidFile(t *testing.T) {
+	specPath := createTempSpecFileWithContent(t, testSpecOAS30Gen)
 
 	packageName := "testpkgfromfile"
 	outputDir := t.TempDir()
@@ -71,10 +110,9 @@ func TestNewGenerator_Success_WithValidFile(t *testing.T) {
 			if gen.spec == nil {
 				t.Error("gen.spec is nil, want non-nil")
 			} else {
-				// Check a value from the testdata/example_confluence_oas_v3.0.yaml file
 				if gen.spec.Info == nil {
-					t.Errorf("gen.spec.Info.Title not parsed correctly from file, got '%s', want 'Confluence Cloud REST API'", gen.spec.Info.Title)
-				}
+				t.Errorf("gen.spec.Info.Title not parsed correctly")
+			}
 			}
 		})
 	}

@@ -1,0 +1,62 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"jira-mcp-v10.7.4/internal/helpers"
+	"time"
+)
+
+// Input Schema for the GetAllNodes tool
+const GetAllNodesInputSchema = "{\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetAllNodes tool (Status: 200, Content-Type: application/json)
+const GetAllNodesResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of all nodes in the cluster.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **nodeBuildNumber** (Type: integer, int64):\n  - **nodeId** (Type: string):\n  - **nodeVersion** (Type: string):\n  - **state** (Type: string):\n      - Enum: ['ACTIVE', 'PASSIVE', 'ACTIVATING', 'PASSIVATING', 'OFFLINE']\n  - **alive** (Type: boolean):\n  - **cacheListenerPort** (Type: integer, int64):\n  - **ip** (Type: string):\n  - **lastStateChangeTimestamp** (Type: integer, int64):\n"
+
+// NewGetAllNodesMCPTool creates the MCP Tool instance for GetAllNodes
+func NewGetAllNodesMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetAllNodes",
+		"Get all cluster nodes - Returns all nodes in cluster.",
+		[]byte(GetAllNodesInputSchema),
+	)
+}
+
+// GetAllNodesHandler is the handler function for the GetAllNodes tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetAllNodesHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/rest/api/2/cluster/nodes", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetAllNodes"); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if filePath != "" {
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
+	}
+
+	return mcp.NewToolResultText(string(body)), nil
+}

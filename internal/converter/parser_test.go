@@ -1,7 +1,6 @@
 package converter
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -9,20 +8,8 @@ import (
 )
 
 
-func getTestSpecPath(t *testing.T) string {
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("Test setup error: fixture file %s does not exist. Please create it.", specPath)
-	}
-	return specPath
-}
-
 func getTestSpecBytes(t *testing.T) []byte {
-	specPath := getTestSpecPath(t)
-	data, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("Test setup error: could not read %s: %v", specPath, err)
-	}
-	return data
+	return []byte(testSpecOAS30)
 }
 
 func TestNewParser(t *testing.T) {
@@ -53,7 +40,7 @@ func TestParser_Parse_ValidYAML(t *testing.T) {
 
 func TestParser_ParseFile(t *testing.T) {
 	p := NewParser(false)
-	specPath := getTestSpecPath(t)
+	specPath := writeTestSpecOAS30(t)
 	err := p.ParseFile(specPath)
 	if err != nil {
 		t.Fatalf("ParseFile failed: %v", err)

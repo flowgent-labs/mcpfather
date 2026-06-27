@@ -1,0 +1,457 @@
+package mcputils
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"sync"
+
+	"gopkg.in/yaml.v3"
+)
+
+type contextKey string
+
+const HTTPHeadersContextKey contextKey = "mcp-http-headers"
+
+const mcpUpstreamEndpoint = "https://httpbin.org/anything"
+
+var mcpUpstreamEndpointVal string
+var mcpUpstreamOnce sync.Once
+
+// GetUpstreamEndpoint returns the upstream endpoint from the MCP_UPSTREAM_ENDPOINT
+// environment variable, falling back to a default echo service for debugging.
+func GetUpstreamEndpoint() string {
+	mcpUpstreamOnce.Do(func() {
+		mcpUpstreamEndpointVal = os.Getenv("MCP_UPSTREAM_ENDPOINT")
+		if mcpUpstreamEndpointVal == "" {
+			mcpUpstreamEndpointVal = mcpUpstreamEndpoint
+		}
+	})
+	return mcpUpstreamEndpointVal
+}
+
+// IsDefaultUpstreamEndpoint returns true if the upstream endpoint uses the default
+// value (i.e. MCP_UPSTREAM_ENDPOINT environment variable was not set).
+func IsDefaultUpstreamEndpoint() bool {
+	GetUpstreamEndpoint() // ensure initialized
+	return mcpUpstreamEndpointVal == mcpUpstreamEndpoint
+}
+
+var upstreamTokenVal string
+var upstreamTokenOnce sync.Once
+
+// GetUpstreamToken returns the upstream token using the following priority:
+//  1. MCP_UPSTREAM_TOKEN environment variable
+//  2. MCP_UPSTREAM_TOKEN_FILE (read token from file, for Kubernetes secrets etc.)
+//  3. macOS Keychain (darwin): security find-generic-password -s mcpgen-upstream
+//  4. Windows Credential Manager (windows): cmdkey /get:mcpgen-upstream
+//
+// To store a token in macOS Keychain:
+//
+//	security add-generic-password -s mcpgen-upstream -a mcpgen-upstream -w <your-token>
+//
+// To store a token in Windows Credential Manager:
+//
+//	cmdkey /add:mcpgen-upstream /user:mcpgen-upstream /pass:your-token
+func GetUpstreamToken() string {
+	upstreamTokenOnce.Do(func() {
+		upstreamTokenVal = os.Getenv("MCP_UPSTREAM_TOKEN")
+		if upstreamTokenVal == "" {
+			if f := os.Getenv("MCP_UPSTREAM_TOKEN_FILE"); f != "" {
+				if data, err := os.ReadFile(f); err == nil {
+					upstreamTokenVal = strings.TrimSpace(string(data))
+				}
+			}
+		}
+		if upstreamTokenVal == "" {
+			upstreamTokenVal = getFromKeychain()
+		}
+		if upstreamTokenVal == "" {
+			upstreamTokenVal = getFromWinCred()
+		}
+	})
+	return upstreamTokenVal
+}
+
+var upstreamCookieVal string
+var upstreamCookieOnce sync.Once
+
+// GetUpstreamCookie returns the upstream cookie using the following priority:
+//  1. MCP_UPSTREAM_COOKIE environment variable
+//  2. MCP_UPSTREAM_COOKIE_FILE (read cookie from file)
+func GetUpstreamCookie() string {
+	upstreamCookieOnce.Do(func() {
+		upstreamCookieVal = os.Getenv("MCP_UPSTREAM_COOKIE")
+		if upstreamCookieVal == "" {
+			if f := os.Getenv("MCP_UPSTREAM_COOKIE_FILE"); f != "" {
+				if data, err := os.ReadFile(f); err == nil {
+					upstreamCookieVal = strings.TrimSpace(string(data))
+				}
+			}
+		}
+	})
+	return upstreamCookieVal
+}
+
+// DetermineFileName extracts a filename from the HTTP response, falling back to a
+// default name with an extension derived from the response Content-Type.
+func DetermineFileName(resp *http.Response, defaultName string) string {
+	// 1. Try Content-Disposition header
+	if cd := resp.Header.Get("Content-Disposition"); cd != "" {
+		if _, params, err := mime.ParseMediaType(cd); err == nil {
+			if fn := params["filename"]; fn != "" {
+				return filepath.Clean(fn)
+			}
+		}
+	}
+	// 2. Try URL path last segment
+	if u, err := url.Parse(resp.Request.URL.String()); err == nil {
+		if segs := strings.Split(strings.Trim(u.Path, "/"), "/"); len(segs) > 0 {
+			if name, _ := url.QueryUnescape(segs[len(segs)-1]); name != "" {
+				return filepath.Clean(name)
+			}
+		}
+	}
+	// 3. Generate from default name + content-type extension
+	ct := resp.Header.Get("Content-Type")
+	ext := ""
+	if ct != "" {
+		mediaType, _, _ := mime.ParseMediaType(ct)
+		ext = mime.TypeByExtension(mediaType)
+		if ext == "" {
+			switch {
+			case strings.HasPrefix(mediaType, "image/"):
+				ext = ".png"
+			case strings.HasPrefix(mediaType, "video/"):
+				ext = ".mp4"
+			case strings.HasPrefix(mediaType, "audio/"):
+				ext = ".mp3"
+			case mediaType == "application/pdf":
+				ext = ".pdf"
+			case mediaType == "application/octet-stream":
+				ext = ".bin"
+			case mediaType == "application/zip":
+				ext = ".zip"
+			default:
+				ext = ".dat"
+			}
+		}
+	}
+	return defaultName + ext
+}
+
+// WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
+func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
+	return context.WithValue(ctx, HTTPHeadersContextKey, headers)
+}
+
+// GetHTTPHeaders retrieves HTTP headers from the context.
+func GetHTTPHeaders(ctx context.Context) http.Header {
+	if h, ok := ctx.Value(HTTPHeadersContextKey).(http.Header); ok {
+		return h
+	}
+	return nil
+}
+
+// ForwardRequest sends an HTTP request to the upstream endpoint and returns the response.
+// All HTTP headers stored in ctx are forwarded to the upstream service.
+func ForwardRequest(ctx context.Context, upstreamBase string, method string, path string, args map[string]interface{}, pathKeys []string, contentType string) (*http.Response, error) {
+	// Build URL
+	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
+
+	// Replace path parameters and collect query parameters
+	query := url.Values{}
+	for key, val := range args {
+		// "body" is reserved for request body, never goes in query
+		if key == "body" {
+			continue
+		}
+		placeholder := "{" + key + "}"
+		if strings.Contains(upstreamURL, placeholder) {
+			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, valueToString(val))
+		} else {
+			if strVal, ok := val.(string); ok {
+				query.Set(key, strVal)
+			} else {
+				query.Set(key, valueToString(val))
+			}
+		}
+	}
+	if len(query) > 0 {
+		upstreamURL += "?" + query.Encode()
+	}
+
+	// Build request body
+	var bodyReader io.Reader
+	var bodyBytes []byte
+	if method != "GET" && method != "HEAD" {
+		var bodyData interface{}
+		if bodyArg, ok := args["body"]; ok {
+			// If a "body" arg is present, use it directly as the request body
+			bodyData = bodyArg
+		} else {
+			// Otherwise, send all non-path args as the body
+			bodyData = buildJSONBody(args, pathKeys)
+		}
+		bodyBytes, err := marshalJSONNoSci(bodyData)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
+		}
+		bodyReader = strings.NewReader(string(bodyBytes))
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, upstreamURL, bodyReader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upstream request: %w", err)
+	}
+
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	// Forward all headers from context
+	if forwarded := GetHTTPHeaders(ctx); forwarded != nil {
+		for key, values := range forwarded {
+			// Skip hop-by-hop headers
+			lowerKey := strings.ToLower(key)
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "cookie" || lowerKey == "content-length" {
+				continue
+			}
+			for _, v := range values {
+				req.Header.Add(key, v)
+			}
+		}
+	}
+
+	// Use Authorization from request, fallback to upstream token (env/file/keychain/credmgr)
+	if req.Header.Get("Authorization") == "" {
+		if token := GetUpstreamToken(); token != "" {
+			req.Header.Set("Authorization", FormatAuthorizationHeader(token))
+		}
+	}
+
+	// Attach upstream cookie (for session-based auth like JSESSIONID)
+	if cookie := GetUpstreamCookie(); cookie != "" {
+		req.Header.Set("Cookie", cookie)
+	}
+
+	// Log outgoing request with final headers
+	LogRequest(method, upstreamURL, query, req.Header, bodyBytes)
+
+	client := &http.Client{
+		Transport: &http.Transport{
+			Proxy: http.ProxyFromEnvironment,
+		},
+	}
+	return client.Do(req)
+}
+
+// FormatAuthorizationHeader normalizes a token for use in an HTTP Authorization header.
+// If the token already has a recognized prefix (Bearer or Basic, case-insensitive),
+// it is returned unchanged. Otherwise, "Bearer " is prepended.
+func FormatAuthorizationHeader(token string) string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return token
+	}
+	lower := strings.ToLower(token)
+	if strings.HasPrefix(lower, "bearer ") || strings.HasPrefix(lower, "basic ") {
+		return token
+	}
+	return "Bearer " + token
+}
+
+// Config represents the project configuration read from $HOME/.{binaryName}/config.yaml.
+type Config struct {
+	Tools struct {
+		Include []string `yaml:"include"`
+	} `yaml:"tools"`
+}
+
+// LoadConfig reads the optional config.yaml from $HOME/.{binaryName}/config.yaml.
+// Returns nil if the config file does not exist (all tools enabled by default).
+func LoadConfig(binaryName string) (*Config, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, nil
+	}
+	configPath := filepath.Join(home, "."+binaryName, "config.yaml")
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("failed to read config %s: %w", configPath, err)
+	}
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("failed to parse config %s: %w", configPath, err)
+	}
+	return &cfg, nil
+}
+
+// AggregatedConfigPath returns the path to the config file used by the aggregated
+// tool engine. This is the same config.yaml that LoadConfig reads from.
+func AggregatedConfigPath(binaryName string) string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, "."+binaryName, "config.yaml")
+}
+
+// valueToString converts an interface{} to a string suitable for URLs and
+// query parameters. It handles float64 values (from JSON unmarshalling)
+// without scientific notation, which would break integer path parameters.
+func valueToString(val interface{}) string {
+	switch v := val.(type) {
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64)
+	case float32:
+		return strconv.FormatFloat(float64(v), 'f', -1, 32)
+	default:
+		return fmt.Sprintf("%v", val)
+	}
+}
+
+// buildJSONBody creates a map of args that should be included in the JSON body
+// (i.e., args that are not path params or query params).
+func buildJSONBody(args map[string]interface{}, pathAndQueryKeys []string) map[string]interface{} {
+	skip := make(map[string]bool, len(pathAndQueryKeys))
+	for _, k := range pathAndQueryKeys {
+		skip[k] = true
+	}
+	body := make(map[string]interface{}, len(args))
+	for k, v := range args {
+		if !skip[k] {
+			body[k] = v
+		}
+	}
+	return body
+}
+
+// ParamsParser provides a generic way to parse MCP tool arguments into typed structs
+func ParamsParser[T any](args map[string]interface{}) (*T, error) {
+	jsonData, err := marshalJSONNoSci(args)
+	if err != nil {
+		return nil, fmt.Errorf("failed to process arguments: %w", err)
+	}
+
+	var typedArgs T
+	if err := json.Unmarshal(jsonData, &typedArgs); err != nil {
+		return nil, fmt.Errorf("invalid argument structure: %w", err)
+	}
+
+	return &typedArgs, nil
+}
+
+// marshalJSONNoSci marshals data to JSON without scientific notation for
+// floating point / integer values (which may come from JSON
+// unmarshalling as float64). It recursively sanitises maps and slices.
+func marshalJSONNoSci(v interface{}) ([]byte, error) {
+	return json.Marshal(sanitizeForJSON(v))
+}
+
+// sanitizeForJSON recursively replaces float64/float32 values with
+// json.RawMessage containing the decimal representation of the number.
+// This prevents json.Marshal from emitting scientific notation.
+func sanitizeForJSON(v interface{}) interface{} {
+	switch val := v.(type) {
+	case float64:
+		return json.RawMessage(strconv.FormatFloat(val, 'f', -1, 64))
+	case float32:
+		return json.RawMessage(strconv.FormatFloat(float64(val), 'f', -1, 32))
+	case []interface{}:
+		out := make([]interface{}, len(val))
+		for i, item := range val {
+			out[i] = sanitizeForJSON(item)
+		}
+		return out
+	case map[string]interface{}:
+		out := make(map[string]interface{}, len(val))
+		for k, item := range val {
+			out[k] = sanitizeForJSON(item)
+		}
+		return out
+	}
+	return v
+}
+
+// IsBinaryContentType checks whether a Content-Type indicates binary data.
+// The logic is inverted: instead of maintaining a whitelist of binary types
+// (which can never be exhaustive — missing parquet, avro, custom vendor types, etc.),
+// we define what is TEXT and treat everything else as binary.
+func IsBinaryContentType(ct string) bool {
+	ct = strings.TrimSpace(strings.ToLower(ct))
+	mediaType, _, _ := mime.ParseMediaType(ct)
+	if mediaType == "" {
+		return true // unknown content-type, treat as binary to be safe
+	}
+
+	// Text-based types — safe to embed in JSON as string
+	if strings.HasPrefix(mediaType, "text/") {
+		return false
+	}
+	switch mediaType {
+	case "application/json",
+		"application/javascript",
+		"application/x-www-form-urlencoded",
+		"application/xml",
+		"application/atom+xml",
+		"application/rss+xml",
+		"application/soap+xml":
+		return false
+	}
+	if strings.HasSuffix(mediaType, "+json") ||
+		strings.HasSuffix(mediaType, "+xml") {
+		return false
+	}
+
+	// Everything else is binary (image/*, video/*, audio/*, application/octet-stream,
+	// application/pdf, application/parquet, application/vnd.*, custom vendor types, etc.)
+	return true
+}
+
+// SaveBinaryResponse checks if an HTTP response is binary data (Content-Disposition
+// header or binary Content-Type) and if so, saves it to the downloads directory.
+// Returns ("", nil) if the response is not binary.
+func SaveBinaryResponse(resp *http.Response, body []byte, defaultName string) (string, error) {
+	// 1. Check Content-Disposition header
+	if resp.Header.Get("Content-Disposition") != "" {
+		// Looks like a file download, save it
+	} else if !IsBinaryContentType(resp.Header.Get("Content-Type")) {
+		return "", nil
+	}
+
+	fileName := DetermineFileName(resp, defaultName)
+	downloadDir := os.Getenv("MCP_SERVER_DOWNLOAD_DIR")
+	if downloadDir == "" {
+		exe, err := os.Executable()
+		binName := "mcpgen-server"
+		if err == nil {
+			binName = filepath.Base(exe)
+		}
+		home, err := os.UserHomeDir()
+		if err == nil {
+			downloadDir = filepath.Join(home, "."+binName, "downloads")
+		} else {
+			downloadDir = "." + binName + "/downloads"
+		}
+	}
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create download directory %s: %w", downloadDir, err)
+	}
+	filePath := filepath.Join(downloadDir, fileName)
+	if err := os.WriteFile(filePath, body, 0644); err != nil {
+		return "", fmt.Errorf("failed to save file %s: %w", filePath, err)
+	}
+	return filePath, nil
+}

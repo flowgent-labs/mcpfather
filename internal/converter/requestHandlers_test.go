@@ -1,7 +1,6 @@
 package converter
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -40,48 +39,34 @@ func TestGetOperations_None(t *testing.T) {
 }
 
 func TestConvertOperation_RealData(t *testing.T) {
-	// Load a real OpenAPI spec (use your tested Parser)
-	if _, err := os.Stat(specPath); os.IsNotExist(err) {
-		t.Fatalf("Test setup error: fixture file %s does not exist. Please create it.", specPath)
-	}
-	data, err := os.ReadFile(specPath)
-	if err != nil {
-		t.Fatalf("could not read %s: %v", specPath, err)
-	}
 	parser := NewParser(false)
-	if err := parser.Parse(data); err != nil {
+	if err := parser.Parse([]byte(testSpecOAS30)); err != nil {
 		t.Fatalf("failed to parse OpenAPI: %v", err)
 	}
 
 	c := &Converter{parser: parser}
 
-	// Pick the first path and method from the spec
+	// Pick a path and method that has response content.
 	paths := parser.GetPaths()
 	if len(paths) == 0 {
 		t.Fatal("no paths found in OpenAPI spec")
 	}
-	var path string
-	var pathItem *openapi3.PathItem
-	for p, pi := range paths {
-		path = p
-		pathItem = pi
-		break
-	}
-	ops := getOperations(pathItem)
-	if len(ops) == 0 {
-		t.Fatal("no operations found in path item")
-	}
-	var method string
-	var operation *openapi3.Operation
-	for m, op := range ops {
-		method = m
-		operation = op
-		break
-	}
-
-	tool, err := c.convertOperation(path, method, operation)
-	if err != nil {
-		t.Fatalf("convertOperation failed: %v", err)
+	var tool *Tool
+	for path, pathItem := range paths {
+		ops := getOperations(pathItem)
+		for method, operation := range ops {
+			var err error
+			tool, err = c.convertOperation(path, method, operation)
+			if err != nil {
+				t.Fatalf("convertOperation failed for %s %s: %v", method, path, err)
+			}
+			if len(tool.Responses) > 0 {
+				break
+			}
+		}
+		if tool != nil && len(tool.Responses) > 0 {
+			break
+		}
 	}
 	if tool == nil {
 		t.Fatal("expected non-nil tool")

@@ -392,7 +392,7 @@ func (g *Generator) GenerateReadme() error {
 
 	readme := "# " + binName + "\n\n## Quick Start\n\n" +
 		"### Build from source\n\n" +
-		"```sh\ngo mod tidy\nmake\n```\n\n" +
+		"```sh\nmake\n```\n\n" +
 		"### Usage example\n\n" +
 		"```sh\n" +
 		"# Set your upstream endpoint and authentication\n" +
