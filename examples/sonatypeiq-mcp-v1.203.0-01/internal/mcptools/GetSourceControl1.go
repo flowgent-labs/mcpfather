@@ -13,7 +13,7 @@ import (
 const GetSourceControl1InputSchema = "{\n  \"properties\": {\n    \"internalOwnerId\": {\n      \"description\": \"Enter the value for internal ownerId. Use ROOT_ORGANIZATION_ID for the root organization\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Enter the value for ownerType.\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"internalOwnerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetSourceControl1 tool (Status: 200, Content-Type: application/json)
-const GetSourceControl1ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains source control configuration settings for the specified ownerId.\n\n<ul><li><code>id</code> is the owner internal ID.</li><li><code>repositoryUrl</code> indicates the http(s) and ssh urls for the application specified in the ownerId.</li><li><code>username</code> is retrieved if available on the SCM system, e.g. for Bitbucket Server and Cloud.</li><li><code>provider</code> indicates the name of the SCM system.</li><li><code>baseBranch</code> indicates the name of the last selected branch.</li><li><code>enablePullRequests</code> has been deprecated in version 124.</li><li><code>remediationPullRequestsEnabled</code> indicates if the Automated Pull Requests feature is enabled.</li><li><code>enableStatusChecks</code> has been deprecated in version 124.</li><li><code>statusChecksEnabled</code> is an internal field.</li><li><code>pullRequestCommentingEnabled</code> indicates if the Pull Request Commenting feature is enabled.</li><li><code>sourceControlEvaluationsEnabled</code> indicates if the source control evaluations are enabled for the continuous risk profile feature.</li><li><code>sourceControlScanTarget</code> indicates the path inside the repository.</li><li><code>sshEnabled</code> indicates if ssh is enabled.</li><li><code>commitStatusEnabled</code> indicates if interaction with the commit statuses on the SCM system is enabled.</li></ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **manualPullRequestsEnabled** (Type: boolean):\n  - **closePrAfterDaysOpenEnabled** (Type: boolean):\n  - **pullRequestCommentingEnabled** (Type: boolean):\n  - **innerSourceAutomatedUpdatesEnabled** (Type: boolean):\n  - **provider** (Type: string):\n  - **id** (Type: string):\n  - **sshEnabled** (Type: boolean):\n  - **closePrOnFailedChecksEnabled** (Type: boolean):\n  - **nonGoldenPullRequestsEnabled** (Type: boolean):\n  - **sourceControlEvaluationsEnabled** (Type: boolean):\n  - **repositoryUrl** (Type: string):\n  - **enableStatusChecks** (Type: boolean):\n  - **token** (Type: string):\n  - **baseBranch** (Type: string):\n  - **ownerId** (Type: string):\n  - **username** (Type: string):\n  - **authenticationType** (Type: string):\n  - **closePrAfterDays** (Type: integer, int32):\n  - **enablePullRequests** (Type: boolean):\n  - **commitStatusEnabled** (Type: boolean):\n  - **githubAppId** (Type: string):\n  - **sourceControlScanTarget** (Type: string):\n  - **remediationPullRequestsEnabled** (Type: boolean):\n  - **statusChecksEnabled** (Type: boolean):\n"
+const GetSourceControl1ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains source control configuration settings for the specified ownerId.\n\n<ul><li><code>id</code> is the owner internal ID.</li><li><code>repositoryUrl</code> indicates the http(s) and ssh urls for the application specified in the ownerId.</li><li><code>username</code> is retrieved if available on the SCM system, e.g. for Bitbucket Server and Cloud.</li><li><code>provider</code> indicates the name of the SCM system.</li><li><code>baseBranch</code> indicates the name of the last selected branch.</li><li><code>enablePullRequests</code> has been deprecated in version 124.</li><li><code>remediationPullRequestsEnabled</code> indicates if the Automated Pull Requests feature is enabled.</li><li><code>enableStatusChecks</code> has been deprecated in version 124.</li><li><code>statusChecksEnabled</code> is an internal field.</li><li><code>pullRequestCommentingEnabled</code> indicates if the Pull Request Commenting feature is enabled.</li><li><code>sourceControlEvaluationsEnabled</code> indicates if the source control evaluations are enabled for the continuous risk profile feature.</li><li><code>sourceControlScanTarget</code> indicates the path inside the repository.</li><li><code>sshEnabled</code> indicates if ssh is enabled.</li><li><code>commitStatusEnabled</code> indicates if interaction with the commit statuses on the SCM system is enabled.</li></ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **closePrOnFailedChecksEnabled** (Type: boolean):\n  - **manualPullRequestsEnabled** (Type: boolean):\n  - **sshEnabled** (Type: boolean):\n  - **statusChecksEnabled** (Type: boolean):\n  - **username** (Type: string):\n  - **enablePullRequests** (Type: boolean):\n  - **provider** (Type: string):\n  - **pullRequestCommentingEnabled** (Type: boolean):\n  - **repositoryUrl** (Type: string):\n  - **baseBranch** (Type: string):\n  - **remediationPullRequestsEnabled** (Type: boolean):\n  - **nonGoldenPullRequestsEnabled** (Type: boolean):\n  - **ownerId** (Type: string):\n  - **id** (Type: string):\n  - **commitStatusEnabled** (Type: boolean):\n  - **enableStatusChecks** (Type: boolean):\n  - **sourceControlEvaluationsEnabled** (Type: boolean):\n  - **token** (Type: string):\n  - **closePrAfterDaysOpenEnabled** (Type: boolean):\n  - **githubAppId** (Type: string):\n  - **closePrAfterDays** (Type: integer, int32):\n  - **innerSourceAutomatedUpdatesEnabled** (Type: boolean):\n  - **sourceControlScanTarget** (Type: string):\n  - **authenticationType** (Type: string):\n"
 
 // NewGetSourceControl1MCPTool creates the MCP Tool instance for GetSourceControl1
 func NewGetSourceControl1MCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetSourceControl1Handler(ctx context.Context, request mcp.CallToolRequest) 
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetSourceControl1")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetSourceControl1"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

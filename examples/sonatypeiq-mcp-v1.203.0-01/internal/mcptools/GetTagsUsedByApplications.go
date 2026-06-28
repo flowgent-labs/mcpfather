@@ -13,7 +13,7 @@ import (
 const GetTagsUsedByApplicationsInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetTagsUsedByApplications tool (Status: 200, Content-Type: application/json)
-const GetTagsUsedByApplicationsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> A list of application categories or tags applied to applications. Each application category or tag consists of an id, name, description and color.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **organizationId** (Type: string):\n    - **color** (Type: string):\n    - **description** (Type: string):\n    - **id** (Type: string):\n    - **name** (Type: string):\n"
+const GetTagsUsedByApplicationsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> A list of application categories or tags applied to applications. Each application category or tag consists of an id, name, description and color.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **id** (Type: string):\n    - **name** (Type: string):\n    - **organizationId** (Type: string):\n    - **color** (Type: string):\n    - **description** (Type: string):\n"
 
 // NewGetTagsUsedByApplicationsMCPTool creates the MCP Tool instance for GetTagsUsedByApplications
 func NewGetTagsUsedByApplicationsMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetTagsUsedByApplicationsHandler(ctx context.Context, request mcp.CallToolR
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetTagsUsedByApplications")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetTagsUsedByApplications"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

@@ -13,7 +13,7 @@ import (
 const GetAll2InputSchema = "{\n  \"properties\": {\n    \"realm\": {\n      \"default\": \"Internal\",\n      \"description\": \"Enter the " + "\x60" + "realm" + "\x60" + ". Allowed values are " + "\x60" + "Internal" + "\x60" + "," + "\x60" + "OAUTH2" + "\x60" + ", and " + "\x60" + "SAML" + "\x60" + ".\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAll2 tool (Status: 200, Content-Type: application/json)
-const GetAll2ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains user details. Passwords are excluded for security.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **users** (Type: array):\n    - **Items** (Type: object):\n      - **password** (Type: string):\n      - **realm** (Type: string):\n      - **username** (Type: string):\n      - **email** (Type: string):\n      - **firstName** (Type: string):\n      - **lastName** (Type: string):\n"
+const GetAll2ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains user details. Passwords are excluded for security.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **users** (Type: array):\n    - **Items** (Type: object):\n      - **lastName** (Type: string):\n      - **password** (Type: string):\n      - **realm** (Type: string):\n      - **username** (Type: string):\n      - **email** (Type: string):\n      - **firstName** (Type: string):\n"
 
 // NewGetAll2MCPTool creates the MCP Tool instance for GetAll2
 func NewGetAll2MCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetAll2Handler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetAll2")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetAll2"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

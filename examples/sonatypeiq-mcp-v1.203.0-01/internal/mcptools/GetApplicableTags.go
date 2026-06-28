@@ -13,7 +13,7 @@ import (
 const GetApplicableTagsInputSchema = "{\n  \"properties\": {\n    \"organizationId\": {\n      \"description\": \"The organizationId assigned by IQ Server, for which you want to retrieve the applicable tags or application categories.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"organizationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetApplicableTags tool (Status: 200, Content-Type: application/json)
-const GetApplicableTagsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> A list of application categories or tags that can be applied to applications in this organization. Each application category or tag consists of an id, name, description and color. \n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationCategoriesByOwner** (Type: array):\n    - **Items** (Type: object):\n      - **applicationCategories** (Type: array):\n        - **Items** (Type: object):\n          - **description** (Type: string):\n          - **id** (Type: string):\n          - **name** (Type: string):\n          - **organizationId** (Type: string):\n          - **color** (Type: string):\n      - **ownerId** (Type: string):\n      - **ownerName** (Type: string):\n      - **ownerType** (Type: string):\n          - Enum: ['application', 'organization', 'repository_container', 'repository_manager', 'repository', 'global']\n"
+const GetApplicableTagsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> A list of application categories or tags that can be applied to applications in this organization. Each application category or tag consists of an id, name, description and color. \n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationCategoriesByOwner** (Type: array):\n    - **Items** (Type: object):\n      - **ownerId** (Type: string):\n      - **ownerName** (Type: string):\n      - **ownerType** (Type: string):\n          - Enum: ['application', 'organization', 'repository_container', 'repository_manager', 'repository', 'global']\n      - **applicationCategories** (Type: array):\n        - **Items** (Type: object):\n          - **id** (Type: string):\n          - **name** (Type: string):\n          - **organizationId** (Type: string):\n          - **color** (Type: string):\n          - **description** (Type: string):\n"
 
 // NewGetApplicableTagsMCPTool creates the MCP Tool instance for GetApplicableTags
 func NewGetApplicableTagsMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetApplicableTagsHandler(ctx context.Context, request mcp.CallToolRequest) 
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetApplicableTags")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetApplicableTags"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

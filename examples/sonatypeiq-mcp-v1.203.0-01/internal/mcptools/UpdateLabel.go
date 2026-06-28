@@ -13,7 +13,7 @@ import (
 const UpdateLabelInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Specify the new values for label name, description, color and the corresponding label id for the component label to be updated. Valid values for color are " + "\x60" + "light-red" + "\x60" + " , " + "\x60" + "light-green" + "\x60" + " , " + "\x60" + "light-blue" + "\x60" + " , " + "\x60" + "light--purple" + "\x60" + ", " + "\x60" + "dark-red" + "\x60" + " , " + "\x60" + "dark-green" + "\x60" + " ," + "\x60" + "dark-blue" + "\x60" + " , " + "\x60" + "dark-purple" + "\x60" + " ," + "\x60" + "orange" + "\x60" + " , " + "\x60" + "yellow" + "\x60" + ".\",\n      \"properties\": {\n        \"color\": {\n          \"type\": \"string\"\n        },\n        \"description\": {\n          \"type\": \"string\"\n        },\n        \"id\": {\n          \"type\": \"string\"\n        },\n        \"label\": {\n          \"type\": \"string\"\n        },\n        \"ownerId\": {\n          \"type\": \"string\"\n        },\n        \"ownerType\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"ownerId\": {\n      \"description\": \"Enter the id for the selected ownerType.\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Select the ownerType for which the label will be updated.\",\n      \"enum\": [\n        \"application\",\n        \"organization\",\n        \"repository_container\",\n        \"repository_manager\",\n        \"repository\"\n      ],\n      \"pattern\": \"application|organization|repository|repository_manager|repository_container\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ownerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the UpdateLabel tool (Status: 200, Content-Type: application/json)
-const UpdateLabelResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the label details sent in the update request.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **ownerType** (Type: string):\n  - **color** (Type: string):\n  - **description** (Type: string):\n  - **id** (Type: string):\n  - **label** (Type: string):\n  - **ownerId** (Type: string):\n"
+const UpdateLabelResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the label details sent in the update request.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **color** (Type: string):\n  - **description** (Type: string):\n  - **id** (Type: string):\n  - **label** (Type: string):\n  - **ownerId** (Type: string):\n  - **ownerType** (Type: string):\n"
 
 // NewUpdateLabelMCPTool creates the MCP Tool instance for UpdateLabel
 func NewUpdateLabelMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func UpdateLabelHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "UpdateLabel")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "UpdateLabel"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

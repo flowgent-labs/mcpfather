@@ -13,7 +13,7 @@ import (
 const GetTransitivePolicyViolationsByOwnerStageComponentInputSchema = "{\n  \"properties\": {\n    \"componentIdentifier\": {\n      \"description\": \"Enter the component identifier and the coordinates of the component for which you want to obtain the transitive violations. This is optional, not required if package URL or hash value is provided.\",\n      \"properties\": {\n        \"coordinates\": {\n          \"additionalProperties\": {\n            \"type\": \"string\"\n          },\n          \"type\": \"object\"\n        },\n        \"format\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"hash\": {\n      \"description\": \"Enter the hash value of the component. This is optional, not required if component identifier or package URL is provided.\",\n      \"type\": \"string\"\n    },\n    \"ownerId\": {\n      \"description\": \"Possible values are applicationId, organizationId\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Possible values are 'application' or 'organization'\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    },\n    \"packageUrl\": {\n      \"description\": \"Enter the package URL of the component. This is optional, not required if component identifier or hash value is provided.\",\n      \"type\": \"string\"\n    },\n    \"stageId\": {\n      \"description\": \"Possible values are 'develop', 'source', 'build', 'stage-release', 'release', and, 'operate'.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ownerId\",\n    \"ownerType\",\n    \"stageId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetTransitivePolicyViolationsByOwnerStageComponent tool (Status: 204, Content-Type: application/json)
-const GetTransitivePolicyViolationsByOwnerStageComponentResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 204\n\n**Content-Type:** application/json\n\n> The response contains all transitive violations detected for the component specified. In addition to the policy violation details like the name/id of the policy violated, threat level threat category, etc. the response also indicates if the violation is due to an 'InnerSource' component.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **displayName** (Type: string):\n  - **hash** (Type: string):\n  - **isInnerSource** (Type: boolean):\n  - **packageUrl** (Type: string):\n  - **transitivePolicyViolations** (Type: array):\n    - **Items** (Type: object):\n      - **displayName** (Type: string):\n      - **componentIdentifier** (Type: object):\n        - **format** (Type: string):\n        - **coordinates** (Type: object):\n          - **Additional Properties**:\n            - **property value** (Type: string):\n      - **policyId** (Type: string):\n      - **policyViolationId** (Type: string):\n      - **threatCategory** (Type: string):\n      - **threatLevel** (Type: integer, int32):\n      - **action** (Type: string):\n      - **policyName** (Type: string):\n      - **hash** (Type: string):\n      - **packageUrl** (Type: string):\n  - **[cyclic reference]**\n"
+const GetTransitivePolicyViolationsByOwnerStageComponentResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 204\n\n**Content-Type:** application/json\n\n> The response contains all transitive violations detected for the component specified. In addition to the policy violation details like the name/id of the policy violated, threat level threat category, etc. the response also indicates if the violation is due to an 'InnerSource' component.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **componentIdentifier** (Type: object):\n    - **coordinates** (Type: object):\n      - **Additional Properties**:\n        - **property value** (Type: string):\n    - **format** (Type: string):\n  - **displayName** (Type: string):\n  - **hash** (Type: string):\n  - **isInnerSource** (Type: boolean):\n  - **packageUrl** (Type: string):\n  - **transitivePolicyViolations** (Type: array):\n    - **Items** (Type: object):\n      - **threatCategory** (Type: string):\n      - **[cyclic reference]**\n      - **displayName** (Type: string):\n      - **packageUrl** (Type: string):\n      - **policyId** (Type: string):\n      - **policyName** (Type: string):\n      - **policyViolationId** (Type: string):\n      - **threatLevel** (Type: integer, int32):\n      - **action** (Type: string):\n      - **hash** (Type: string):\n"
 
 // NewGetTransitivePolicyViolationsByOwnerStageComponentMCPTool creates the MCP Tool instance for GetTransitivePolicyViolationsByOwnerStageComponent
 func NewGetTransitivePolicyViolationsByOwnerStageComponentMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetTransitivePolicyViolationsByOwnerStageComponentHandler(ctx context.Conte
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetTransitivePolicyViolationsByOwnerStageComponent")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetTransitivePolicyViolationsByOwnerStageComponent"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

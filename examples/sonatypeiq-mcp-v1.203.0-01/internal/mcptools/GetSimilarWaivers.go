@@ -13,7 +13,7 @@ import (
 const GetSimilarWaiversInputSchema = "{\n  \"properties\": {\n    \"violationId\": {\n      \"description\": \"Policy violation id to find similar waivers for.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"violationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetSimilarWaivers tool (Status: 200, Content-Type: application/json)
-const GetSimilarWaiversResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved similar policy waivers for the given policy violation id.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **scopeOwnerName** (Type: string):\n    - **scopeOwnerId** (Type: string):\n    - **forContainerImage** (Type: boolean):\n    - **componentIdentifier** (Type: object):\n      - **coordinates** (Type: object):\n        - **Additional Properties**:\n          - **property value** (Type: string):\n      - **format** (Type: string):\n    - **hash** (Type: string):\n    - **matcherStrategy** (Type: string):\n        - Enum: ['DEFAULT', 'EXACT_COMPONENT', 'ALL_COMPONENTS', 'ALL_VERSIONS']\n    - **expiryTime** (Type: string, date-time):\n    - **componentName** (Type: string):\n    - **expireWhenRemediationAvailable** (Type: boolean):\n    - **creatorId** (Type: string):\n    - **displayName** (Type: object):\n      - **name** (Type: string):\n      - **parts** (Type: array):\n        - **Items** (Type: object):\n          - **field** (Type: string):\n          - **value** (Type: string):\n    - **associatedPackageUrl** (Type: string):\n    - **componentUpgradeAvailable** (Type: boolean):\n    - **isObsolete** (Type: boolean):\n    - **policyId** (Type: string):\n    - **policyWaiverId** (Type: string):\n    - **constraintFactsJson** (Type: string):\n    - **policyWaiverReasonId** (Type: string):\n    - **policyName** (Type: string):\n    - **createTime** (Type: string, date-time):\n    - **scopeOwnerType** (Type: string):\n    - **constraintFacts** (Type: array):\n      - **Items** (Type: object):\n        - **conditionFacts** (Type: array):\n          - **Items** (Type: object):\n            - **reason** (Type: string):\n            - **reference** (Type: object):\n              - **value** (Type: string):\n              - **type** (Type: string):\n                  - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n            - **summary** (Type: string):\n            - **triggerJson** (Type: string):\n            - **conditionIndex** (Type: integer, int32):\n            - **conditionTypeId** (Type: string):\n        - **constraintId** (Type: string):\n        - **constraintName** (Type: string):\n        - **operatorName** (Type: string):\n    - **forContainerImageComponent** (Type: boolean):\n    - **policyViolationId** (Type: string):\n    - **comment** (Type: string):\n    - **reasonText** (Type: string):\n    - **threatLevel** (Type: integer, int32):\n    - **creatorName** (Type: string):\n    - **vulnerabilityId** (Type: string):\n"
+const GetSimilarWaiversResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved similar policy waivers for the given policy violation id.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **expiryTime** (Type: string, date-time):\n    - **policyId** (Type: string):\n    - **componentUpgradeAvailable** (Type: boolean):\n    - **forContainerImageComponent** (Type: boolean):\n    - **associatedPackageUrl** (Type: string):\n    - **componentName** (Type: string):\n    - **reasonText** (Type: string):\n    - **scopeOwnerType** (Type: string):\n    - **createTime** (Type: string, date-time):\n    - **scopeOwnerName** (Type: string):\n    - **threatLevel** (Type: integer, int32):\n    - **expireWhenRemediationAvailable** (Type: boolean):\n    - **hash** (Type: string):\n    - **forContainerImage** (Type: boolean):\n    - **scopeOwnerId** (Type: string):\n    - **creatorId** (Type: string):\n    - **isObsolete** (Type: boolean):\n    - **policyViolationId** (Type: string):\n    - **matcherStrategy** (Type: string):\n        - Enum: ['DEFAULT', 'EXACT_COMPONENT', 'ALL_COMPONENTS', 'ALL_VERSIONS']\n    - **policyName** (Type: string):\n    - **componentIdentifier** (Type: object):\n      - **coordinates** (Type: object):\n        - **Additional Properties**:\n          - **property value** (Type: string):\n      - **format** (Type: string):\n    - **constraintFacts** (Type: array):\n      - **Items** (Type: object):\n        - **constraintId** (Type: string):\n        - **constraintName** (Type: string):\n        - **operatorName** (Type: string):\n        - **conditionFacts** (Type: array):\n          - **Items** (Type: object):\n            - **summary** (Type: string):\n            - **triggerJson** (Type: string):\n            - **conditionIndex** (Type: integer, int32):\n            - **conditionTypeId** (Type: string):\n            - **reason** (Type: string):\n            - **reference** (Type: object):\n              - **value** (Type: string):\n              - **type** (Type: string):\n                  - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n    - **comment** (Type: string):\n    - **policyWaiverId** (Type: string):\n    - **policyWaiverReasonId** (Type: string):\n    - **constraintFactsJson** (Type: string):\n    - **creatorName** (Type: string):\n    - **displayName** (Type: object):\n      - **name** (Type: string):\n      - **parts** (Type: array):\n        - **Items** (Type: object):\n          - **value** (Type: string):\n          - **field** (Type: string):\n    - **vulnerabilityId** (Type: string):\n"
 
 // NewGetSimilarWaiversMCPTool creates the MCP Tool instance for GetSimilarWaivers
 func NewGetSimilarWaiversMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetSimilarWaiversHandler(ctx context.Context, request mcp.CallToolRequest) 
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetSimilarWaivers")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetSimilarWaivers"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

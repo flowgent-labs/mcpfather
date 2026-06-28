@@ -4,49 +4,37 @@ import "context"
 
 // StepConfig defines a single step in an aggregated tool pipeline.
 type StepConfig struct {
-	Name      string           `yaml:"name"`
-	Type      string           `yaml:"type"` // call, map, transform, merge, return
-	Call      *CallConfig      `yaml:"call,omitempty"`
-	Map       *MapConfig       `yaml:"map,omitempty"`
-	Transform *TransformConfig `yaml:"transform,omitempty"`
-	Merge     *MergeConfig     `yaml:"merge,omitempty"`
-	Return    *ReturnConfig    `yaml:"return,omitempty"`
-	Output    string           `yaml:"output,omitempty"`
+	ID      string         `yaml:"id"`
+	Kind    string         `yaml:"kind"` // call, jq, foreach, return, emit
+	Spec    StepSpec       `yaml:"spec"`
+	Require *RequireConfig `yaml:"require,omitempty"`
 }
 
-// CallConfig invokes a native MCP tool.
-type CallConfig struct {
-	Tool string                 `yaml:"tool"`
-	Args map[string]interface{} `yaml:"args"`
+// StepSpec holds the type-specific configuration for a step.
+// Fields are disjoint across kinds — YAML only populates what's present.
+type StepSpec struct {
+	// call
+	Tool  string                 `yaml:"tool,omitempty"`
+	Parse string                 `yaml:"parse,omitempty"` // "json" to parse response, empty for raw
+	Args  map[string]interface{} `yaml:"args,omitempty"`
+
+	// jq, return, emit (shared)
+	From string                 `yaml:"from,omitempty"`
+	Vars map[string]interface{} `yaml:"vars,omitempty"`
+	Expr string                 `yaml:"expr,omitempty"`
+
+	// foreach
+	In            string       `yaml:"in,omitempty"`
+	As            string       `yaml:"as,omitempty"`
+	Concurrency   interface{}  `yaml:"concurrency,omitempty"` // number or $ref
+	PreserveOrder bool         `yaml:"preserveOrder,omitempty"`
+	Pipeline      []StepConfig `yaml:"pipeline,omitempty"`
 }
 
-// MapConfig iterates over a source list and executes a sub-pipeline per item.
-type MapConfig struct {
-	Source   string       `yaml:"source"`
-	Pipeline []StepConfig `yaml:"pipeline"`
-}
-
-// TransformConfig applies declarative data transformations.
-type TransformConfig struct {
-	Source  string                 `yaml:"source"`
-	Project []string               `yaml:"project,omitempty"`
-	Remove  []string               `yaml:"remove,omitempty"`
-	Rename  map[string]string      `yaml:"rename,omitempty"`
-	Copy    map[string]string      `yaml:"copy,omitempty"`
-	Move    map[string]string      `yaml:"move,omitempty"`
-	Flatten []string               `yaml:"flatten,omitempty"`
-	Default map[string]interface{} `yaml:"default,omitempty"`
-}
-
-// MergeConfig merges data from one path into another.
-type MergeConfig struct {
-	From string `yaml:"from"`
-	To   string `yaml:"to"`
-}
-
-// ReturnConfig returns a value as the final tool result.
-type ReturnConfig struct {
-	Source string `yaml:"source"`
+// RequireConfig defines post-execution validation on a step's result.
+type RequireConfig struct {
+	NonEmpty bool   `yaml:"nonEmpty"`
+	Message  string `yaml:"message"`
 }
 
 // StepContext provides variable resolution and output storage during pipeline execution.
@@ -55,7 +43,7 @@ type StepContext interface {
 	ResolvePath(path string) (interface{}, error)
 	ResolveMap(m map[string]interface{}) (map[string]interface{}, error)
 	SetOutput(name string, value interface{})
-	WithItem(item interface{}) StepContext
+	WithItem(item interface{}, asName string) StepContext
 }
 
 // StepExecutor executes a single pipeline step within a context.
@@ -85,5 +73,6 @@ type AggregatedToolEntry struct {
 	Name        string
 	Description string
 	InputSchema map[string]interface{}
+	Annotations map[string]interface{}
 	Handler     func(ctx context.Context, args map[string]interface{}) (*CallToolResult, error)
 }

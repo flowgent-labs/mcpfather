@@ -20,10 +20,9 @@ func (m *mockRegistry) CallTool(ctx context.Context, name string, args map[strin
 
 func TestEngine_BuildTools(t *testing.T) {
 	cfg := &config.Config{
-		AggregatedTools: []config.AggregatedToolConfig{
+		AggregateTools: []config.AggregatedToolConfig{
 			{
 				Name:        "my_agg_tool",
-				Version:     "1.0",
 				Description: "Test aggregated tool",
 				InputSchema: map[string]interface{}{
 					"type": "object",
@@ -33,20 +32,17 @@ func TestEngine_BuildTools(t *testing.T) {
 				},
 				Pipeline: []pipeline.StepConfig{
 					{
-						Name: "fetch",
-						Type: "call",
-						Call: &pipeline.CallConfig{
+						ID:   "fetch",
+						Kind: "call",
+						Spec: pipeline.StepSpec{
 							Tool: "native_tool",
-							Args: map[string]interface{}{"id": "{{ input.id }}"},
+							Args: map[string]interface{}{"id": "$input.id"},
 						},
-						Output: "data",
 					},
 					{
-						Name: "done",
-						Type: "return",
-						Return: &pipeline.ReturnConfig{
-							Source: "data.output",
-						},
+						ID:   "done",
+						Kind: "return",
+						Spec: pipeline.StepSpec{From: "$fetch"},
 					},
 				},
 			},
@@ -80,7 +76,6 @@ func TestEngine_BuildTools(t *testing.T) {
 		t.Fatal("handler is nil")
 	}
 
-	// Execute the handler
 	result, err := entry.Handler(context.Background(), map[string]interface{}{"id": "123"})
 	if err != nil {
 		t.Fatalf("handler failed: %v", err)

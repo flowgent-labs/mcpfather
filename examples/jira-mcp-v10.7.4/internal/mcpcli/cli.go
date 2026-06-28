@@ -12,7 +12,55 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	mcputils "jira-mcp-v10.7.4/internal/helpers"
 	mcptools "jira-mcp-v10.7.4/internal/mcptools"
+
+	"jira-mcp-v10.7.4/internal/mcpaggregator/engine"
+	"jira-mcp-v10.7.4/internal/mcpaggregator/pipeline"
 )
+
+// aggregateRegistry adapts native MCP tools for the aggregate tool engine.
+type aggregateRegistry struct{}
+
+func (r *aggregateRegistry) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
+	entry, ok := mcptools.Registry[name]
+	if !ok {
+		return nil, fmt.Errorf("tool not found: %s", name)
+	}
+	request := mcp.CallToolRequest{
+		Params: mcp.CallToolParams{
+			Name:      name,
+			Arguments: args,
+		},
+	}
+	result, err := entry.Handler(ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	out := &pipeline.CallToolResult{IsError: result.IsError}
+	for _, c := range result.Content {
+		if tc, ok := c.(mcp.TextContent); ok {
+			out.Content = append(out.Content, pipeline.ContentItem{Type: "text", Text: tc.Text})
+		}
+	}
+	return out, nil
+}
+
+// loadAggregateTools loads aggregate tools from config and returns a name→entry map.
+func loadAggregateTools() map[string]pipeline.AggregatedToolEntry {
+	cfgPath := mcputils.AggregatedConfigPath("jira-mcp-v10.7.4")
+	aggEngine, err := engine.New(cfgPath, &aggregateRegistry{})
+	if err != nil {
+		return nil
+	}
+	entries, err := aggEngine.Tools()
+	if err != nil {
+		return nil
+	}
+	m := make(map[string]pipeline.AggregatedToolEntry, len(entries))
+	for _, e := range entries {
+		m[e.Name] = e
+	}
+	return m
+}
 
 // ListTools prints all available tools as subcommands with one-line descriptions.
 // Respects the config.yaml tools.enabled filter if present.
@@ -25,28 +73,50 @@ func ListTools() {
 		}
 	}
 
-	names := make([]string, 0, len(mcptools.Registry))
+	type toolInfo struct {
+		name string
+		desc string
+	}
+	var allTools []toolInfo
+
 	for name := range mcptools.Registry {
 		if len(enabled) == 0 || enabled[name] {
-			names = append(names, name)
+			allTools = append(allTools, toolInfo{name: name, desc: mcptools.Registry[name].Tool.Description})
 		}
 	}
-	sort.Strings(names)
 
-	fmt.Printf("Available subcommands (%d):\n", len(names))
-	for _, name := range names {
-		entry := mcptools.Registry[name]
-		fmt.Printf("  %-35s %s\n", name, shortDesc(entry.Tool.Description))
+	aggTools := loadAggregateTools()
+	for name, entry := range aggTools {
+		if len(enabled) == 0 || enabled[name] {
+			allTools = append(allTools, toolInfo{name: name, desc: entry.Description})
+		}
+	}
+
+	sort.Slice(allTools, func(i, j int) bool {
+		return allTools[i].name < allTools[j].name
+	})
+
+	fmt.Printf("Available subcommands (%d):\n", len(allTools))
+	for _, t := range allTools {
+		fmt.Printf("  %-35s %s\n", t.name, shortDesc(t.desc))
 	}
 }
 
-// Call invokes a tool by name with GNU-style --flag arguments, forwarding as an HTTP request upstream.
+// Call invokes a tool by name with GNU-style --flag arguments.
 func Call(binName, toolName string, args []string) error {
-	entry, ok := mcptools.Registry[toolName]
-	if !ok {
-		return fmt.Errorf("unknown tool %q — use -t cli list to see available tools", toolName)
+	// Try native tool first
+	if entry, ok := mcptools.Registry[toolName]; ok {
+		return callNative(binName, toolName, args, entry)
 	}
+	// Try aggregate tool
+	aggTools := loadAggregateTools()
+	if entry, ok := aggTools[toolName]; ok {
+		return callAggregate(binName, toolName, args, entry)
+	}
+	return fmt.Errorf("unknown tool %q — use -t cli list to see available tools", toolName)
+}
 
+func callNative(binName, toolName string, args []string, entry mcptools.ToolEntry) error {
 	cfg, _ := mcputils.LoadConfig("jira-mcp-v10.7.4")
 	if cfg != nil && len(cfg.Tools.Include) > 0 {
 		found := false
@@ -61,7 +131,6 @@ func Call(binName, toolName string, args []string) error {
 		}
 	}
 
-	// Check for --help / -h
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
 			printToolHelp(binName, toolName, entry)
@@ -113,6 +182,123 @@ func Call(binName, toolName string, args []string) error {
 	return nil
 }
 
+func callAggregate(binName, toolName string, args []string, entry pipeline.AggregatedToolEntry) error {
+	for _, arg := range args {
+		if arg == "--help" || arg == "-h" {
+			schema := entry.InputSchema
+			props, _ := schema["properties"].(map[string]interface{})
+			var required []string
+			if req, ok := schema["required"].([]interface{}); ok {
+				for _, r := range req {
+					if rs, ok := r.(string); ok {
+						required = append(required, rs)
+					}
+				}
+			}
+			printToolHelpFromSchema(binName, toolName, entry.Description, props, required)
+			return nil
+		}
+	}
+
+	mcpArgs, err := parseGNUArgs(args)
+	if err != nil {
+		return err
+	}
+
+	result, err := entry.Handler(context.Background(), mcpArgs)
+	if err != nil {
+		return fmt.Errorf("tool %s failed: %w", toolName, err)
+	}
+
+	if result == nil {
+		fmt.Println("(no result)")
+		return nil
+	}
+
+	if result.IsError {
+		for _, content := range result.Content {
+			fmt.Fprintln(os.Stderr, content.Text)
+		}
+		return nil
+	}
+
+	for _, content := range result.Content {
+		fmt.Print(content.Text)
+	}
+
+	return nil
+}
+
+// printToolHelpFromSchema prints GNU-style usage for a tool given its schema directly.
+func printToolHelpFromSchema(binName, toolName, description string, props map[string]interface{}, required []string) {
+	fmt.Printf("Usage: %s -t cli %s [OPTIONS]\n\n", binName, toolName)
+	if description != "" {
+		fmt.Println(plainText(description))
+		fmt.Println()
+	}
+
+	if len(props) == 0 {
+		fmt.Println("No options.")
+		return
+	}
+
+	requiredMap := make(map[string]bool)
+	for _, r := range required {
+		requiredMap[r] = true
+	}
+
+	fmt.Println("Options:")
+	names := make([]string, 0, len(props))
+	for name := range props {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	colWidth := 0
+	for _, name := range names {
+		w := len(name) + 3 // "--" + name
+		if !isBoolProp(props[name]) {
+			w += 4 // " <type>"
+		}
+		if requiredMap[name] {
+			w += 11 // " (required)"
+		}
+		if w > colWidth {
+			colWidth = w
+		}
+	}
+	if colWidth > 40 {
+		colWidth = 40
+	}
+
+	for _, name := range names {
+		prop, _ := props[name].(map[string]interface{})
+		origDesc, _ := prop["description"].(string)
+		desc := firstLine(plainText(origDesc))
+		propType, _ := prop["type"].(string)
+
+		s := fmt.Sprintf("  --%s", name)
+		if !isBoolProp(props[name]) {
+			if propType != "" {
+				s += fmt.Sprintf(" <%s>", propType)
+			} else {
+				s += " <value>"
+			}
+		}
+		if requiredMap[name] {
+			s += " (required)"
+		}
+		fmt.Print(s)
+		if desc != "" {
+			if len(s) < colWidth {
+				fmt.Print(strings.Repeat(" ", colWidth-len(s)))
+			}
+			fmt.Print("  ", desc)
+		}
+		fmt.Println()
+	}
+}
+
 // parseGNUArgs parses GNU-style --flag value and --flag=value arguments.
 func parseGNUArgs(args []string) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
@@ -161,82 +347,25 @@ func parseValue(raw string) interface{} {
 	return raw
 }
 
-// printToolHelp prints GNU-style usage for a single tool.
+// printToolHelp prints GNU-style usage for a single native tool.
 func printToolHelp(binName, toolName string, entry mcptools.ToolEntry) {
 	t := entry.Tool
-
-	fmt.Printf("Usage: %s -t cli %s [OPTIONS]\n\n", binName, toolName)
-	if t.Description != "" {
-		fmt.Println(plainText(t.Description))
-		fmt.Println()
-	}
 
 	var schema struct {
 		Properties map[string]interface{} `json:"properties"`
 		Required   []string               `json:"required"`
 	}
 	if err := json.Unmarshal(t.RawInputSchema, &schema); err != nil || len(schema.Properties) == 0 {
+		fmt.Printf("Usage: %s -t cli %s [OPTIONS]\n\n", binName, toolName)
+		if t.Description != "" {
+			fmt.Println(plainText(t.Description))
+			fmt.Println()
+		}
 		fmt.Println("No options.")
 		return
 	}
 
-	required := make(map[string]bool)
-	for _, r := range schema.Required {
-		required[r] = true
-	}
-
-	props := schema.Properties
-
-	fmt.Println("Options:")
-	names := make([]string, 0, len(props))
-	for name := range props {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-
-	colWidth := 0
-	for _, name := range names {
-		w := len(name) + 3 // "--" + name
-		if !isBoolProp(props[name]) {
-			w += 4 // " <type>"
-		}
-		if required[name] {
-			w += 11 // " (required)"
-		}
-		if w > colWidth {
-			colWidth = w
-		}
-	}
-	if colWidth > 40 {
-		colWidth = 40
-	}
-
-	for _, name := range names {
-		prop, _ := props[name].(map[string]interface{})
-		origDesc, _ := prop["description"].(string)
-		desc := firstLine(plainText(origDesc))
-		propType, _ := prop["type"].(string)
-
-		s := fmt.Sprintf("  --%s", name)
-		if !isBoolProp(props[name]) {
-			if propType != "" {
-				s += fmt.Sprintf(" <%s>", propType)
-			} else {
-				s += " <value>"
-			}
-		}
-		if required[name] {
-			s += " (required)"
-		}
-		fmt.Print(s)
-		if desc != "" {
-			if len(s) < colWidth {
-				fmt.Print(strings.Repeat(" ", colWidth-len(s)))
-			}
-			fmt.Print("  ", desc)
-		}
-		fmt.Println()
-	}
+	printToolHelpFromSchema(binName, toolName, t.Description, schema.Properties, schema.Required)
 }
 
 func isBoolProp(prop interface{}) bool {

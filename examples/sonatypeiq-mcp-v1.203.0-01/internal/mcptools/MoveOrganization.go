@@ -13,10 +13,10 @@ import (
 const MoveOrganizationInputSchema = "{\n  \"properties\": {\n    \"destinationId\": {\n      \"description\": \"Enter the id for the new parent organization.\",\n      \"type\": \"string\"\n    },\n    \"failEarlyOnError\": {\n      \"default\": false,\n      \"type\": \"boolean\"\n    },\n    \"organizationId\": {\n      \"description\": \"Enter the id for the organization to be moved under the new parent.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"destinationId\",\n    \"organizationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the MoveOrganization tool (Status: 200, Content-Type: application/json)
-const MoveOrganizationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The organization has been successfully moved under the parent organization id provided.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **errors** (Type: array):\n    - **Items** (Type: object):\n      - **type** (Type: string):\n          - Enum: ['TAG', 'POLICY', 'LICENSE_THREAT_GROUP', 'LABEL', 'PARENT_HIERARCHY']\n      - **message** (Type: string):\n  - **warnings** (Type: array):\n    - **Items** (Type: object):\n      - **message** (Type: string):\n      - **type** (Type: string):\n          - Enum: ['LICENSE_OVERRIDE', 'POLICY_MONITORING', 'POLICY_WAIVER']\n"
+const MoveOrganizationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The organization has been successfully moved under the parent organization id provided.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **errors** (Type: array):\n    - **Items** (Type: object):\n      - **message** (Type: string):\n      - **type** (Type: string):\n          - Enum: ['TAG', 'POLICY', 'LICENSE_THREAT_GROUP', 'LABEL', 'PARENT_HIERARCHY']\n  - **warnings** (Type: array):\n    - **Items** (Type: object):\n      - **message** (Type: string):\n      - **type** (Type: string):\n          - Enum: ['LICENSE_OVERRIDE', 'POLICY_MONITORING', 'POLICY_WAIVER']\n"
 
 // Response Template for the MoveOrganization tool (Status: 409, Content-Type: application/json)
-const MoveOrganizationResponseTemplate_B = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 409\n\n**Content-Type:** application/json\n\n> Encountered conflicts while inheriting policy elements of the new parent organization. The organization could not be moved under the new parent organization id provided.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **errors** (Type: array):\n    - **Items** (Type: object):\n      - **type** (Type: string):\n          - Enum: ['TAG', 'POLICY', 'LICENSE_THREAT_GROUP', 'LABEL', 'PARENT_HIERARCHY']\n      - **message** (Type: string):\n  - **warnings** (Type: array):\n    - **Items** (Type: object):\n      - **type** (Type: string):\n          - Enum: ['LICENSE_OVERRIDE', 'POLICY_MONITORING', 'POLICY_WAIVER']\n      - **message** (Type: string):\n"
+const MoveOrganizationResponseTemplate_B = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 409\n\n**Content-Type:** application/json\n\n> Encountered conflicts while inheriting policy elements of the new parent organization. The organization could not be moved under the new parent organization id provided.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **errors** (Type: array):\n    - **Items** (Type: object):\n      - **message** (Type: string):\n      - **type** (Type: string):\n          - Enum: ['TAG', 'POLICY', 'LICENSE_THREAT_GROUP', 'LABEL', 'PARENT_HIERARCHY']\n  - **warnings** (Type: array):\n    - **Items** (Type: object):\n      - **message** (Type: string):\n      - **type** (Type: string):\n          - Enum: ['LICENSE_OVERRIDE', 'POLICY_MONITORING', 'POLICY_WAIVER']\n"
 
 // NewMoveOrganizationMCPTool creates the MCP Tool instance for MoveOrganization
 func NewMoveOrganizationMCPTool() mcp.Tool {
@@ -44,22 +44,27 @@ func MoveOrganizationHandler(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "MoveOrganization")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "MoveOrganization"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

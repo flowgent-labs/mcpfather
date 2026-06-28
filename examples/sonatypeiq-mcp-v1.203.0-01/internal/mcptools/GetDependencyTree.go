@@ -13,7 +13,7 @@ import (
 const GetDependencyTreeInputSchema = "{\n  \"properties\": {\n    \"applicationPublicId\": {\n      \"description\": \"Enter the applicationPublicId created at the time of creating the application.\",\n      \"type\": \"string\"\n    },\n    \"scanId\": {\n      \"description\": \" Enter the reportId (scanId) created at the time of evaluating the application.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"applicationPublicId\",\n    \"scanId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetDependencyTree tool (Status: 200, Content-Type: application/json)
-const GetDependencyTreeResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response fields contain the 'Dependency Tree' data  under the 'children' section. The 'children' section may contain more tree nodes. Every direct dependency can have zero or more transitive dependencies. Each tree node contains the packageUrl, component identifier and a dependency tree node (if it exists.) The component identifier section contains the format and coordinates for the component.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **dependencyTree** (Type: object):\n    - **packageUrl** (Type: string):\n    - **children** (Type: array):\n      - **[cyclic reference]**\n    - **componentIdentifier** (Type: object):\n      - **coordinates** (Type: object):\n        - **Additional Properties**:\n          - **property value** (Type: string):\n      - **format** (Type: string):\n    - **direct** (Type: boolean):\n"
+const GetDependencyTreeResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response fields contain the 'Dependency Tree' data  under the 'children' section. The 'children' section may contain more tree nodes. Every direct dependency can have zero or more transitive dependencies. Each tree node contains the packageUrl, component identifier and a dependency tree node (if it exists.) The component identifier section contains the format and coordinates for the component.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **dependencyTree** (Type: object):\n    - **children** (Type: array):\n      - **[cyclic reference]**\n    - **componentIdentifier** (Type: object):\n      - **coordinates** (Type: object):\n        - **Additional Properties**:\n          - **property value** (Type: string):\n      - **format** (Type: string):\n    - **direct** (Type: boolean):\n    - **packageUrl** (Type: string):\n"
 
 // NewGetDependencyTreeMCPTool creates the MCP Tool instance for GetDependencyTree
 func NewGetDependencyTreeMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetDependencyTreeHandler(ctx context.Context, request mcp.CallToolRequest) 
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetDependencyTree")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetDependencyTree"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

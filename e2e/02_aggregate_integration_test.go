@@ -16,9 +16,7 @@ import (
 
 	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/config"
 	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/engine"
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/node"
 	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/pipeline"
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/runtime"
 )
 
 // ===========================================================================
@@ -27,7 +25,7 @@ import (
 
 type scenarioRunner struct {
 	registry *callRecorder
-	executor *runtime.Executor
+	executor *engine.Executor
 }
 
 type callRecorder struct {
@@ -89,7 +87,7 @@ func newScenarioRunner(results map[string]string) *scenarioRunner {
 	}
 	return &scenarioRunner{
 		registry: r,
-		executor: runtime.NewExecutor(r),
+		executor: engine.NewExecutor(r),
 	}
 }
 
@@ -116,7 +114,7 @@ func mustJSON(t *testing.T, s string) map[string]interface{} {
 	t.Helper()
 	var v map[string]interface{}
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		t.Fatalf("invalid JSON: %v", err)
+		t.Fatalf("invalid JSON: %v\n%s", err, s)
 	}
 	return v
 }
@@ -125,7 +123,7 @@ func mustJSONArray(t *testing.T, s string) []interface{} {
 	t.Helper()
 	var v []interface{}
 	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		t.Fatalf("invalid JSON array: %v", err)
+		t.Fatalf("invalid JSON array: %v\n%s", err, s)
 	}
 	return v
 }
@@ -149,16 +147,15 @@ func resultJSONArray(t *testing.T, r *pipeline.CallToolResult) []interface{} {
 }
 
 // ===========================================================================
-// SECTION 1-9: In-process pipeline engine scenario tests (30 tests)
+// SECTION 1-9: In-process pipeline engine scenario tests
 // ===========================================================================
 
 func TestScenario_ConfigLoad_ValidAggregatedTools(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := `
-aggregatedTools:
+aggregateTools:
   - name: enrich_report
-    version: "1.0"
     description: Enrich a report with extra data
     inputSchema:
       type: object
@@ -166,56 +163,49 @@ aggregatedTools:
         reportId:
           type: string
     pipeline:
-      - name: fetch_report
-        type: call
-        call:
+      - id: fetch_report
+        kind: call
+        spec:
           tool: getReport
           args:
-            id: "{{ input.reportId }}"
-        output: report
-      - name: fetch_metadata
-        type: call
-        call:
+            id: $input.reportId
+      - id: fetch_metadata
+        kind: call
+        spec:
           tool: getMetadata
           args:
-            id: "{{ input.reportId }}"
-        output: meta
-      - name: merge_data
-        type: merge
-        merge:
-          from: "meta.output"
-          to: "report.output.metadata"
-      - name: clean
-        type: transform
-        transform:
-          source: "report.output"
-          remove:
-            - internalId
-            - debugInfo
-          default:
-            status: "unknown"
-        output: cleaned
-      - name: done
-        type: return
-        return:
-          source: "cleaned.output"
+            id: $input.reportId
+      - id: enrich
+        kind: jq
+        spec:
+          from: $fetch_report
+          vars:
+            meta: $fetch_metadata
+          expr: '. + {metadata: $meta}'
+      - id: clean
+        kind: jq
+        spec:
+          from: $enrich
+          expr: 'del(.internalId, .debugInfo) | . + {status: "unknown"}'
+      - id: done
+        kind: return
+        spec:
+          from: $clean
   - name: health_summary
-    version: "1.0"
     description: Get health summary
     inputSchema:
       type: object
       properties: {}
     pipeline:
-      - name: check
-        type: call
-        call:
+      - id: check
+        kind: call
+        spec:
           tool: healthCheck
           args: {}
-        output: status
-      - name: done
-        type: return
-        return:
-          source: "status.output"
+      - id: done
+        kind: return
+        spec:
+          from: $check
 `
 	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		t.Fatal(err)
@@ -224,17 +214,17 @@ aggregatedTools:
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
-	if len(cfg.AggregatedTools) != 2 {
-		t.Fatalf("expected 2 aggregated tools, got %d", len(cfg.AggregatedTools))
+	if len(cfg.AggregateTools) != 2 {
+		t.Fatalf("expected 2 aggregated tools, got %d", len(cfg.AggregateTools))
 	}
-	t1 := cfg.AggregatedTools[0]
+	t1 := cfg.AggregateTools[0]
 	if t1.Name != "enrich_report" {
 		t.Errorf("tool name = %q, want enrich_report", t1.Name)
 	}
 	if len(t1.Pipeline) != 5 {
 		t.Errorf("expected 5 pipeline steps, got %d", len(t1.Pipeline))
 	}
-	t2 := cfg.AggregatedTools[1]
+	t2 := cfg.AggregateTools[1]
 	if t2.Name != "health_summary" {
 		t.Errorf("tool name = %q, want health_summary", t2.Name)
 	}
@@ -243,61 +233,43 @@ aggregatedTools:
 	}
 }
 
-func TestScenario_Validate_DuplicateStepNames(t *testing.T) {
+func TestScenario_Validate_DuplicateStepIDs(t *testing.T) {
 	steps := []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "t1"}},
-		{Name: "transform", Type: "transform", Transform: &pipeline.TransformConfig{Source: "fetch.output"}},
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "t2"}},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "fetch.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "t1", Args: map[string]interface{}{}}},
+		{ID: "transform", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: "."}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "t2", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}
 	if err := pipeline.Validate(steps); err == nil {
-		t.Fatal("expected validation error for duplicate step names")
+		t.Fatal("expected validation error for duplicate step ids")
 	} else if !strings.Contains(err.Error(), "duplicate") {
 		t.Errorf("error should mention 'duplicate', got: %v", err)
 	}
 }
 
-func TestScenario_Validate_UnknownStepType(t *testing.T) {
+func TestScenario_Validate_UnknownStepKind(t *testing.T) {
 	steps := []pipeline.StepConfig{
-		{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: "t1"}},
-		{Name: "step2", Type: "filter"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "step1.output"}},
+		{ID: "step1", Kind: "call", Spec: pipeline.StepSpec{Tool: "t1", Args: map[string]interface{}{}}},
+		{ID: "step2", Kind: "filter"},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$step1"}},
 	}
 	if err := pipeline.Validate(steps); err == nil {
-		t.Fatal("expected validation error for unknown step type")
+		t.Fatal("expected validation error for unknown step kind")
 	}
 }
 
 func TestScenario_Validate_MissingRequiredFields(t *testing.T) {
 	steps := []pipeline.StepConfig{
-		{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: ""}},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "step1.output"}},
+		{ID: "step1", Kind: "call", Spec: pipeline.StepSpec{Tool: "", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$step1"}},
 	}
 	if err := pipeline.Validate(steps); err == nil {
 		t.Fatal("expected validation error for call with empty tool")
 	}
-	steps2 := []pipeline.StepConfig{
-		{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: "t"}},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: ""}},
-	}
-	if err := pipeline.Validate(steps2); err == nil {
-		t.Fatal("expected validation error for return with empty source")
-	}
-}
-
-func TestScenario_Validate_DuplicateOutputNames(t *testing.T) {
-	steps := []pipeline.StepConfig{
-		{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: "t1"}, Output: "data"},
-		{Name: "step2", Type: "call", Call: &pipeline.CallConfig{Tool: "t2"}, Output: "data"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "data.output"}},
-	}
-	if err := pipeline.Validate(steps); err == nil {
-		t.Fatal("expected validation error for duplicate output names")
-	}
 }
 
 func TestScenario_Context_ResolveNestedInputPaths(t *testing.T) {
-	ctx := runtime.NewContext(map[string]interface{}{
+	ctx := engine.NewContext(map[string]interface{}{
 		"user": map[string]interface{}{
 			"profile": map[string]interface{}{"email": "alice@example.com", "memberId": 12345},
 		},
@@ -307,12 +279,12 @@ func TestScenario_Context_ResolveNestedInputPaths(t *testing.T) {
 		path     string
 		expected interface{}
 	}{
-		{"input.user.profile.email", "alice@example.com"},
-		{"input.user.profile.memberId", 12345},
-		{"input.filters", []interface{}{"active", "verified"}},
+		{"$input.user.profile.email", "alice@example.com"},
+		{"$input.user.profile.memberId", 12345},
+		{"$input.filters", []interface{}{"active", "verified"}},
 	}
 	for _, tc := range tests {
-		v, err := ctx.Resolve("{{ " + tc.path + " }}")
+		v, err := ctx.Resolve(tc.path)
 		if err != nil {
 			t.Errorf("resolve %q: %v", tc.path, err)
 			continue
@@ -324,10 +296,10 @@ func TestScenario_Context_ResolveNestedInputPaths(t *testing.T) {
 }
 
 func TestScenario_Context_ResolveWithArrayIndexNavigation(t *testing.T) {
-	ctx := runtime.NewContext(map[string]interface{}{
+	ctx := engine.NewContext(map[string]interface{}{
 		"items": []interface{}{map[string]interface{}{"name": "first"}, map[string]interface{}{"name": "second"}},
 	})
-	v, err := ctx.ResolvePath("input.items.0.name")
+	v, err := ctx.ResolvePath("$input.items.0.name")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -336,17 +308,17 @@ func TestScenario_Context_ResolveWithArrayIndexNavigation(t *testing.T) {
 	}
 }
 
-func TestScenario_Context_ItemContextInMapIteration(t *testing.T) {
-	baseCtx := runtime.NewContext(map[string]interface{}{"batch": "batch-001"})
-	itemCtx := baseCtx.WithItem(map[string]interface{}{"id": "item-42", "data": map[string]interface{}{"color": "red"}})
-	v, err := itemCtx.Resolve("{{ item.id }}")
+func TestScenario_Context_ItemContextInForeachIteration(t *testing.T) {
+	baseCtx := engine.NewContext(map[string]interface{}{"batch": "batch-001"})
+	itemCtx := baseCtx.WithItem(map[string]interface{}{"id": "item-42", "data": map[string]interface{}{"color": "red"}}, "item")
+	v, err := itemCtx.Resolve("$item.id")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
 	if v != "item-42" {
 		t.Errorf("expected 'item-42', got %v", v)
 	}
-	v, err = itemCtx.ResolvePath("item.data.color")
+	v, err = itemCtx.ResolvePath("$item.data.color")
 	if err != nil {
 		t.Fatalf("resolve: %v", err)
 	}
@@ -356,8 +328,8 @@ func TestScenario_Context_ItemContextInMapIteration(t *testing.T) {
 }
 
 func TestScenario_Context_UnresolvedReferenceErrors(t *testing.T) {
-	ctx := runtime.NewContext(map[string]interface{}{"name": "test"})
-	_, err := ctx.Resolve("{{ nonexistent.output.field }}")
+	ctx := engine.NewContext(map[string]interface{}{"name": "test"})
+	_, err := ctx.Resolve("$nonexistent.field")
 	if err == nil {
 		t.Fatal("expected error for unresolved step reference")
 	}
@@ -367,10 +339,10 @@ func TestScenario_Context_UnresolvedReferenceErrors(t *testing.T) {
 }
 
 func TestScenario_Context_ResolveMapWithMixedReferences(t *testing.T) {
-	ctx := runtime.NewContext(map[string]interface{}{"app": "myapp", "env": "production"})
+	ctx := engine.NewContext(map[string]interface{}{"app": "myapp", "env": "production"})
 	resolved, err := ctx.ResolveMap(map[string]interface{}{
-		"appName": "{{ input.app }}",
-		"nested":  map[string]interface{}{"env": "{{ input.env }}"},
+		"appName": "$input.app",
+		"nested":  map[string]interface{}{"env": "$input.env"},
 	})
 	if err != nil {
 		t.Fatalf("ResolveMap: %v", err)
@@ -383,8 +355,8 @@ func TestScenario_Context_ResolveMapWithMixedReferences(t *testing.T) {
 func TestScenario_Call_SimpleArgResolution(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getUser": `{"id":"123","name":"Alice","role":"admin"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getUser", Args: map[string]interface{}{"userId": "{{ input.id }}"}}, Output: "user"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "user.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getUser", Args: map[string]interface{}{"userId": "$input.id"}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}, map[string]interface{}{"id": "123"})
 	data := resultJSON(t, result)
 	if data["name"] != "Alice" {
@@ -395,11 +367,11 @@ func TestScenario_Call_SimpleArgResolution(t *testing.T) {
 func TestScenario_Call_NestedObjectArgResolution(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"search": `{"total":5}`})
 	_ = s.execute(t, []pipeline.StepConfig{
-		{Name: "query", Type: "call", Call: &pipeline.CallConfig{
+		{ID: "query", Kind: "call", Spec: pipeline.StepSpec{
 			Tool: "search",
-			Args: map[string]interface{}{"filter": map[string]interface{}{"app": "{{ input.app }}"}, "sort": "{{ input.sortBy }}"},
-		}, Output: "result"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "result.output"}},
+			Args: map[string]interface{}{"filter": map[string]interface{}{"app": "$input.app"}, "sort": "$input.sortBy"},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$query"}},
 	}, map[string]interface{}{"app": "catalog", "sortBy": "name"})
 	calls := s.registry.calls()
 	filter := calls[0].Args["filter"].(map[string]interface{})
@@ -412,20 +384,20 @@ func TestScenario_Call_ErrorPropagation(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getUser": `{}`})
 	s.setFail("getUser", fmt.Errorf("upstream 503 Service Unavailable"))
 	err := s.executeErr(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getUser", Args: map[string]interface{}{}}, Output: "user"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "user.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getUser", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}, map[string]interface{}{})
 	if err == nil || !strings.Contains(err.Error(), "503") {
 		t.Errorf("expected 503 error, got %v", err)
 	}
 }
 
-func TestScenario_Transform_ProjectFields(t *testing.T) {
+func TestScenario_JQ_ProjectFields(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getReport": `{"id":"r1","title":"Q4","author":"Bob","internalId":"secret","score":85}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getReport", Args: map[string]interface{}{}}, Output: "raw"},
-		{Name: "select", Type: "transform", Transform: &pipeline.TransformConfig{Source: "fetch.output", Project: []string{"id", "title", "score"}}, Output: "filtered"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "filtered.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getReport", Args: map[string]interface{}{}}},
+		{ID: "select", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: "{id, title, score}"}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$select"}},
 	}, nil)
 	data := resultJSON(t, result)
 	if _, ok := data["internalId"]; ok {
@@ -436,12 +408,12 @@ func TestScenario_Transform_ProjectFields(t *testing.T) {
 	}
 }
 
-func TestScenario_Transform_ProjectArrayOfObjects(t *testing.T) {
+func TestScenario_JQ_ProjectArrayOfObjects(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"listUsers": `[{"id":"1","name":"A","password":"xx"},{"id":"2","name":"B","password":"yy"}]`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "listUsers", Args: map[string]interface{}{}}, Output: "raw"},
-		{Name: "sanitize", Type: "transform", Transform: &pipeline.TransformConfig{Source: "fetch.output", Project: []string{"id", "name"}}, Output: "clean"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "clean.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "listUsers", Args: map[string]interface{}{}}},
+		{ID: "sanitize", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: "[.[] | {id, name}]"}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$sanitize"}},
 	}, nil)
 	items := resultJSONArray(t, result)
 	for i, item := range items {
@@ -452,11 +424,11 @@ func TestScenario_Transform_ProjectArrayOfObjects(t *testing.T) {
 	}
 }
 
-func TestScenario_Transform_RemoveSensitiveFields(t *testing.T) {
-	data := map[string]interface{}{"username": "alice", "password": "secret123", "token": "abc", "email": "alice@x.com"}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Remove: []string{"password", "token"}}}, ctx)
+func TestScenario_JQ_RemoveSensitiveFields(t *testing.T) {
+	ctx := engine.NewContext(nil)
+	ctx.SetOutput("data", map[string]interface{}{"username": "alice", "password": "secret123", "token": "abc", "email": "alice@x.com"})
+	s := &pipeline.StepConfig{ID: "clean", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `del(.password, .token)`}}
+	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -466,11 +438,11 @@ func TestScenario_Transform_RemoveSensitiveFields(t *testing.T) {
 	}
 }
 
-func TestScenario_Transform_RenameFields(t *testing.T) {
-	data := map[string]interface{}{"first_name": "John", "last_name": "Doe"}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Rename: map[string]string{"first_name": "firstName", "last_name": "lastName"}}}, ctx)
+func TestScenario_JQ_RenameFields(t *testing.T) {
+	ctx := engine.NewContext(nil)
+	ctx.SetOutput("data", map[string]interface{}{"first_name": "John", "last_name": "Doe"})
+	s := &pipeline.StepConfig{ID: "rename", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{firstName: .first_name, lastName: .last_name}`}}
+	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -478,48 +450,13 @@ func TestScenario_Transform_RenameFields(t *testing.T) {
 	if m["firstName"] != "John" || m["lastName"] != "Doe" {
 		t.Errorf("rename failed: %v", m)
 	}
-	if _, ok := m["first_name"]; ok {
-		t.Error("old name should be gone")
-	}
 }
 
-func TestScenario_Transform_CopyFieldsDeepCopy(t *testing.T) {
-	data := map[string]interface{}{"config": map[string]interface{}{"timeout": 30}}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Copy: map[string]string{"config": "backup"}}}, ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := result.(map[string]interface{})
-	m["backup"].(map[string]interface{})["timeout"] = 99
-	if m["config"].(map[string]interface{})["timeout"] != 30 {
-		t.Error("deep copy failed — original modified")
-	}
-}
-
-func TestScenario_Transform_MoveFields(t *testing.T) {
-	data := map[string]interface{}{"tempId": "tmp-001", "permanent": "value"}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Move: map[string]string{"tempId": "finalId"}}}, ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	m := result.(map[string]interface{})
-	if m["finalId"] != "tmp-001" {
-		t.Errorf("finalId = %v", m["finalId"])
-	}
-	if _, ok := m["tempId"]; ok {
-		t.Error("tempId should be removed after move")
-	}
-}
-
-func TestScenario_Transform_FlattenNestedStructures(t *testing.T) {
-	data := map[string]interface{}{"name": "report", "metadata": map[string]interface{}{"author": "Alice", "version": 2}, "stats": map[string]interface{}{"views": 100}}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Flatten: []string{"metadata"}}}, ctx)
+func TestScenario_JQ_FlattenNestedStructures(t *testing.T) {
+	ctx := engine.NewContext(nil)
+	ctx.SetOutput("data", map[string]interface{}{"name": "report", "metadata": map[string]interface{}{"author": "Alice", "version": 2}, "stats": map[string]interface{}{"views": 100}})
+	s := &pipeline.StepConfig{ID: "flat", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `. + .metadata | del(.metadata)`}}
+	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,16 +467,13 @@ func TestScenario_Transform_FlattenNestedStructures(t *testing.T) {
 	if _, ok := m["metadata"]; ok {
 		t.Error("metadata should be gone")
 	}
-	if _, ok := m["stats"]; !ok {
-		t.Error("stats should remain")
-	}
 }
 
-func TestScenario_Transform_DefaultValues(t *testing.T) {
-	data := map[string]interface{}{"name": "existing"}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Default: map[string]interface{}{"name": "defaultName", "version": "1.0"}}}, ctx)
+func TestScenario_JQ_DefaultValues(t *testing.T) {
+	ctx := engine.NewContext(nil)
+	ctx.SetOutput("data", map[string]interface{}{"name": "existing"})
+	s := &pipeline.StepConfig{ID: "def", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{version: "1.0"} + .`}}
+	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -552,14 +486,14 @@ func TestScenario_Transform_DefaultValues(t *testing.T) {
 	}
 }
 
-func TestScenario_Transform_ChainedOperations(t *testing.T) {
+func TestScenario_JQ_ChainedOperations(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getData": `{"first_name":"Jane","last_name":"Smith","password":"xxx","address":{"city":"NYC"}}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getData", Args: map[string]interface{}{}}, Output: "raw"},
-		{Name: "rename_step", Type: "transform", Transform: &pipeline.TransformConfig{Source: "fetch.output", Rename: map[string]string{"first_name": "firstName", "last_name": "lastName"}}, Output: "renamed"},
-		{Name: "sanitize_step", Type: "transform", Transform: &pipeline.TransformConfig{Source: "renamed.output", Remove: []string{"password"}}, Output: "sanitized"},
-		{Name: "flatten_step", Type: "transform", Transform: &pipeline.TransformConfig{Source: "sanitized.output", Flatten: []string{"address"}, Default: map[string]interface{}{"role": "user"}}, Output: "final"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "final.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}}},
+		{ID: "rename", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: `{firstName: .first_name, lastName: .last_name, password, address}`}},
+		{ID: "sanitize", Kind: "jq", Spec: pipeline.StepSpec{From: "$rename", Expr: `del(.password)`}},
+		{ID: "flatten", Kind: "jq", Spec: pipeline.StepSpec{From: "$sanitize", Expr: `(. + .address | del(.address)) + {role: "user"}`}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$flatten"}},
 	}, nil)
 	data := resultJSON(t, result)
 	if data["firstName"] != "Jane" {
@@ -573,42 +507,33 @@ func TestScenario_Transform_ChainedOperations(t *testing.T) {
 	}
 }
 
-func TestScenario_Merge_DataFromOneStepIntoAnother(t *testing.T) {
-	s := newScenarioRunner(map[string]string{"getBase": `{"id":"r1"}`, "getMeta": `{"author":"Alice"}`})
+func TestScenario_FullPipeline_CallJQReturn(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getData": `{"id":"r1"}`, "getMeta": `{"author":"Alice"}`, "getStats": `{"score":95}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch_base", Type: "call", Call: &pipeline.CallConfig{Tool: "getBase", Args: map[string]interface{}{}}, Output: "base"},
-		{Name: "fetch_meta", Type: "call", Call: &pipeline.CallConfig{Tool: "getMeta", Args: map[string]interface{}{}}, Output: "meta"},
-		{Name: "merge_step", Type: "merge", Merge: &pipeline.MergeConfig{From: "meta.output", To: "base.output.metadata"}, Output: "merge_op"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "merge_op.output"}},
+		{ID: "fetch_base", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}}},
+		{ID: "fetch_meta", Kind: "call", Spec: pipeline.StepSpec{Tool: "getMeta", Args: map[string]interface{}{"id": "$fetch_base.id"}}},
+		{ID: "fetch_stats", Kind: "call", Spec: pipeline.StepSpec{Tool: "getStats", Args: map[string]interface{}{"id": "$fetch_base.id"}}},
+		{ID: "merge_all", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch_base", Vars: map[string]interface{}{"meta": "$fetch_meta", "stats": "$fetch_stats"}, Expr: `. + {metadata: $meta, statistics: $stats}`}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$merge_all"}},
 	}, nil)
-	mergeData := resultJSON(t, result)
-	if mergeData["id"] != "r1" {
-		t.Errorf("id = %v, want r1", mergeData["id"])
+	data := resultJSON(t, result)
+	if data["id"] != "r1" {
+		t.Errorf("id = %v, want r1", data["id"])
 	}
-	meta, ok := mergeData["metadata"].(map[string]interface{})
+	meta, ok := data["metadata"].(map[string]interface{})
 	if !ok {
-		t.Fatal("metadata field missing from merged result")
+		t.Fatal("metadata field missing from result")
 	}
 	if meta["author"] != "Alice" {
 		t.Errorf("metadata.author = %v", meta["author"])
 	}
 }
 
-func TestScenario_Merge_ApplyMergeWritesToTarget(t *testing.T) {
-	target := map[string]interface{}{"id": "r1"}
-	value := map[string]interface{}{"author": "Alice"}
-	node.ApplyMerge(target, "base.metadata", value)
-	metaMap := target["metadata"].(map[string]interface{})
-	if metaMap["author"] != "Alice" {
-		t.Errorf("metadata.author = %v", metaMap["author"])
-	}
-}
-
 func TestScenario_Return_StringValue(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getStatus": `OK`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getStatus", Args: map[string]interface{}{}}, Output: "status"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "status.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getStatus", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}, nil)
 	if !strings.Contains(resultText(t, result), "OK") {
 		t.Errorf("expected OK, got %q", resultText(t, result))
@@ -618,8 +543,8 @@ func TestScenario_Return_StringValue(t *testing.T) {
 func TestScenario_Return_ComplexObjectAsJSON(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getConfig": `{"features":{"darkMode":true}}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getConfig", Args: map[string]interface{}{}}, Output: "cfg"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "cfg.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getConfig", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}, nil)
 	data := resultJSON(t, result)
 	if data["features"].(map[string]interface{})["darkMode"] != true {
@@ -627,17 +552,32 @@ func TestScenario_Return_ComplexObjectAsJSON(t *testing.T) {
 	}
 }
 
-func TestScenario_Map_CallSubPipelinePerItem(t *testing.T) {
+func TestScenario_Return_WithJQExpr(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getReport": `{"id":"r1","title":"Report","created":"2024-01-01"}`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getReport", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch", Expr: "{title, created}"}},
+	}, nil)
+	data := resultJSON(t, result)
+	if len(data) != 2 || data["title"] != "Report" {
+		t.Errorf("expected {title, created}, got %v", data)
+	}
+}
+
+func TestScenario_Foreach_CallSubPipelinePerItem(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"lookupName": `Alice`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "batch", Type: "map", Map: &pipeline.MapConfig{
-			Source: "{{ input.ids }}",
+		{ID: "batch", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.ids",
+			As:            "item",
+			Concurrency:   2,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "lookup", Type: "call", Call: &pipeline.CallConfig{Tool: "lookupName", Args: map[string]interface{}{"id": "{{ item }}"}}, Output: "r"},
-				{Name: "ret", Type: "return", Return: &pipeline.ReturnConfig{Source: "r.output"}},
+				{ID: "lookup", Kind: "call", Spec: pipeline.StepSpec{Tool: "lookupName", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "ret", Kind: "emit", Spec: pipeline.StepSpec{From: "$lookup"}},
 			},
-		}, Output: "names"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "names.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$batch"}},
 	}, map[string]interface{}{"ids": []interface{}{"1", "2", "3"}})
 	if len(resultJSONArray(t, result)) != 3 {
 		t.Fatal("expected 3 results")
@@ -647,18 +587,20 @@ func TestScenario_Map_CallSubPipelinePerItem(t *testing.T) {
 	}
 }
 
-func TestScenario_Map_TransformSubPipelinePerItem(t *testing.T) {
+func TestScenario_Foreach_TransformSubPipelinePerItem(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"fetchItem": `{"name":"test","password":"secret","role":"admin"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "process", Type: "map", Map: &pipeline.MapConfig{
-			Source: "{{ input.items }}",
+		{ID: "process", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.items",
+			As:            "item",
+			Concurrency:   2,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "fetchItem", Args: map[string]interface{}{}}, Output: "raw"},
-				{Name: "clean", Type: "transform", Transform: &pipeline.TransformConfig{Source: "raw.output", Remove: []string{"password"}, Project: []string{"name", "role"}}, Output: "cleaned"},
-				{Name: "ret", Type: "return", Return: &pipeline.ReturnConfig{Source: "cleaned.output"}},
+				{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "fetchItem", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "ret", Kind: "emit", Spec: pipeline.StepSpec{From: "$fetch", Expr: "{name, role}"}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$process"}},
 	}, map[string]interface{}{"items": []interface{}{"a", "b"}})
 	items := resultJSONArray(t, result)
 	for i, item := range items {
@@ -669,64 +611,73 @@ func TestScenario_Map_TransformSubPipelinePerItem(t *testing.T) {
 	}
 }
 
-func TestScenario_Map_ErrorPropagationStopsExecution(t *testing.T) {
+func TestScenario_Foreach_ErrorPropagationStopsExecution(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"riskyCall": `OK`})
 	s.setFail("riskyCall", fmt.Errorf("upstream timeout on item-2"))
 	err := s.executeErr(t, []pipeline.StepConfig{
-		{Name: "danger", Type: "map", Map: &pipeline.MapConfig{
-			Source: "{{ input.items }}",
+		{ID: "danger", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.items",
+			As:            "item",
+			Concurrency:   1,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "call", Type: "call", Call: &pipeline.CallConfig{Tool: "riskyCall", Args: map[string]interface{}{}}, Output: "r"},
-				{Name: "ret", Type: "return", Return: &pipeline.ReturnConfig{Source: "r.output"}},
+				{ID: "call", Kind: "call", Spec: pipeline.StepSpec{Tool: "riskyCall", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "ret", Kind: "emit", Spec: pipeline.StepSpec{From: "$call"}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$danger"}},
 	}, map[string]interface{}{"items": []interface{}{1, 2, 3}})
 	if err == nil || !strings.Contains(err.Error(), "timeout") {
 		t.Errorf("expected timeout error, got %v", err)
 	}
 }
 
-func TestScenario_Map_EmptyListReturnsEmptyResults(t *testing.T) {
+func TestScenario_Foreach_EmptyListReturnsEmptyResults(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"never": "called"})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "empty", Type: "map", Map: &pipeline.MapConfig{
-			Source: "{{ input.items }}",
+		{ID: "empty", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.items",
+			As:            "item",
+			Concurrency:   2,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "call", Type: "call", Call: &pipeline.CallConfig{Tool: "never", Args: map[string]interface{}{}}, Output: "r"},
-				{Name: "ret", Type: "return", Return: &pipeline.ReturnConfig{Source: "r.output"}},
+				{ID: "call", Kind: "call", Spec: pipeline.StepSpec{Tool: "never", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "ret", Kind: "emit", Spec: pipeline.StepSpec{From: "$call"}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$empty"}},
 	}, map[string]interface{}{"items": []interface{}{}})
 	if len(resultJSONArray(t, result)) != 0 {
 		t.Error("expected empty results")
 	}
 }
 
-func TestScenario_Map_ConcurrentExecutionPreservesOrder(t *testing.T) {
+func TestScenario_Foreach_PreserveOrder(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"indexItem": `{"value":"x"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "ordered", Type: "map", Map: &pipeline.MapConfig{
-			Source: "{{ input.ids }}",
+		{ID: "ordered", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.ids",
+			As:            "item",
+			Concurrency:   4,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "index", Type: "call", Call: &pipeline.CallConfig{Tool: "indexItem", Args: map[string]interface{}{"id": "{{ item }}"}}, Output: "r"},
-				{Name: "ret", Type: "return", Return: &pipeline.ReturnConfig{Source: "r.output"}},
+				{ID: "index", Kind: "call", Spec: pipeline.StepSpec{Tool: "indexItem", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "ret", Kind: "emit", Spec: pipeline.StepSpec{From: "$index"}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$ordered"}},
 	}, map[string]interface{}{"ids": []interface{}{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}})
 	if len(resultJSONArray(t, result)) != 10 {
 		t.Fatal("expected 10 results")
 	}
 }
 
-func TestScenario_FullPipeline_CallTransformReturn(t *testing.T) {
+func TestScenario_FullPipeline_CallJQReturn_Project(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getViolations": `{"total":10,"violations":[{"severity":"HIGH"},{"severity":"LOW"}],"scanId":"scan-001"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getViolations", Args: map[string]interface{}{"scanId": "{{ input.scanId }}"}}, Output: "raw"},
-		{Name: "clean", Type: "transform", Transform: &pipeline.TransformConfig{Source: "fetch.output", Project: []string{"violations"}, Default: map[string]interface{}{"total": 0}}, Output: "cleaned"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "cleaned.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getViolations", Args: map[string]interface{}{"scanId": "$input.scanId"}}},
+		{ID: "clean", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: `{violations} + {total: 0}`}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$clean"}},
 	}, map[string]interface{}{"scanId": "scan-001"})
 	data := resultJSON(t, result)
 	if _, ok := data["scanId"]; ok {
@@ -737,18 +688,20 @@ func TestScenario_FullPipeline_CallTransformReturn(t *testing.T) {
 	}
 }
 
-func TestScenario_FullPipeline_CallMapCallTransformReturn(t *testing.T) {
+func TestScenario_FullPipeline_CallForeachJQEmitReturn(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getComponents": `[{"id":"c1","name":"auth","owner":"team-A","internalRef":"x-1"},{"id":"c2","name":"ui","owner":"team-B","internalRef":"x-2"}]`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch_all", Type: "call", Call: &pipeline.CallConfig{Tool: "getComponents", Args: map[string]interface{}{}}, Output: "all"},
-		{Name: "enrich_each", Type: "map", Map: &pipeline.MapConfig{
-			Source: "all.output",
+		{ID: "fetch_all", Kind: "call", Spec: pipeline.StepSpec{Tool: "getComponents", Args: map[string]interface{}{}}},
+		{ID: "enrich_each", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$fetch_all",
+			As:            "item",
+			Concurrency:   2,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "transform_item", Type: "transform", Transform: &pipeline.TransformConfig{Source: "item", Project: []string{"id", "name", "owner"}, Rename: map[string]string{"owner": "maintainer"}, Default: map[string]interface{}{"status": "active"}}, Output: "enriched"},
-				{Name: "ret_item", Type: "return", Return: &pipeline.ReturnConfig{Source: "enriched.output"}},
+				{ID: "emit_item", Kind: "emit", Spec: pipeline.StepSpec{From: "$item", Expr: `{id, name, maintainer: .owner, status: "active"}`}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$enrich_each"}},
 	}, nil)
 	items := resultJSONArray(t, result)
 	first := items[0].(map[string]interface{})
@@ -760,19 +713,21 @@ func TestScenario_FullPipeline_CallMapCallTransformReturn(t *testing.T) {
 	}
 }
 
-func TestScenario_FullPipeline_CallMapCallMergeReturn(t *testing.T) {
+func TestScenario_FullPipeline_CallForeachCallJQEmitReturn(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getReports": `[{"id":"r1"},{"id":"r2"}]`, "getAnnotations": `{"color":"blue"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch_reports", Type: "call", Call: &pipeline.CallConfig{Tool: "getReports", Args: map[string]interface{}{}}, Output: "reports"},
-		{Name: "annotate_each", Type: "map", Map: &pipeline.MapConfig{
-			Source: "reports.output",
+		{ID: "fetch_reports", Kind: "call", Spec: pipeline.StepSpec{Tool: "getReports", Args: map[string]interface{}{}}},
+		{ID: "annotate_each", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$fetch_reports",
+			As:            "item",
+			Concurrency:   2,
+			PreserveOrder: true,
 			Pipeline: []pipeline.StepConfig{
-				{Name: "get_annotations", Type: "call", Call: &pipeline.CallConfig{Tool: "getAnnotations", Args: map[string]interface{}{"id": "{{ item.id }}"}}, Output: "annotations"},
-				{Name: "merge_annotations", Type: "merge", Merge: &pipeline.MergeConfig{From: "annotations.output", To: "item.annotationData"}, Output: "merge_op"},
-				{Name: "ret_item", Type: "return", Return: &pipeline.ReturnConfig{Source: "merge_op.output"}},
+				{ID: "get_annotations", Kind: "call", Spec: pipeline.StepSpec{Tool: "getAnnotations", Args: map[string]interface{}{"id": "$item.id"}}},
+				{ID: "emit_merged", Kind: "emit", Spec: pipeline.StepSpec{From: "$item", Vars: map[string]interface{}{"ann": "$get_annotations"}, Expr: `. + {annotationData: $ann}`}},
 			},
-		}, Output: "results"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "results.output"}},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$annotate_each"}},
 	}, nil)
 	if len(resultJSONArray(t, result)) != 2 {
 		t.Fatal("expected 2 results")
@@ -782,7 +737,7 @@ func TestScenario_FullPipeline_CallMapCallMergeReturn(t *testing.T) {
 func TestScenario_FullPipeline_PipelineWithoutReturnErrors(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getData": `{}`})
 	err := s.executeErr(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getData", Args: map[string]interface{}{}}, Output: "data"},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}}},
 	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "without a return step") {
 		t.Errorf("expected missing-return error, got %v", err)
@@ -792,9 +747,9 @@ func TestScenario_FullPipeline_PipelineWithoutReturnErrors(t *testing.T) {
 func TestScenario_FullPipeline_InvalidReferenceFails(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getData": `{"id":"123"}`})
 	err := s.executeErr(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getData", Args: map[string]interface{}{}}, Output: "data"},
-		{Name: "clean", Type: "transform", Transform: &pipeline.TransformConfig{Source: "nonexistent_step.output"}, Output: "cleaned"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "cleaned.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}}},
+		{ID: "clean", Kind: "jq", Spec: pipeline.StepSpec{From: "$nonexistent_step", Expr: "."}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$clean"}},
 	}, nil)
 	if err == nil || !strings.Contains(err.Error(), "unresolved") {
 		t.Errorf("expected unresolved error, got %v", err)
@@ -803,14 +758,14 @@ func TestScenario_FullPipeline_InvalidReferenceFails(t *testing.T) {
 
 func TestScenario_FullPipeline_MultipleAggregatedToolsInEngine(t *testing.T) {
 	cfg := &config.Config{
-		AggregatedTools: []config.AggregatedToolConfig{
-			{Name: "tool_a", Version: "1.0", InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, Pipeline: []pipeline.StepConfig{
-				{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: "nativeA", Args: map[string]interface{}{"src": "a"}}, Output: "out"},
-				{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "out.output"}},
+		AggregateTools: []config.AggregatedToolConfig{
+			{Name: "tool_a", InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, Pipeline: []pipeline.StepConfig{
+				{ID: "step1", Kind: "call", Spec: pipeline.StepSpec{Tool: "nativeA", Args: map[string]interface{}{"src": "a"}}},
+				{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$step1"}},
 			}},
-			{Name: "tool_b", Version: "2.0", InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, Pipeline: []pipeline.StepConfig{
-				{Name: "step1", Type: "call", Call: &pipeline.CallConfig{Tool: "nativeB", Args: map[string]interface{}{"src": "b"}}, Output: "out"},
-				{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "out.output"}},
+			{Name: "tool_b", InputSchema: map[string]interface{}{"type": "object", "properties": map[string]interface{}{}}, Pipeline: []pipeline.StepConfig{
+				{ID: "step1", Kind: "call", Spec: pipeline.StepSpec{Tool: "nativeB", Args: map[string]interface{}{"src": "b"}}},
+				{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$step1"}},
 			}},
 		},
 	}
@@ -833,8 +788,8 @@ func TestScenario_FullPipeline_MultipleAggregatedToolsInEngine(t *testing.T) {
 func TestScenario_EdgeCase_NonJSONCallResultWrapsAsText(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"getMessage": `plain text response`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "fetch", Type: "call", Call: &pipeline.CallConfig{Tool: "getMessage", Args: map[string]interface{}{}}, Output: "msg"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "msg.output"}},
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getMessage", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
 	}, nil)
 	if resultText(t, result) != "plain text response" {
 		t.Errorf("unexpected result text: %s", resultText(t, result))
@@ -844,25 +799,175 @@ func TestScenario_EdgeCase_NonJSONCallResultWrapsAsText(t *testing.T) {
 func TestScenario_EdgeCase_CallWithNoArgs(t *testing.T) {
 	s := newScenarioRunner(map[string]string{"ping": `{"status":"ok"}`})
 	result := s.execute(t, []pipeline.StepConfig{
-		{Name: "pinger", Type: "call", Call: &pipeline.CallConfig{Tool: "ping", Args: map[string]interface{}{}}, Output: "pong"},
-		{Name: "done", Type: "return", Return: &pipeline.ReturnConfig{Source: "pong.output"}},
+		{ID: "pinger", Kind: "call", Spec: pipeline.StepSpec{Tool: "ping", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$pinger"}},
 	}, nil)
 	if resultJSON(t, result)["status"] != "ok" {
 		t.Error("expected ok")
 	}
 }
 
-func TestScenario_EdgeCase_TransformOnArraySource(t *testing.T) {
-	data := []interface{}{map[string]interface{}{"a": 1, "b": 2, "c": 3}, map[string]interface{}{"a": 4, "b": 5, "c": 6}}
-	ctx := runtime.NewContext(nil)
-	ctx.SetOutput("dummy", data)
-	result, err := node.TransformNode(&pipeline.StepConfig{Transform: &pipeline.TransformConfig{Source: "dummy", Project: []string{"a", "c"}}}, ctx)
-	if err != nil {
-		t.Fatal(err)
+func TestScenario_Require_NonEmpty(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getData": `null`})
+	err := s.executeErr(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}},
+			Require: &pipeline.RequireConfig{NonEmpty: true, Message: "Data must not be empty"}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "Data must not be empty") {
+		t.Errorf("expected require validation error, got %v", err)
 	}
-	arr := result.([]interface{})
-	if _, ok := arr[0].(map[string]interface{})["b"]; ok {
-		t.Error("field b should be projected out")
+}
+
+func TestScenario_Require_NonEmptyOnJQ(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getData": `{"items":[]}`})
+	err := s.executeErr(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}}},
+		{ID: "extract", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: ".items"},
+			Require: &pipeline.RequireConfig{NonEmpty: true, Message: "Items must not be empty"}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$extract"}},
+	}, nil)
+	if err == nil || !strings.Contains(err.Error(), "Items must not be empty") {
+		t.Errorf("expected require validation error on jq step, got %v", err)
+	}
+}
+
+func TestScenario_Call_ParseJSON(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getJSONString": `{"nested":{"key":"value"}}`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getJSONString", Parse: "json", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch", Expr: ".nested.key"}},
+	}, nil)
+	if resultText(t, result) != "value" {
+		t.Errorf("expected 'value' from parsed JSON, got %q", resultText(t, result))
+	}
+}
+
+func TestScenario_Call_ParseJSON_NoParseFlag(t *testing.T) {
+	// Without parse:json, auto-detection still parses JSON content-type responses
+	// but this test verifies the behavior for non-JSON content-type strings
+	s := newScenarioRunner(map[string]string{"getPlainText": `plain text, not json`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getPlainText", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch"}},
+	}, nil)
+	if resultText(t, result) != "plain text, not json" {
+		t.Errorf("without parse:json, plain text should be returned as-is, got %q", resultText(t, result))
+	}
+}
+
+func TestScenario_Call_BodyObjectArg(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"createItem": `{"id":"new-1","status":"created"}`})
+	_ = s.execute(t, []pipeline.StepConfig{
+		{ID: "create", Kind: "call", Spec: pipeline.StepSpec{
+			Tool: "createItem",
+			Args: map[string]interface{}{
+				"body": map[string]interface{}{"name": "$input.itemName", "tags": []interface{}{"$input.tag"}},
+				"query": map[string]interface{}{"dryRun": true},
+			},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$create"}},
+	}, map[string]interface{}{"itemName": "test-item", "tag": "urgent"})
+	calls := s.registry.calls()
+	body := calls[0].Args["body"].(map[string]interface{})
+	if body["name"] != "test-item" {
+		t.Errorf("body.name = %v, want test-item", body["name"])
+	}
+	tags := body["tags"].([]interface{})
+	if tags[0] != "urgent" {
+		t.Errorf("tags[0] = %v, want urgent", tags[0])
+	}
+	query := calls[0].Args["query"].(map[string]interface{})
+	if query["dryRun"] != true {
+		t.Errorf("query.dryRun = %v, want true", query["dryRun"])
+	}
+}
+
+func TestScenario_Foreach_ConcurrencyFromInput(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"procItem": `{"result":"ok"}`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "batch", Kind: "foreach", Spec: pipeline.StepSpec{
+			In:            "$input.ids",
+			As:            "item",
+			Concurrency:   "$input.concurrency",
+			PreserveOrder: true,
+			Pipeline: []pipeline.StepConfig{
+				{ID: "proc", Kind: "call", Spec: pipeline.StepSpec{Tool: "procItem", Args: map[string]interface{}{"id": "$item"}}},
+				{ID: "out", Kind: "emit", Spec: pipeline.StepSpec{From: "$proc"}},
+			},
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$batch"}},
+	}, map[string]interface{}{"ids": []interface{}{1, 2, 3, 4, 5}, "concurrency": 3})
+	if len(resultJSONArray(t, result)) != 5 {
+		t.Fatal("expected 5 results")
+	}
+}
+
+func TestScenario_Return_WithVarsAndComplexExpr(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getReport": `{"id":"r1","title":"Q4 Report","score":95}`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch_report", Kind: "call", Spec: pipeline.StepSpec{Tool: "getReport", Args: map[string]interface{}{}}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{
+			From: "$fetch_report",
+			Vars: map[string]interface{}{
+				"reportId":    "$fetch_report.id",
+				"reportTitle": "$fetch_report.title",
+			},
+			Expr: `{summary: {source_report_id: $reportId, source_report_title: $reportTitle, score: .score}, generated_at: "now"}`,
+		}},
+	}, nil)
+	data := resultJSON(t, result)
+	summary, ok := data["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("summary field missing or not an object")
+	}
+	if summary["source_report_id"] != "r1" {
+		t.Errorf("source_report_id = %v", summary["source_report_id"])
+	}
+	if summary["score"] != float64(95) {
+		t.Errorf("score = %v", summary["score"])
+	}
+	if data["generated_at"] != "now" {
+		t.Errorf("generated_at = %v", data["generated_at"])
+	}
+}
+
+func TestScenario_FullPipeline_CallWithJQRequire(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getData": `[{"name":"valid","status":"ok"},{"name":"alsoOK","status":"good"}]`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch", Kind: "call", Spec: pipeline.StepSpec{Tool: "getData", Args: map[string]interface{}{}},
+			Require: &pipeline.RequireConfig{NonEmpty: true, Message: "Fetch result must not be empty"}},
+		{ID: "filter", Kind: "jq", Spec: pipeline.StepSpec{From: "$fetch", Expr: `[.[] | select(.status == "ok")]`},
+			Require: &pipeline.RequireConfig{NonEmpty: true, Message: "No items with status=ok"}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$filter"}},
+	}, nil)
+	items := resultJSONArray(t, result)
+	if len(items) != 1 {
+		t.Fatalf("expected 1 filtered item, got %d", len(items))
+	}
+}
+
+func TestScenario_JQ_WithVarsFromMultipleSources(t *testing.T) {
+	s := newScenarioRunner(map[string]string{"getUser": `{"id":"u1","name":"Alice"}`, "getDept": `{"id":"d1","title":"Engineering"}`})
+	result := s.execute(t, []pipeline.StepConfig{
+		{ID: "fetch_user", Kind: "call", Spec: pipeline.StepSpec{Tool: "getUser", Args: map[string]interface{}{}}},
+		{ID: "fetch_dept", Kind: "call", Spec: pipeline.StepSpec{Tool: "getDept", Args: map[string]interface{}{}}},
+		{ID: "merge", Kind: "jq", Spec: pipeline.StepSpec{
+			From: "$fetch_user",
+			Vars: map[string]interface{}{"deptInfo": "$fetch_dept", "env": "production"},
+			Expr: `{name, department: $deptInfo.title, environment: $env}`,
+		}},
+		{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$merge"}},
+	}, nil)
+	data := resultJSON(t, result)
+	if data["name"] != "Alice" {
+		t.Errorf("name = %v", data["name"])
+	}
+	if data["department"] != "Engineering" {
+		t.Errorf("department = %v", data["department"])
+	}
+	if data["environment"] != "production" {
+		t.Errorf("environment = %v", data["environment"])
 	}
 }
 
@@ -870,8 +975,6 @@ func TestScenario_EdgeCase_TransformOnArraySource(t *testing.T) {
 // SECTION 10: End-to-End Integration Tests (generate → build → run → verify)
 // ===========================================================================
 
-// writeAggregatedConfig writes an aggregated tool YAML config to
-// $HOME/.<binaryName>/config.yaml so the generated server loads it at startup.
 func writeAggregatedConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
 	t.Helper()
 	configDir := filepath.Join(homeDir, "."+binaryName)
@@ -884,7 +987,6 @@ func writeAggregatedConfig(t *testing.T, homeDir, binaryName, yamlContent string
 	}
 }
 
-// mcpCallAggregatedTool sends a tools/call request via MCP HTTP and returns the first text content.
 func mcpCallAggregatedTool(t *testing.T, baseURL string, toolName string, args map[string]interface{}) string {
 	t.Helper()
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
@@ -925,8 +1027,6 @@ func mcpCallAggregatedTool(t *testing.T, baseURL string, toolName string, args m
 	return rpcResp.Result.Content[0].Text
 }
 
-// startAggTestServer compiles the generated project and starts it in HTTP mode.
-// Returns a cleanup function (defer it) and the base URL.
 func startAggTestServer(t *testing.T, projectDir string, mockURL string, homeDir string) (cleanup func(), baseURL string) {
 	t.Helper()
 	binPath := buildServer(t, projectDir)
@@ -953,10 +1053,10 @@ func startAggTestServer(t *testing.T, projectDir string, mockURL string, homeDir
 }
 
 // ---------------------------------------------------------------------------
-// E2E Test 1: Aggregated tool with call → transform(project) → return
+// E2E Test 1: Aggregated tool with call → jq(project) → return
 // ---------------------------------------------------------------------------
 
-func TestE2E_AggregatedTool_CallTransformReturn(t *testing.T) {
+func TestE2E_AggregatedTool_CallJQReturn(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok","message":"hello","internalToken":"secret123","timestamp":"2024-01-01T00:00:00Z"}`))
@@ -968,33 +1068,27 @@ func TestE2E_AggregatedTool_CallTransformReturn(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	aggConfig := `
-aggregatedTools:
+aggregateTools:
   - name: agg_clean_echo
-    version: "1.0"
     description: Echo with cleanup
     inputSchema:
       type: object
       properties: {}
     pipeline:
-      - name: fetch
-        type: call
-        call:
+      - id: fetch
+        kind: call
+        spec:
           tool: EchoHeaders
           args: {}
-        output: raw
-      - name: clean
-        type: transform
-        transform:
-          source: "fetch.output"
-          project:
-            - status
-            - message
-            - timestamp
-        output: cleaned
-      - name: done
-        type: return
-        return:
-          source: "cleaned.output"
+      - id: clean
+        kind: jq
+        spec:
+          from: $fetch
+          expr: '{status, message, timestamp}'
+      - id: done
+        kind: return
+        spec:
+          from: $clean
 `
 	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
 
@@ -1016,7 +1110,7 @@ aggregatedTools:
 }
 
 // ---------------------------------------------------------------------------
-// E2E Test 2: Aggregated tool chaining two native tools (EchoHeaders + SayHello)
+// E2E Test 2: Aggregated tool chaining two native tools with jq merge
 // ---------------------------------------------------------------------------
 
 func TestE2E_AggregatedTool_ChainedNativeTools(t *testing.T) {
@@ -1038,9 +1132,8 @@ func TestE2E_AggregatedTool_ChainedNativeTools(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	aggConfig := `
-aggregatedTools:
+aggregateTools:
   - name: agg_chain
-    version: "1.0"
     description: Chain echo and greet
     inputSchema:
       type: object
@@ -1050,28 +1143,28 @@ aggregatedTools:
       required:
         - name
     pipeline:
-      - name: echo
-        type: call
-        call:
+      - id: echo
+        kind: call
+        spec:
           tool: EchoHeaders
           args: {}
-        output: echoResult
-      - name: greet
-        type: call
-        call:
+      - id: greet
+        kind: call
+        spec:
           tool: SayHello
           args:
-            name: "{{ input.name }}"
-        output: greetResult
-      - name: merge_step
-        type: merge
-        merge:
-          from: "greetResult.output"
-          to: "echoResult.output.greeting_data"
-      - name: done
-        type: return
-        return:
-          source: "echoResult.output"
+            name: $input.name
+      - id: merge_step
+        kind: jq
+        spec:
+          from: $echo
+          vars:
+            g: $greet
+          expr: '. + {greeting_data: $g}'
+      - id: done
+        kind: return
+        spec:
+          from: $merge_step
 `
 	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
 
@@ -1102,10 +1195,10 @@ aggregatedTools:
 }
 
 // ---------------------------------------------------------------------------
-// E2E Test 3: Map over input array — calls SayHello for each name
+// E2E Test 3: Foreach over input array — calls SayHello for each name
 // ---------------------------------------------------------------------------
 
-func TestE2E_AggregatedTool_MapOverInputArray(t *testing.T) {
+func TestE2E_AggregatedTool_ForeachOverInputArray(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		name := r.URL.Query().Get("name")
@@ -1118,9 +1211,8 @@ func TestE2E_AggregatedTool_MapOverInputArray(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	aggConfig := `
-aggregatedTools:
+aggregateTools:
   - name: agg_batch_greet
-    version: "1.0"
     description: Batch greet
     inputSchema:
       type: object
@@ -1132,34 +1224,29 @@ aggregatedTools:
       required:
         - names
     pipeline:
-      - name: process_all
-        type: map
-        map:
-          source: "{{ input.names }}"
+      - id: process_all
+        kind: foreach
+        spec:
+          in: $input.names
+          as: name
+          concurrency: 2
+          preserveOrder: true
           pipeline:
-            - name: greet_one
-              type: call
-              call:
+            - id: greet_one
+              kind: call
+              spec:
                 tool: SayHello
                 args:
-                  name: "{{ item }}"
-              output: oneResult
-            - name: clean_one
-              type: transform
-              transform:
-                source: "oneResult.output"
-                project:
-                  - greeting
-              output: cleaned
-            - name: ret_one
-              type: return
-              return:
-                source: "cleaned.output"
-        output: results
-      - name: done
-        type: return
-        return:
-          source: "results.output"
+                  name: $name
+            - id: emit_greeting
+              kind: emit
+              spec:
+                from: $greet_one
+                expr: '{greeting}'
+      - id: done
+        kind: return
+        spec:
+          from: $process_all
 `
 	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
 
@@ -1209,28 +1296,25 @@ func TestE2E_AggregatedTool_CoexistsWithNativeTools(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	aggConfig := `
-aggregatedTools:
+aggregateTools:
   - name: agg_fast_echo
-    version: "1.0"
     description: Fast echo wrapper
     inputSchema:
       type: object
       properties: {}
     pipeline:
-      - name: call_echo
-        type: call
-        call:
+      - id: call_echo
+        kind: call
+        spec:
           tool: EchoHeaders
           args: {}
-        output: raw
-      - name: done
-        type: return
-        return:
-          source: "call_echo.output"
+      - id: done
+        kind: return
+        spec:
+          from: $call_echo
 
   - name: agg_greet_wrapper
-    version: "1.0"
-    description: Greet with transform
+    description: Greet with rename
     inputSchema:
       type: object
       properties:
@@ -1239,37 +1323,32 @@ aggregatedTools:
       required:
         - person
     pipeline:
-      - name: call_hello
-        type: call
-        call:
+      - id: call_hello
+        kind: call
+        spec:
           tool: SayHello
           args:
-            name: "{{ input.person }}"
-        output: raw
-      - name: transform_hello
-        type: transform
-        transform:
-          source: "raw.output"
-          rename:
-            hello: "greeting"
-        output: final
-      - name: done
-        type: return
-        return:
-          source: "final.output"
+            name: $input.person
+      - id: rename_greeting
+        kind: jq
+        spec:
+          from: $call_hello
+          expr: '{greeting: .hello}'
+      - id: done
+        kind: return
+        spec:
+          from: $rename_greeting
 `
 	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
 
 	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	// Call first aggregated tool
 	result1 := mcpCallAggregatedTool(t, baseURL, "agg_fast_echo", map[string]interface{}{})
 	if mustJSON(t, result1)["status"] != "echo_ok" {
 		t.Error("agg_fast_echo failed")
 	}
 
-	// Call second aggregated tool
 	result2 := mcpCallAggregatedTool(t, baseURL, "agg_greet_wrapper", map[string]interface{}{"person": "Zoe"})
 	data2 := mustJSON(t, result2)
 	if data2["greeting"] != "Zoe" {
@@ -1299,30 +1378,27 @@ func TestE2E_AggregatedTool_InvalidConfigServerStarts(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	// Duplicate step names — validation should fail
+	// Duplicate step ids — validation should fail
 	aggConfig := `
-aggregatedTools:
+aggregateTools:
   - name: bad_tool
-    version: "1.0"
     description: Broken
     inputSchema:
       type: object
       properties: {}
     pipeline:
-      - name: step1
-        type: call
-        call:
+      - id: step1
+        kind: call
+        spec:
           tool: EchoHeaders
           args: {}
-        output: out
-      - name: step1
-        type: return
-        return:
-          source: "out.output"
+      - id: step1
+        kind: return
+        spec:
+          from: $step1
 `
 	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
 
-	// Server should still start — bad aggregated tools are warned, not fatal
 	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
@@ -1341,5 +1417,385 @@ aggregatedTools:
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "Tool not found") && !strings.Contains(string(body), "unknown") && !strings.Contains(string(body), "error") {
 		t.Errorf("expected tool-not-found for bad aggregated tool, got: %s", string(body))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 6: Call with parse: json — explicit JSON parse on string response
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_CallParseJSON(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain")
+		w.Write([]byte(`{"nested":{"key":"hello-world","count":42}}`))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_parse_json
+    description: Parse JSON from text response
+    inputSchema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: fetch
+        kind: call
+        spec:
+          tool: EchoHeaders
+          parse: json
+          args: {}
+      - id: done
+        kind: return
+        spec:
+          from: $fetch
+          expr: '{key: .nested.key, count: .nested.count}'
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallAggregatedTool(t, baseURL, "agg_parse_json", map[string]interface{}{})
+	data := mustJSON(t, result)
+	if data["key"] != "hello-world" {
+		t.Errorf("key = %v, want hello-world", data["key"])
+	}
+	val, _ := data["count"].(float64)
+	if val != 42 {
+		t.Errorf("count = %v, want 42", val)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 7: Require nonEmpty validation on jq step
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_RequireNonEmptyOnJQ(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"items":[]}`))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_require_jq
+    description: Require nonEmpty on jq step
+    inputSchema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: fetch
+        kind: call
+        spec:
+          tool: EchoHeaders
+          args: {}
+      - id: extract
+        kind: jq
+        spec:
+          from: $fetch
+          expr: '.items'
+        require:
+          nonEmpty: true
+          message: "Items array must not be empty"
+      - id: done
+        kind: return
+        spec:
+          from: $extract
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
+		"name":      "agg_require_jq",
+		"arguments": map[string]interface{}{},
+	})
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "Items array must not be empty") {
+		t.Errorf("expected require validation error, got: %s", string(body))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 8: Foreach with concurrency from input variable
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_ForeachConcurrencyFromInput(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		name := r.URL.Query().Get("name")
+		w.Write([]byte(fmt.Sprintf(`{"name":"%s","length":%d}`, name, len(name))))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_concurrent
+    description: Foreach with input concurrency
+    inputSchema:
+      type: object
+      properties:
+        names:
+          type: array
+          items:
+            type: string
+        workers:
+          type: integer
+      required:
+        - names
+    pipeline:
+      - id: batch
+        kind: foreach
+        spec:
+          in: $input.names
+          as: name
+          concurrency: $input.workers
+          preserveOrder: true
+          pipeline:
+            - id: greet
+              kind: call
+              spec:
+                tool: SayHello
+                args:
+                  name: $name
+            - id: out
+              kind: emit
+              spec:
+                from: $greet
+                expr: '{name}'
+      - id: done
+        kind: return
+        spec:
+          from: $batch
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallAggregatedTool(t, baseURL, "agg_concurrent", map[string]interface{}{
+		"names":   []interface{}{"Alice", "Bob", "Charlie", "Diana"},
+		"workers": 2,
+	})
+	items := mustJSONArray(t, result)
+	if len(items) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(items))
+	}
+	if len(mock.requests) != 4 {
+		t.Errorf("expected 4 upstream calls, got %d", len(mock.requests))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 9: Return with vars + complex expr building summary object
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_ReturnWithVarsAndExpr(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if strings.Contains(r.URL.Path, "/echo") {
+			w.Write([]byte(`{"echo_status":"done","trace_id":"abc-123","server":"main"}`))
+		} else if strings.Contains(r.URL.Path, "/hello") {
+			name := r.URL.Query().Get("name")
+			w.Write([]byte(fmt.Sprintf(`{"greeting":"Hello, %s!","code":200,"ts":"2024-01-01"}`, name)))
+		} else {
+			w.Write([]byte(`{}`))
+		}
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders,sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_summary
+    description: Build summary with vars and expr
+    inputSchema:
+      type: object
+      properties:
+        name:
+          type: string
+      required:
+        - name
+    pipeline:
+      - id: echo
+        kind: call
+        spec:
+          tool: EchoHeaders
+          args: {}
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.name
+      - id: done
+        kind: return
+        spec:
+          from: $echo
+          vars:
+            greeting: $greet.greeting
+            code: $greet.code
+          expr: '{summary: {origin: .server, greeting_text: $greeting, status_code: $code}, trace: .trace_id}'
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallAggregatedTool(t, baseURL, "agg_summary", map[string]interface{}{
+		"name": "World",
+	})
+	data := mustJSON(t, result)
+	summary, ok := data["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatal("summary field missing")
+	}
+	if summary["origin"] != "main" {
+		t.Errorf("origin = %v", summary["origin"])
+	}
+	if summary["greeting_text"] != "Hello, World!" {
+		t.Errorf("greeting_text = %v", summary["greeting_text"])
+	}
+	status, _ := summary["status_code"].(float64)
+	if status != 200 {
+		t.Errorf("status_code = %v", status)
+	}
+	if data["trace"] != "abc-123" {
+		t.Errorf("trace = %v", data["trace"])
+	}
+	if len(mock.requests) != 2 {
+		t.Errorf("expected 2 upstream requests, got %d", len(mock.requests))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 10: Aggregated tool with annotations
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_AnnotationsPropagated(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok"}`))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_annotated
+    description: Annotated tool
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+    inputSchema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: fetch
+        kind: call
+        spec:
+          tool: EchoHeaders
+          args: {}
+      - id: done
+        kind: return
+        spec:
+          from: $fetch
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	// List tools and verify annotations are present
+	resp, _ := mcpHTTPCall(t, baseURL, "tools/list", map[string]interface{}{})
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "readOnlyHint") {
+		t.Errorf("expected readOnlyHint annotation in tools/list response, got: %s", string(body))
+	}
+	if !strings.Contains(string(body), "idempotentHint") {
+		t.Errorf("expected idempotentHint annotation in tools/list response, got: %s", string(body))
+	}
+
+	// Also verify the tool is callable
+	result := mcpCallAggregatedTool(t, baseURL, "agg_annotated", map[string]interface{}{})
+	if mustJSON(t, result)["status"] != "ok" {
+		t.Error("agg_annotated should still work")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// E2E Test 11: Require nonEmpty — success case (non-empty result passes)
+// ---------------------------------------------------------------------------
+
+func TestE2E_AggregatedTool_RequireNonEmptyPasses(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"data":{"items":["a","b","c"]}}`))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	aggConfig := `
+aggregateTools:
+  - name: agg_require_ok
+    description: Require validation that passes
+    inputSchema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: fetch
+        kind: call
+        spec:
+          tool: EchoHeaders
+          args: {}
+      - id: extract_items
+        kind: jq
+        spec:
+          from: $fetch
+          expr: '.data.items'
+        require:
+          nonEmpty: true
+          message: "Items must not be empty"
+      - id: done
+        kind: return
+        spec:
+          from: $extract_items
+`
+	writeAggregatedConfig(t, homeDir, binaryName, aggConfig)
+
+	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallAggregatedTool(t, baseURL, "agg_require_ok", map[string]interface{}{})
+	items := mustJSONArray(t, result)
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items, got %d", len(items))
 	}
 }

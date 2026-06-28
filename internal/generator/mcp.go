@@ -18,6 +18,7 @@ import (
 //go:embed templates/*.templ
 //go:embed templates/_credentials/*
 //go:embed mcpaggregator/*/*.go
+//go:embed skills/aggregate-tool-creator
 var templatesFS embed.FS
 
 // ToolTemplateData holds the data to pass to the template for a single tool
@@ -103,6 +104,13 @@ func (g *Generator) GenerateMCP() error {
 		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpaggregator/\n")
 	}
 
+	if err := g.GenerateAggregateToolCreatorSkill(); err != nil {
+		return fmt.Errorf("failed to generate aggregate-tool-creator skill: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated .agents/skills/aggregate-tool-creator/\n")
+	}
+
 	if err := g.GenerateCredentials(); err != nil {
 		return fmt.Errorf("failed to generate credentials: %w", err)
 	}
@@ -114,7 +122,7 @@ func (g *Generator) GenerateMCP() error {
 		return fmt.Errorf("failed to generate client script: %w", err)
 	}
 	if g.verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] generated client.sh\n")
+		fmt.Fprintf(os.Stderr, "[verbose] generated mcpclient.sh\n")
 	}
 
 	if err := g.GenerateMakefile(); err != nil {
@@ -193,11 +201,11 @@ type ClientToolInfo struct {
 	UploadCT    string // non-empty if this is an upload tool
 }
 
-// GenerateClientSh creates a client.sh script for quick manual testing
+// GenerateClientSh creates a mcpclient.sh script for quick manual testing
 func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
-	clientTemplateContent, err := templatesFS.ReadFile("templates/client.sh.templ")
+	clientTemplateContent, err := templatesFS.ReadFile("templates/mcpclient.sh.templ")
 	if err != nil {
-		return fmt.Errorf("failed to read client.sh template: %w", err)
+		return fmt.Errorf("failed to read mcpclient.sh template: %w", err)
 	}
 
 	tools := make([]ClientToolInfo, 0, len(config.Tools))
@@ -216,11 +224,11 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 		tools = append(tools, info)
 	}
 
-	tmpl, err := template.New("client.sh").Funcs(template.FuncMap{
+	tmpl, err := template.New("mcpclient.sh").Funcs(template.FuncMap{
 		"jsonExample": func(info ClientToolInfo) string { return info.ExampleArgs },
 	}).Parse(string(clientTemplateContent))
 	if err != nil {
-		return fmt.Errorf("failed to parse client.sh template: %w", err)
+		return fmt.Errorf("failed to parse mcpclient.sh template: %w", err)
 	}
 
 	data := struct {
@@ -231,18 +239,18 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
-		return fmt.Errorf("failed to render client.sh template: %w", err)
+		return fmt.Errorf("failed to render mcpclient.sh template: %w", err)
 	}
 
-	if err := writeFileContent(g.outputDir, "client.sh", func() ([]byte, error) {
+	if err := writeFileContent(g.outputDir, "mcpclient.sh", func() ([]byte, error) {
 		return buf.Bytes(), nil
 	}); err != nil {
-		return fmt.Errorf("failed to write client.sh file: %w", err)
+		return fmt.Errorf("failed to write mcpclient.sh file: %w", err)
 	}
 
 	// Make executable
-	if err := os.Chmod(filepath.Join(g.outputDir, "client.sh"), 0755); err != nil {
-		return fmt.Errorf("failed to chmod client.sh: %w", err)
+	if err := os.Chmod(filepath.Join(g.outputDir, "mcpclient.sh"), 0755); err != nil {
+		return fmt.Errorf("failed to chmod mcpclient.sh: %w", err)
 	}
 
 	return nil
@@ -355,15 +363,18 @@ func (g *Generator) GenerateCLI() error {
 	}
 
 	helpersImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
+	aggregatorImportPath := BuildModuleName(g.outputDir) + "/internal/mcpaggregator"
 
 	data := struct {
-		MCPToolsImportPath string
-		HelpersImportPath  string
-		BinaryName         string
+		MCPToolsImportPath   string
+		HelpersImportPath    string
+		AggregatorImportPath string
+		BinaryName           string
 	}{
-		MCPToolsImportPath: importPath,
-		HelpersImportPath:  helpersImportPath,
-		BinaryName:         filepath.Base(g.outputDir),
+		MCPToolsImportPath:   importPath,
+		HelpersImportPath:    helpersImportPath,
+		AggregatorImportPath: aggregatorImportPath,
+		BinaryName:           filepath.Base(g.outputDir),
 	}
 
 	var body bytes.Buffer

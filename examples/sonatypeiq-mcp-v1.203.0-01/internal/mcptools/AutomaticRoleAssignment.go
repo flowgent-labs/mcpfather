@@ -13,7 +13,7 @@ import (
 const AutomaticRoleAssignmentInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"properties\": {\n        \"mappings\": {\n          \"items\": {\n            \"properties\": {\n              \"from\": {\n                \"enum\": [\n                  \"SCM_USERNAME\",\n                  \"SCM_EMAIL\",\n                  \"SCM_FULLNAME\",\n                  \"GITLOG_EMAIL\",\n                  \"GITLOG_FULLNAME\"\n                ],\n                \"type\": \"string\"\n              },\n              \"to\": {\n                \"enum\": [\n                  \"IQ_USERNAME\",\n                  \"IQ_EMAIL\",\n                  \"IQ_FULLNAME\"\n                ],\n                \"type\": \"string\"\n              }\n            },\n            \"type\": \"object\"\n          },\n          \"type\": \"array\"\n        },\n        \"role\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"publicId\": {\n      \"description\": \"Enter the public applicationId for automatic role assignment.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"publicId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the AutomaticRoleAssignment tool (Status: 200, Content-Type: application/json)
-const AutomaticRoleAssignmentResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The 'developer' role has automatically been assigned to all contributors of the repository, who matched IQ Server users via the provided matching strategies.\n\nThe response contains all usernames that were successfully granted the role provided on the given application as well as an indication of which matching strategy was the first to match a user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **matchedUsers** (Type: array):\n      - Unique Items: true\n    - **Items** (Type: string):\n  - **successfulMapping** (Type: object):\n    - **from** (Type: string):\n        - Enum: ['SCM_USERNAME', 'SCM_EMAIL', 'SCM_FULLNAME', 'GITLOG_EMAIL', 'GITLOG_FULLNAME']\n    - **to** (Type: string):\n        - Enum: ['IQ_USERNAME', 'IQ_EMAIL', 'IQ_FULLNAME']\n"
+const AutomaticRoleAssignmentResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The 'developer' role has automatically been assigned to all contributors of the repository, who matched IQ Server users via the provided matching strategies.\n\nThe response contains all usernames that were successfully granted the role provided on the given application as well as an indication of which matching strategy was the first to match a user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **matchedUsers** (Type: array):\n      - Unique Items: true\n    - **Items** (Type: string):\n  - **successfulMapping** (Type: object):\n    - **to** (Type: string):\n        - Enum: ['IQ_USERNAME', 'IQ_EMAIL', 'IQ_FULLNAME']\n    - **from** (Type: string):\n        - Enum: ['SCM_USERNAME', 'SCM_EMAIL', 'SCM_FULLNAME', 'GITLOG_EMAIL', 'GITLOG_FULLNAME']\n"
 
 // NewAutomaticRoleAssignmentMCPTool creates the MCP Tool instance for AutomaticRoleAssignment
 func NewAutomaticRoleAssignmentMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func AutomaticRoleAssignmentHandler(ctx context.Context, request mcp.CallToolReq
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "AutomaticRoleAssignment")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "AutomaticRoleAssignment"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

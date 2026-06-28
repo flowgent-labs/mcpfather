@@ -6,7 +6,6 @@ import (
 
 	"jira-mcp-v10.7.4/internal/mcpaggregator/config"
 	"jira-mcp-v10.7.4/internal/mcpaggregator/pipeline"
-	"jira-mcp-v10.7.4/internal/mcpaggregator/runtime"
 )
 
 // ToolRegistry provides access to native MCP tools for the aggregated tool engine.
@@ -76,7 +75,7 @@ func (e *Engine) buildHandler(at config.AggregatedToolConfig) func(ctx context.C
 		if args == nil {
 			args = make(map[string]interface{})
 		}
-		executor := runtime.NewExecutor(e.registry)
+		executor := NewExecutor(e.registry)
 		return executor.Execute(ctx, at.Pipeline, args)
 	}
 }

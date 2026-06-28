@@ -13,7 +13,7 @@ import (
 const GetSourceControlInputSchema = "{\n  \"properties\": {\n    \"internalOwnerId\": {\n      \"description\": \"Enter the ownerId corresponding to the ownerType.\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Select the ownerType for the pull requests.\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"internalOwnerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetSourceControl tool (Status: 200, Content-Type: application/json)
-const GetSourceControlResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains " + "\x60" + "results" + "\x60" + " which is a list of elements, each including: <ul><li>" + "\x60" + "startTime" + "\x60" + " indicates the start time of the pull request.</li><li>" + "\x60" + "title" + "\x60" + " indicates the title of the pull request.</li><li>" + "\x60" + "exceptionThrown" + "\x60" + " indicates if the pull request caused an exception.</li><li>" + "\x60" + "successful" + "\x60" + " indicates if the pull request was successful.</li><li>" + "\x60" + "totalTime" + "\x60" + " indicates the total time taken to complete the pull request.</li><li>" + "\x60" + "reasoning" + "\x60" + " indicates the summary of the outcome of the pull request.</li></ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **results** (Type: array):\n    - **Items** (Type: object):\n      - **exceptionThrown** (Type: boolean):\n      - **reasoning** (Type: string):\n      - **startTime** (Type: string, date-time):\n      - **successful** (Type: boolean):\n      - **title** (Type: string):\n      - **totalTime** (Type: integer, int64):\n"
+const GetSourceControlResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains " + "\x60" + "results" + "\x60" + " which is a list of elements, each including: <ul><li>" + "\x60" + "startTime" + "\x60" + " indicates the start time of the pull request.</li><li>" + "\x60" + "title" + "\x60" + " indicates the title of the pull request.</li><li>" + "\x60" + "exceptionThrown" + "\x60" + " indicates if the pull request caused an exception.</li><li>" + "\x60" + "successful" + "\x60" + " indicates if the pull request was successful.</li><li>" + "\x60" + "totalTime" + "\x60" + " indicates the total time taken to complete the pull request.</li><li>" + "\x60" + "reasoning" + "\x60" + " indicates the summary of the outcome of the pull request.</li></ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **results** (Type: array):\n    - **Items** (Type: object):\n      - **successful** (Type: boolean):\n      - **title** (Type: string):\n      - **totalTime** (Type: integer, int64):\n      - **exceptionThrown** (Type: boolean):\n      - **reasoning** (Type: string):\n      - **startTime** (Type: string, date-time):\n"
 
 // NewGetSourceControlMCPTool creates the MCP Tool instance for GetSourceControl
 func NewGetSourceControlMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetSourceControlHandler(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetSourceControl")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetSourceControl"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

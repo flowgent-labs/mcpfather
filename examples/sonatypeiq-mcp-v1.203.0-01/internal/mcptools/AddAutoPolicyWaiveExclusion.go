@@ -13,7 +13,7 @@ import (
 const AddAutoPolicyWaiveExclusionInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The request JSON can include the fields\\u003col\\u003e\\u003cli\\u003eapplicationPublicId\\u003c/li\\u003e\\u003cli\\u003eownerId - ID of the application or organization which will own the auto waiver exclusion\\u003c/li\\u003e\\u003cli\\u003epolicyViolationId - ID of the policy violation which the exclusion will apply to\\u003c/li\\u003e\\u003cli\\u003eautoPolicyWaiverId - ID of the auto waiver you want to apply a exclusion to\\u003c/li\\u003e\\u003cli\\u003escanId - ID of the scan which the violation being waived appeared in\\u003c/li\\u003e\\u003cli\\u003ematchStrategy (enumeration, required) can have values EXACT_COMPONENT, ALL_VERSIONS, POLICY_VIOLATION. \\u003c/li\\u003e\\u003c/ol\\u003e\",\n      \"properties\": {\n        \"applicationPublicId\": {\n          \"type\": \"string\"\n        },\n        \"autoPolicyWaiverId\": {\n          \"type\": \"string\"\n        },\n        \"matchStrategy\": {\n          \"enum\": [\n            \"EXACT_COMPONENT\",\n            \"ALL_VERSIONS\",\n            \"POLICY_VIOLATION\"\n          ],\n          \"type\": \"string\"\n        },\n        \"ownerId\": {\n          \"type\": \"string\"\n        },\n        \"policyViolationId\": {\n          \"type\": \"string\"\n        },\n        \"scanId\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"ownerId\": {\n      \"description\": \"Enter the corresponding id for the ownerType specified above.\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"Enter the ownerType to specify which resource type owns the auto waiver you want to apply a exclusion to. Possible values are application, organization.\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"ownerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the AddAutoPolicyWaiveExclusion tool (Status: 200, Content-Type: application/json)
-const AddAutoPolicyWaiveExclusionResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Auto policy waiver exclusion has been created successfully.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **autoPolicyWaiverExclusionId** (Type: string):\n  - **creatorId** (Type: string):\n  - **creatorName** (Type: string):\n  - **ownerPublicId** (Type: string):\n  - **componentIdentifier** (Type: object):\n    - **coordinates** (Type: object):\n      - **Additional Properties**:\n        - **property value** (Type: string):\n    - **format** (Type: string):\n  - **threatLevel** (Type: integer, int32):\n  - **policyName** (Type: string):\n  - **scanId** (Type: string):\n  - **autoPolicyWaiverId** (Type: string):\n  - **componentDisplayName** (Type: string):\n  - **createTime** (Type: string, date-time):\n  - **vulnerabilityIdentifiers** (Type: string):\n  - **hash** (Type: string):\n  - **ownerId** (Type: string):\n  - **policyViolationId** (Type: string):\n  - **constraintFacts** (Type: array):\n    - **Items** (Type: object):\n      - **operatorName** (Type: string):\n      - **conditionFacts** (Type: array):\n        - **Items** (Type: object):\n          - **reason** (Type: string):\n          - **reference** (Type: object):\n            - **type** (Type: string):\n                - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n            - **value** (Type: string):\n          - **summary** (Type: string):\n          - **triggerJson** (Type: string):\n          - **conditionIndex** (Type: integer, int32):\n          - **conditionTypeId** (Type: string):\n      - **constraintId** (Type: string):\n      - **constraintName** (Type: string):\n  - **componentMatchStrategy** (Type: string):\n      - Enum: ['EXACT_COMPONENT', 'ALL_VERSIONS', 'POLICY_VIOLATION']\n  - **policyId** (Type: string):\n  - **ownerName** (Type: string):\n  - **ownerType** (Type: string):\n"
+const AddAutoPolicyWaiveExclusionResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Auto policy waiver exclusion has been created successfully.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **policyId** (Type: string):\n  - **autoPolicyWaiverId** (Type: string):\n  - **createTime** (Type: string, date-time):\n  - **vulnerabilityIdentifiers** (Type: string):\n  - **ownerId** (Type: string):\n  - **componentIdentifier** (Type: object):\n    - **coordinates** (Type: object):\n      - **Additional Properties**:\n        - **property value** (Type: string):\n    - **format** (Type: string):\n  - **componentMatchStrategy** (Type: string):\n      - Enum: ['EXACT_COMPONENT', 'ALL_VERSIONS', 'POLICY_VIOLATION']\n  - **constraintFacts** (Type: array):\n    - **Items** (Type: object):\n      - **conditionFacts** (Type: array):\n        - **Items** (Type: object):\n          - **conditionIndex** (Type: integer, int32):\n          - **conditionTypeId** (Type: string):\n          - **reason** (Type: string):\n          - **reference** (Type: object):\n            - **type** (Type: string):\n                - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n            - **value** (Type: string):\n          - **summary** (Type: string):\n          - **triggerJson** (Type: string):\n      - **constraintId** (Type: string):\n      - **constraintName** (Type: string):\n      - **operatorName** (Type: string):\n  - **hash** (Type: string):\n  - **ownerPublicId** (Type: string):\n  - **policyName** (Type: string):\n  - **scanId** (Type: string):\n  - **policyViolationId** (Type: string):\n  - **ownerName** (Type: string):\n  - **autoPolicyWaiverExclusionId** (Type: string):\n  - **componentDisplayName** (Type: string):\n  - **creatorId** (Type: string):\n  - **creatorName** (Type: string):\n  - **threatLevel** (Type: integer, int32):\n  - **ownerType** (Type: string):\n"
 
 // NewAddAutoPolicyWaiveExclusionMCPTool creates the MCP Tool instance for AddAutoPolicyWaiveExclusion
 func NewAddAutoPolicyWaiveExclusionMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func AddAutoPolicyWaiveExclusionHandler(ctx context.Context, request mcp.CallToo
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "AddAutoPolicyWaiveExclusion")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "AddAutoPolicyWaiveExclusion"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

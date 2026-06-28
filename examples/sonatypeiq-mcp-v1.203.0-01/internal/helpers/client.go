@@ -220,9 +220,9 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Forward all headers from context
 	if forwarded := GetHTTPHeaders(ctx); forwarded != nil {
 		for key, values := range forwarded {
-			// Skip hop-by-hop headers
+			// Skip hop-by-hop headers and MCP-specific headers
 			lowerKey := strings.ToLower(key)
-			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "cookie" || lowerKey == "content-length" {
+			if lowerKey == "host" || lowerKey == "connection" || lowerKey == "keep-alive" || lowerKey == "proxy-authenticate" || lowerKey == "proxy-authorization" || lowerKey == "te" || lowerKey == "trailer" || lowerKey == "transfer-encoding" || lowerKey == "upgrade" || lowerKey == "authorization" || lowerKey == "cookie" || lowerKey == "content-length" || lowerKey == "mcp-session-id" || lowerKey == "content-type" {
 				continue
 			}
 			for _, v := range values {
@@ -241,6 +241,13 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Attach upstream cookie (for session-based auth like JSESSIONID)
 	if cookie := GetUpstreamCookie(); cookie != "" {
 		req.Header.Set("Cookie", cookie)
+	}
+
+	// Forward MCP session ID as standard header when enabled
+	if GetUpstreamConfig().EnableMCPSessionInForwarding {
+		if sid := GetSessionID(ctx); sid != "" {
+			req.Header.Set("X-MCP-Session-ID", sid)
+		}
 	}
 
 	// Log outgoing request with final headers
@@ -274,6 +281,30 @@ type Config struct {
 	Tools struct {
 		Include []string `yaml:"include"`
 	} `yaml:"tools"`
+	Upstream UpstreamConfig `yaml:"upstream"`
+}
+
+// UpstreamConfig controls how requests are forwarded to upstream APIs.
+type UpstreamConfig struct {
+	EnableMCPSessionInForwarding bool                 `yaml:"enable_mcp_session_in_forwarding"`
+	Tools                        []UpstreamToolConfig `yaml:"tools,omitempty"`
+}
+
+// UpstreamToolConfig holds per-tool upstream settings.
+type UpstreamToolConfig struct {
+	Name string `yaml:"name"`
+}
+
+var upstreamCfg UpstreamConfig
+
+// SetUpstreamConfig stores the upstream configuration for use during request forwarding.
+func SetUpstreamConfig(cfg UpstreamConfig) {
+	upstreamCfg = cfg
+}
+
+// GetUpstreamConfig returns the stored upstream configuration.
+func GetUpstreamConfig() UpstreamConfig {
+	return upstreamCfg
 }
 
 // LoadConfig reads the optional config.yaml from $HOME/.{binaryName}/config.yaml.
@@ -420,38 +451,54 @@ func IsBinaryContentType(ct string) bool {
 	return true
 }
 
-// SaveBinaryResponse checks if an HTTP response is binary data (Content-Disposition
-// header or binary Content-Type) and if so, saves it to the downloads directory.
-// Returns ("", nil) if the response is not binary.
-func SaveBinaryResponse(resp *http.Response, body []byte, defaultName string) (string, error) {
-	// 1. Check Content-Disposition header
+// IsBinaryDownload checks whether an HTTP response represents a binary file download.
+// It inspects only the response headers (Content-Disposition and Content-Type) without
+// reading the body, so the caller can decide how to handle the response stream.
+func IsBinaryDownload(resp *http.Response) bool {
 	if resp.Header.Get("Content-Disposition") != "" {
-		// Looks like a file download, save it
-	} else if !IsBinaryContentType(resp.Header.Get("Content-Type")) {
-		return "", nil
+		return true
 	}
+	return IsBinaryContentType(resp.Header.Get("Content-Type"))
+}
 
+// resolveDownloadDir returns the directory where downloaded files are saved.
+func resolveDownloadDir() (string, error) {
+	if dir := os.Getenv("MCP_SERVER_DOWNLOAD_DIR"); dir != "" {
+		return dir, nil
+	}
+	exe, err := os.Executable()
+	binName := "mcpgen-server"
+	if err == nil {
+		binName = filepath.Base(exe)
+	}
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, "."+binName, "downloads"), nil
+	}
+	return "." + binName + "/downloads", nil
+}
+
+// SaveBinaryStream streams the response body directly to a file in the downloads
+// directory without buffering the entire content in memory. Returns the file path
+// and the number of bytes written.
+func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, error) {
 	fileName := DetermineFileName(resp, defaultName)
-	downloadDir := os.Getenv("MCP_SERVER_DOWNLOAD_DIR")
-	if downloadDir == "" {
-		exe, err := os.Executable()
-		binName := "mcpgen-server"
-		if err == nil {
-			binName = filepath.Base(exe)
-		}
-		home, err := os.UserHomeDir()
-		if err == nil {
-			downloadDir = filepath.Join(home, "."+binName, "downloads")
-		} else {
-			downloadDir = "." + binName + "/downloads"
-		}
+	downloadDir, err := resolveDownloadDir()
+	if err != nil {
+		return "", 0, err
 	}
 	if err := os.MkdirAll(downloadDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create download directory %s: %w", downloadDir, err)
+		return "", 0, fmt.Errorf("failed to create download directory %s: %w", downloadDir, err)
 	}
 	filePath := filepath.Join(downloadDir, fileName)
-	if err := os.WriteFile(filePath, body, 0644); err != nil {
-		return "", fmt.Errorf("failed to save file %s: %w", filePath, err)
+	f, err := os.Create(filePath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create file %s: %w", filePath, err)
 	}
-	return filePath, nil
+	defer f.Close()
+	written, err := io.Copy(f, resp.Body)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to stream response to file %s: %w", filePath, err)
+	}
+	return filePath, written, nil
 }
