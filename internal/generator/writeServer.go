@@ -28,18 +28,18 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 	}
 
 	helperImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
-	aggregatorImportPath := BuildModuleName(g.outputDir) + "/internal/mcpaggregator"
+	virtualImportPath := BuildModuleName(g.outputDir) + "/internal/mcpvirtual"
 
 	data := struct {
 		MCPToolsImportPath     string
 		HelpersImportPath      string
-		AggregatorImportPath   string
+		VirtualImportPath   string
 		BinaryName             string
 		Tools                  []ToolTemplateData
 	}{
 		MCPToolsImportPath:   importPath,
 		HelpersImportPath:    helperImportPath,
-		AggregatorImportPath: aggregatorImportPath,
+		VirtualImportPath: virtualImportPath,
 		BinaryName:           filepath.Base(g.outputDir),
 	}
 

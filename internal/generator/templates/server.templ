@@ -14,8 +14,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 
-	"{{.AggregatorImportPath}}/engine"
-	"{{.AggregatorImportPath}}/pipeline"
+	"{{.VirtualImportPath}}/engine"
+	"{{.VirtualImportPath}}/pipeline"
 )
 
 // requestLoggerMiddleware logs MCP tool requests and responses
@@ -77,7 +77,7 @@ func truncate(s string, max int) string {
 	return s
 }
 
-// registryAdapter bridges native MCP tools to the aggregated tool engine.
+// registryAdapter bridges native MCP tools to the virtual tool engine.
 type registryAdapter struct{}
 
 func (r *registryAdapter) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
@@ -143,19 +143,19 @@ func NewMCPServer() *server.MCPServer {
 		}
 	}
 
-	// Register aggregated tools from config
-	aggConfigPath := mcputils.AggregatedConfigPath("{{.BinaryName}}")
+	// Register virtual tools from config
+	aggConfigPath := mcputils.VirtualConfigPath("{{.BinaryName}}")
 	aggEngine, err := engine.New(aggConfigPath, &registryAdapter{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load aggregated tools: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
 	} else {
-		aggTools, err := aggEngine.Tools()
+		vtTools, err := aggEngine.Tools()
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: failed to build aggregated tools: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Warning: failed to build virtual tools: %v\n", err)
 		} else {
-			for _, entry := range aggTools {
-				tool := buildAggregatedMCPTool(entry)
-				handler := buildAggregatedHandler(entry)
+			for _, entry := range vtTools {
+				tool := buildVirtualMCPTool(entry)
+				handler := buildVirtualHandler(entry)
 				s.AddTool(tool, handler)
 			}
 		}
@@ -164,7 +164,7 @@ func NewMCPServer() *server.MCPServer {
 	return s
 }
 
-func buildAggregatedMCPTool(entry pipeline.AggregatedToolEntry) mcp.Tool {
+func buildVirtualMCPTool(entry pipeline.VirtualToolEntry) mcp.Tool {
 	schemaBytes, _ := json.Marshal(entry.InputSchema)
 	desc := entry.Description
 	if desc == "" {
@@ -207,7 +207,7 @@ func buildToolAnnotation(ann map[string]interface{}) mcp.ToolAnnotation {
 	return ta
 }
 
-func buildAggregatedHandler(entry pipeline.AggregatedToolEntry) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func buildVirtualHandler(entry pipeline.VirtualToolEntry) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		args := request.GetArguments()
 		if args == nil {

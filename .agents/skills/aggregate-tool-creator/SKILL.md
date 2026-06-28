@@ -1,1 +1,0 @@
-SKILL_ZH.md
