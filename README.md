@@ -73,44 +73,44 @@ MCP_UPSTREAM_TOKEN_FILE=.credentials /path/to/confluence-mcp --transport http --
 
 ### Atlassian - Jira
 
-- Server edition (More: https://developer.atlassian.com/server)
-  - https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json (v10.7.4)
-  - https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json (v11.2.1)
-    - Other MCP refer: https://context7.com/openapi/dac-static_atlassian_server_jira_platform_jira_software_dc_11002_swagger_v3_json
-    - Older specs refer: https://docs.atlassian.com/jira/REST/server/jira-rest-plugin.wadl
+- Server edition (more: [developer.atlassian.com/server](https://developer.atlassian.com/server))
+  - [jira_software_dc_10007_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json) (v10.7.4)
+  - [jira_software_dc_11002_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json) (v11.2.1)
+    - Other MCP refer: [context7 OpenAPI](https://context7.com/openapi/dac-static_atlassian_server_jira_platform_jira_software_dc_11002_swagger_v3_json)
+    - Older specs refer: [jira-rest-plugin.wadl](https://docs.atlassian.com/jira/REST/server/jira-rest-plugin.wadl)
 
-- Cloud edition (More: https://developer.atlassian.com/cloud)
-  - https://developer.atlassian.com/cloud/jira/software/rest/intro/#introduction
-  - https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json
+- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
+  - [Jira Software REST API intro](https://developer.atlassian.com/cloud/jira/software/rest/intro/#introduction)
+  - [swagger.v3.json](https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json)
 
 ### Atlassian - Confluence
 
-- Server edition (More: https://developer.atlassian.com/server)
-  - https://developer.atlassian.com/server/confluence/rest/v10214/intro/#about
-  - https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json
-    - more docs: https://developer.atlassian.com/cloud
+- Server edition (More: [developer.atlassian.com/server](https://developer.atlassian.com/server))
+  - [Confluence REST v10.2.14 intro](https://developer.atlassian.com/server/confluence/rest/v10214/intro/#about)
+  - [10.2.14.swagger.v3.json](https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json)
+    - more docs: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud)
 
-- Cloud edition (More: https://developer.atlassian.com/cloud)
-  - https://developer.atlassian.com/cloud/confluence/rest/v2/intro/
-  - https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json
+- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
+  - [Confluence REST v2 intro](https://developer.atlassian.com/cloud/confluence/rest/v2/intro/)
+  - [openapi-v2.v3.json](https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json)
 
 ### Sonatype - IQ
 
-- https://help.sonatype.com/en/iq-api-reference.html
-- https://sonatype.github.io/sonatype-documentation/api/iq/latest/iq-api.json
-- https://sonatype.github.io/sonatype-documentation/api/iq/1.204.2-01/iq-api.json
-- https://sonatype.github.io/sonatype-documentation/api/iq/1.203.0-01/iq-api.json
+- [IQ API reference](https://help.sonatype.com/en/iq-api-reference.html)
+- [iq-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/iq/latest/iq-api.json)
+- [iq-api.json (1.204.2-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.204.2-01/iq-api.json)
+- [iq-api.json (1.203.0-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.203.0-01/iq-api.json)
 
 ### Sonatype - Nexus Repository
 
-- https://help.sonatype.com/en/api-reference.html
-- https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json
+- [Nexus Repository API reference](https://help.sonatype.com/en/api-reference.html)
+- [nexus-repository-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json)
 
 ### Sonarqube (*Not support swagger*)
 
-- https://next.sonarqube.com/sonarqube/web_api
-- https://github.com/sonarsource/sonarqube-mcp-server (official java edition)
-- https://github.com/flowgent-labs/go-sonarqube-mcp-server (enhanced go edition based on official above)
+- [SonarQube Web API](https://next.sonarqube.com/sonarqube/web_api)
+- [sonarqube-mcp-server](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
+- [go-sonarqube-mcp-server](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
 
 ## Generator Configuration
 
