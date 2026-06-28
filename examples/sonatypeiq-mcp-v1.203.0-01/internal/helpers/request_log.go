@@ -1,0 +1,148 @@
+package mcputils
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+)
+
+// Request verbosity levels (similar to kubectl -v):
+//   0: silent (no upstream request logging)
+//   1: access log — status + URL + duration only (nginx-style)
+//   2-3: standard — includes query parameters
+//   4-5: detailed — includes request headers
+//   6-7: verbose — includes request body
+//   8-9: debug — pretty-printed body, timing, full dump
+//   10: full debug
+
+var verbosity int
+
+// SetVerbosity sets the request logging verbosity level (0-10).
+func SetVerbosity(v int) {
+	if v < 0 {
+		v = 0
+	}
+	if v > 10 {
+		v = 10
+	}
+	verbosity = v
+}
+
+// GetVerbosity returns the current verbosity level.
+func GetVerbosity() int {
+	return verbosity
+}
+
+// LogVerbosity returns true if logging is enabled at or above minLevel.
+func LogVerbosity(minLevel int) bool {
+	return verbosity >= minLevel
+}
+
+// --- Context helpers for session ID ---
+
+const SessionIDContextKey contextKey = "mcp-session-id"
+
+// WithSessionID stores the MCP session ID in the context.
+func WithSessionID(ctx context.Context, sessionID string) context.Context {
+	return context.WithValue(ctx, SessionIDContextKey, sessionID)
+}
+
+// GetSessionID retrieves the MCP session ID from the context.
+func GetSessionID(ctx context.Context) string {
+	if id, ok := ctx.Value(SessionIDContextKey).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// --- Log formatting helpers ---
+
+func logTimestamp() string {
+	return time.Now().Format(time.RFC3339)
+}
+
+func vlog(level int, format string, args ...interface{}) {
+	if verbosity < level {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "%s [upstream] %s\n", logTimestamp(), fmt.Sprintf(format, args...))
+}
+
+// vlogCtx is like vlog but includes session ID in the output if present in context.
+func vlogCtx(ctx context.Context, level int, format string, args ...interface{}) {
+	if verbosity < level {
+		return
+	}
+	sessionID := GetSessionID(ctx)
+	prefix := logTimestamp()
+	if sessionID != "" {
+		prefix += " sid=" + sessionID
+	}
+	msg := fmt.Sprintf(format, args...)
+	fmt.Fprintf(os.Stderr, "%s [upstream] %s\n", prefix, msg)
+}
+
+// logPrintAuth returns true if the Authorization header should be printed in logs.
+// Controlled by MCP_LOG_PRINT_AUTHORIZATION=true environment variable (off by default).
+func logPrintAuth() bool {
+	return os.Getenv("MCP_LOG_PRINT_AUTHORIZATION") == "true"
+}
+
+// LogRequest logs an outgoing request according to the configured verbosity level.
+// When verbosity >= 5, request headers are printed. The Authorization header value is
+// redacted (shown as "***") unless MCP_LOG_PRINT_AUTHORIZATION=true.
+func LogRequest(method string, url string, query map[string][]string, header http.Header, body []byte) {
+	if verbosity < 2 {
+		return
+	}
+
+	vlog(2, "%s %s", method, url)
+	if verbosity >= 3 && len(query) > 0 {
+		vlog(3, "query: %v", query)
+	}
+	if verbosity >= 5 && header != nil {
+		printAuth := logPrintAuth()
+		for key, values := range header {
+			isSensitive := strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie")
+			for _, v := range values {
+				val := v
+				if isSensitive && !printAuth {
+					val = "***"
+				}
+				vlog(5, "%s: %s", key, val)
+			}
+		}
+	}
+	if verbosity >= 7 && len(body) > 0 {
+		vlog(7, "body: %s", string(body))
+	}
+	if verbosity >= 9 && len(body) > 0 {
+		var prettyJSON bytes.Buffer
+		if err := json.Indent(&prettyJSON, body, "  ", "  "); err == nil {
+			vlog(9, "body (pretty):")
+			fmt.Fprint(os.Stderr, prettyJSON.String())
+			fmt.Fprintln(os.Stderr)
+		}
+	}
+}
+
+// LogResponse logs an upstream response according to the configured verbosity level.
+// At level 1, prints a single nginx-style access log line: "STATUS METHOD PATH (DURATION)".
+func LogResponse(ctx context.Context, statusCode int, method string, url string, duration time.Duration, body []byte) {
+	if verbosity < 1 {
+		return
+	}
+	if verbosity == 1 {
+		vlogCtx(ctx, 1, "%d %s %s (%s)", statusCode, method, url, duration.Round(time.Millisecond))
+		return
+	}
+	vlogCtx(ctx, 2, "%d %s %s (%s)", statusCode, method, url, duration)
+	if verbosity >= 9 && len(body) > 0 {
+		vlogCtx(ctx, 9, "response body: %s", string(body))
+	}
+}

@@ -19,7 +19,7 @@ virtualTools:
       properties:
         applicationPublicId:
           type: string
-          default: 12609073_bff_peak_transformation_service_fxscenario
+          default: 12609073_rengine
           description: Sonatype IQ application public id.
 
         scanId:

@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	mcpcli "{{ .ModuleName }}/internal/mcpcli"
-	mcputils "{{ .ModuleName }}/internal/helpers"
-	mcpserver "{{ .ModuleName }}/internal/mcpserver"
 	"github.com/mark3labs/mcp-go/server"
+	mcputils "sonatypeiq-mcp-v1.203.0-01/internal/helpers"
+	mcpcli "sonatypeiq-mcp-v1.203.0-01/internal/mcpcli"
+	mcpserver "sonatypeiq-mcp-v1.203.0-01/internal/mcpserver"
 )
 
 // logHTTP wraps any handler and logs every incoming HTTP request + response
@@ -84,7 +84,7 @@ func truncate(s string, max int) string {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: {{ .BinaryName }} [OPTIONS] [TOOL_NAME] [JSON_ARGS]
+	fmt.Fprintf(os.Stderr, `Usage: sonatypeiq-mcp-v1.203.0-01 [OPTIONS] [TOOL_NAME] [JSON_ARGS]
 
 Options:
   -t, --transport <stdio|http|cli>  Transport mode (default "stdio")
@@ -97,15 +97,15 @@ Options:
   -h, --help                        Show this help message
 
 CLI Mode:
-  {{ .BinaryName }} -t cli list                   List all available tools
-  {{ .BinaryName }} -t cli <tool-name> [OPTIONS]   Invoke a tool with GNU-style options
+  sonatypeiq-mcp-v1.203.0-01 -t cli list                   List all available tools
+  sonatypeiq-mcp-v1.203.0-01 -t cli <tool-name> [OPTIONS]   Invoke a tool with GNU-style options
                                                    Use --help for tool-specific help
 `)
 }
 
 func printDefaultConfigYAML() {
-	fmt.Println("# {{ .BinaryName }} MCP server configuration")
-	fmt.Println("# Place this file at: $HOME/." + "{{ .BinaryName }}" + "/config.yaml")
+	fmt.Println("# sonatypeiq-mcp-v1.203.0-01 MCP server configuration")
+	fmt.Println("# Place this file at: $HOME/." + "sonatypeiq-mcp-v1.203.0-01" + "/config.yaml")
 	fmt.Println()
 	fmt.Println("# ---- Native MCP Tools ----")
 	fmt.Println("tools:")
