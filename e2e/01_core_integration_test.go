@@ -22,9 +22,10 @@ import (
 
 const specFixture = "testdata/minimal_spec.yaml"
 
-// testProxyEnv returns the proxy URL and the env vars to set for child commands.
-// It checks MCPGEN_TEST_PROXY first, then HTTPS_PROXY, and defaults to http://:8800.
-// The effective proxy URL is logged so developers can see why a build is timing out.
+// testProxyEnv returns the proxy URL and env vars for build subcommands.
+// It checks MCPGEN_TEST_PROXY first, then HTTPS_PROXY.
+// If neither is set, no proxy is configured — suitable for environments
+// where Go can reach module proxies directly.
 func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 	t.Helper()
 	proxyURL = os.Getenv("MCPGEN_TEST_PROXY")
@@ -32,7 +33,8 @@ func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 		proxyURL = os.Getenv("HTTPS_PROXY")
 	}
 	if proxyURL == "" {
-		proxyURL = "http://:8800"
+		t.Logf("[proxy] MCPGEN_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
+		return "", nil
 	}
 	t.Logf("[proxy] MCPGEN_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
 		os.Getenv("MCPGEN_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)

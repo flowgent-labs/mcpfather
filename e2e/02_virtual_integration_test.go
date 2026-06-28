@@ -1801,6 +1801,250 @@ virtualTools:
 }
 
 // ===========================================================================
+// SECTION 10.5: Input Schema Default Values
+// ===========================================================================
+
+// TestE2E_VirtualTool_DefaultsAppliedToMissingArgs verifies that default values
+// from inputSchema.properties are applied when the caller omits optional args.
+func TestE2E_VirtualTool_DefaultsAppliedToMissingArgs(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		name := r.URL.Query().Get("name")
+		if name == "" {
+			name = "<empty>"
+		}
+		w.Write([]byte(fmt.Sprintf(`{"greeting":"Hello, %s!"}`, name)))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	virtConfig := `
+virtualTools:
+  - name: virt_defaults_basic
+    description: Test default values are applied
+    inputSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          default: "defaultUser"
+    pipeline:
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.name
+      - id: done
+        kind: return
+        spec:
+          from: $greet
+`
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	// Call with NO args — the default "defaultUser" should be applied
+	result := mcpCallVirtualTool(t, baseURL, "virt_defaults_basic", map[string]interface{}{})
+
+	data := mustJSON(t, result)
+	if data["greeting"] != "Hello, defaultUser!" {
+		t.Errorf("greeting = %v, want 'Hello, defaultUser!' (default should have been applied)", data["greeting"])
+	}
+
+	// Verify upstream received the correct query param
+	if len(mock.requests) != 1 {
+		t.Fatalf("expected 1 upstream request, got %d", len(mock.requests))
+	}
+	q := mock.requests[0].URL
+	if !strings.Contains(q, "name=defaultUser") {
+		t.Errorf("upstream received %q, want name=defaultUser", q)
+	}
+}
+
+// TestE2E_VirtualTool_DefaultsOverriddenByArgs verifies that explicitly
+// provided args take precedence over inputSchema default values.
+func TestE2E_VirtualTool_DefaultsOverriddenByArgs(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		name := r.URL.Query().Get("name")
+		w.Write([]byte(fmt.Sprintf(`{"greeting":"Hello, %s!"}`, name)))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	virtConfig := `
+virtualTools:
+  - name: virt_defaults_override
+    description: Test that provided args override defaults
+    inputSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          default: "fallbackName"
+        count:
+          type: integer
+          default: 10
+    pipeline:
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.name
+      - id: done
+        kind: return
+        spec:
+          from: $greet
+`
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	// Call with explicit name — should override default
+	result := mcpCallVirtualTool(t, baseURL, "virt_defaults_override", map[string]interface{}{
+		"name": "overriddenUser",
+	})
+
+	data := mustJSON(t, result)
+	if data["greeting"] != "Hello, overriddenUser!" {
+		t.Errorf("greeting = %v, want 'Hello, overriddenUser!' (provided arg should override default)", data["greeting"])
+	}
+
+	q := mock.requests[0].URL
+	if !strings.Contains(q, "name=overriddenUser") {
+		t.Errorf("upstream received %q, want name=overriddenUser", q)
+	}
+}
+
+// TestE2E_VirtualTool_DefaultsMixedWithArgs verifies that a mix of
+// provided args and defaults works correctly — some defaults filled,
+// some args explicitly set.
+func TestE2E_VirtualTool_DefaultsMixedWithArgs(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		name := r.URL.Query().Get("name")
+		w.Write([]byte(fmt.Sprintf(`{"echo":"%s"}`, name)))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	virtConfig := `
+virtualTools:
+  - name: virt_defaults_mixed
+    description: Test mix of defaults and overrides
+    inputSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          default: "alpha"
+        count:
+          type: integer
+          default: 99
+    pipeline:
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.name
+      - id: done
+        kind: return
+        spec:
+          from: $greet
+`
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	// Provide name, omit count — count should get default 99
+	result := mcpCallVirtualTool(t, baseURL, "virt_defaults_mixed", map[string]interface{}{
+		"name": "beta",
+	})
+
+	data := mustJSON(t, result)
+	if !strings.Contains(data["echo"].(string), "beta") {
+		t.Errorf("echo = %v, want it to contain 'beta'", data["echo"])
+	}
+
+	q := mock.requests[0].URL
+	if !strings.Contains(q, "name=beta") {
+		t.Errorf("upstream received %q, want name=beta", q)
+	}
+}
+
+// TestE2E_VirtualTool_DefaultsBoolean verifies boolean default values
+// are correctly applied (truthy defaults are a common edge case).
+func TestE2E_VirtualTool_DefaultsBoolean(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(fmt.Sprintf(`{"ok":true,"received":%q}`, r.URL.RawQuery)))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	binaryName := filepath.Base(dir)
+
+	virtConfig := `
+virtualTools:
+  - name: virt_defaults_bool
+    description: Test boolean defaults
+    inputSchema:
+      type: object
+      properties:
+        name:
+          type: string
+          default: "defaultName"
+        verbose:
+          type: boolean
+          default: true
+    pipeline:
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.name
+      - id: done
+        kind: return
+        spec:
+          from: $greet
+`
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallVirtualTool(t, baseURL, "virt_defaults_bool", map[string]interface{}{})
+
+	data := mustJSON(t, result)
+	if !data["ok"].(bool) {
+		t.Error("expected ok:true")
+	}
+
+	// The default name should have been used
+	q := mock.requests[0].URL
+	if !strings.Contains(q, "name=defaultName") {
+		t.Errorf("upstream received %q, want name=defaultName", q)
+	}
+}
+
+// ===========================================================================
 // SECTION 11: MCP Header Forwarding to Upstream Tests
 // ===========================================================================
 
