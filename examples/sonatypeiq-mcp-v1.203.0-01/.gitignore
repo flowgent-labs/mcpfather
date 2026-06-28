@@ -1,8 +1,0 @@
-.credentials
-bin/
-*.exe
-*.dll
-*.so
-*.dylib
-*.test
-*.out
