@@ -442,6 +442,39 @@ func (g *Generator) GenerateReadme() error {
 		"Edit `~/." + binName + "/config.yaml` and set `tools.include` to the operation IDs you want:\n\n" +
 		"```yaml\ntools:\n  include:\n    - ListSpaces\n    - SearchContent\n```\n\n" +
 		"When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.\n\n" +
+		"### Virtual Tools (Composition)\n\n" +
+		"Compose multiple native tools into a single AI-callable tool via a declarative " +
+		"5-step pipeline DSL. Add a `virtualTools` list to your config file:\n\n" +
+		"```yaml\n" +
+		"virtualTools:\n" +
+		"  - name: MyVirtualTool\n" +
+		"    description: Retrieve application details with remediation suggestions\n" +
+		"    inputSchema:\n" +
+		"      type: object\n" +
+		"      properties:\n" +
+		"        appId:\n" +
+		"          type: string\n" +
+		"      required: [appId]\n" +
+		"    pipeline:\n" +
+		"      - id: getApp\n" +
+		"        kind: call\n" +
+		"        spec:\n" +
+		"          tool: GetApplication\n" +
+		"          parse: json\n" +
+		"          args:\n" +
+		"            applicationId: $input.appId\n" +
+		"      - id: appName\n" +
+		"        kind: jq\n" +
+		"        spec:\n" +
+		"          from: $getApp\n" +
+		"          expr: .name\n" +
+		"      - id: done\n" +
+		"        kind: return\n" +
+		"        spec:\n" +
+		"          from: $appName\n" +
+		"```\n\n" +
+		"Pipeline step kinds: `call`, `jq`, `foreach`, `emit`, `return`. " +
+		"See the virtual-tool-creator skill for details.\n\n" +
 		"## Agent Integration\n\n" +
 		"All env vars from [Authentication](#authentication) above (including `MCP_UPSTREAM_COOKIE` / `MCP_UPSTREAM_COOKIE_FILE`) can be set in the `env` block of any agent config below.\n\n" +
 		"### Local Mode (stdio)\n\n" +

@@ -22,12 +22,12 @@ import (
 type VirtualMockService struct {
 	mu       sync.Mutex
 	server   *httptest.Server
-	requests []AggMockRequest
+	requests []VirtualMockRequest
 	routes   map[string]http.HandlerFunc
 }
 
-// AggMockRequest records a request received by the mock upstream.
-type AggMockRequest struct {
+// VirtualMockRequest records a request received by the mock upstream.
+type VirtualMockRequest struct {
 	Method string
 	Path   string
 	Query  url.Values
@@ -54,7 +54,7 @@ func (m *VirtualMockService) Start() string {
 		// Restore body so inner handlers can read it
 		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		m.mu.Lock()
-		m.requests = append(m.requests, AggMockRequest{
+		m.requests = append(m.requests, VirtualMockRequest{
 			Method: r.Method,
 			Path:   r.URL.Path,
 			Query:  r.URL.Query(),
@@ -85,10 +85,10 @@ func (m *VirtualMockService) Close() {
 }
 
 // Requests returns a copy of all recorded requests.
-func (m *VirtualMockService) Requests() []AggMockRequest {
+func (m *VirtualMockService) Requests() []VirtualMockRequest {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	out := make([]AggMockRequest, len(m.requests))
+	out := make([]VirtualMockRequest, len(m.requests))
 	copy(out, m.requests)
 	return out
 }
@@ -298,7 +298,7 @@ func (m *VirtualMockService) RegisterSonatypeIQRealScenario() {
 				"id":              internalAppID,
 				"name":            "bff_peak_transformation_service_fxscenario",
 				"organizationId":  "org-abc-def",
-				"publicId":        "12609073_bff_peak_transformation_service_fxscenario",
+				"publicId":        "12609073_rengine",
 				"contactUserName": "admin",
 			},
 			"reportTime":  "2024-06-15T08:30:00Z",
