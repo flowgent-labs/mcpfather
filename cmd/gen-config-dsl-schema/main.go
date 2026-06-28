@@ -1,4 +1,4 @@
-// schema-gen generates the JSON Schema for mcpgen aggregated tool configuration.
+// schema-gen generates the JSON Schema for mcpgen virtual tool configuration.
 package main
 
 import (
@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/config"
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpaggregator/pipeline"
+	"github.com/wl4g-ai/mcpgen/internal/generator/mcpvirtual/config"
+	"github.com/wl4g-ai/mcpgen/internal/generator/mcpvirtual/pipeline"
 )
 
 type schema map[string]interface{}
@@ -41,7 +41,7 @@ func main() {
 func generate() schema {
 	defs := schema{}
 
-	agg := aggregateToolDef(defs)
+	vt := virtualToolDef(defs)
 	step := stepDef(defs)
 
 	callSpec := schema{
@@ -109,7 +109,7 @@ func generate() schema {
 		"additionalProperties": false,
 	}
 
-	defs["AggregatedTool"] = agg
+	defs["VirtualTool"] = vt
 	defs["Step"] = step
 	defs["CallSpec"] = callSpec
 	defs["JQSpec"] = jqSpec
@@ -120,26 +120,26 @@ func generate() schema {
 
 	return schema{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
-		"$id":     "https://mcpgen/schemas/aggregated-tool-config",
-		"title":   "AggregatedToolConfig",
+		"$id":     "https://mcpgen/schemas/virtual-tool-config",
+		"title":   "VirtualToolConfig",
 		"description": fmt.Sprintf(
-			"Schema for mcpgen aggregated tool pipeline configuration ($HOME/.<binary>/config.yaml). Generated from Go structs: %s",
+			"Schema for mcpgen virtual tool pipeline configuration ($HOME/.<binary>/config.yaml). Generated from Go structs: %s",
 			sourceFiles(),
 		),
 		"type":     "object",
-		"required": []string{"aggregateTools"},
+		"required": []string{"virtualTools"},
 		"properties": schema{
-			"aggregateTools": schema{
+			"virtualTools": schema{
 				"type":     "array",
 				"minItems": 1,
-				"items":    ref("#/$defs/AggregatedTool"),
+				"items":    ref("#/$defs/VirtualTool"),
 			},
 		},
 		"$defs": defs,
 	}
 }
 
-func aggregateToolDef(defs schema) schema {
+func virtualToolDef(defs schema) schema {
 	return schema{
 		"type":     "object",
 		"required": []string{"name", "pipeline"},
@@ -215,7 +215,7 @@ func sourceFiles() string {
 // Compile-time verification.
 var (
 	_ config.Config
-	_ config.AggregatedToolConfig
+	_ config.VirtualToolConfig
 	_ pipeline.StepConfig
 	_ pipeline.StepSpec
 	_ pipeline.RequireConfig

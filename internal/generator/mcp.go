@@ -17,8 +17,8 @@ import (
 
 //go:embed templates/*.templ
 //go:embed templates/_credentials/*
-//go:embed mcpaggregator/*/*.go
-//go:embed skills/aggregate-tool-creator
+//go:embed mcpvirtual/*/*.go
+//go:embed skills/virtual-tool-creator
 var templatesFS embed.FS
 
 // ToolTemplateData holds the data to pass to the template for a single tool
@@ -97,18 +97,18 @@ func (g *Generator) GenerateMCP() error {
 		fmt.Fprintf(os.Stderr, "[verbose] generated internal/helpers/\n")
 	}
 
-	if err := g.GenerateAggregator(); err != nil {
-		return fmt.Errorf("failed to generate aggregator: %w", err)
+	if err := g.GenerateVirtual(); err != nil {
+		return fmt.Errorf("failed to generate virtual engine: %w", err)
 	}
 	if g.verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpaggregator/\n")
+		fmt.Fprintf(os.Stderr, "[verbose] generated internal/mcpvirtual/\n")
 	}
 
-	if err := g.GenerateAggregateToolCreatorSkill(); err != nil {
-		return fmt.Errorf("failed to generate aggregate-tool-creator skill: %w", err)
+	if err := g.GenerateVirtualToolCreatorSkill(); err != nil {
+		return fmt.Errorf("failed to generate virtual-tool-creator skill: %w", err)
 	}
 	if g.verbose {
-		fmt.Fprintf(os.Stderr, "[verbose] generated .agents/skills/aggregate-tool-creator/\n")
+		fmt.Fprintf(os.Stderr, "[verbose] generated .agents/skills/virtual-tool-creator/\n")
 	}
 
 	if err := g.GenerateCredentials(); err != nil {
@@ -363,17 +363,17 @@ func (g *Generator) GenerateCLI() error {
 	}
 
 	helpersImportPath := BuildModuleName(g.outputDir) + "/internal/helpers"
-	aggregatorImportPath := BuildModuleName(g.outputDir) + "/internal/mcpaggregator"
+	virtualImportPath := BuildModuleName(g.outputDir) + "/internal/mcpvirtual"
 
 	data := struct {
 		MCPToolsImportPath   string
 		HelpersImportPath    string
-		AggregatorImportPath string
+		VirtualImportPath string
 		BinaryName           string
 	}{
 		MCPToolsImportPath:   importPath,
 		HelpersImportPath:    helpersImportPath,
-		AggregatorImportPath: aggregatorImportPath,
+		VirtualImportPath: virtualImportPath,
 		BinaryName:           filepath.Base(g.outputDir),
 	}
 

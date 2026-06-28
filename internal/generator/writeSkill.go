@@ -8,11 +8,11 @@ import (
 	"strings"
 )
 
-// GenerateAggregateToolCreatorSkill copies the aggregate-tool-creator skill
-// into the generated project as .agents/skills/aggregate-tool-creator/.
-func (g *Generator) GenerateAggregateToolCreatorSkill() error {
-	destDir := filepath.Join(g.outputDir, ".agents", "skills", "aggregate-tool-creator")
-	skillPrefix := "skills/aggregate-tool-creator"
+// GenerateVirtualToolCreatorSkill copies the virtual-tool-creator skill
+// into the generated project as .agents/skills/virtual-tool-creator/.
+func (g *Generator) GenerateVirtualToolCreatorSkill() error {
+	destDir := filepath.Join(g.outputDir, ".agents", "skills", "virtual-tool-creator")
+	skillPrefix := "skills/virtual-tool-creator"
 
 	return fs.WalkDir(templatesFS, "skills", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -21,7 +21,7 @@ func (g *Generator) GenerateAggregateToolCreatorSkill() error {
 		if d.IsDir() {
 			return nil
 		}
-		if !strings.HasPrefix(path, "skills/aggregate-tool-creator") {
+		if !strings.HasPrefix(path, "skills/virtual-tool-creator") {
 			return nil
 		}
 

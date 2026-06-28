@@ -13,14 +13,14 @@ import (
 	mcputils "{{ .HelpersImportPath }}"
 	"github.com/mark3labs/mcp-go/mcp"
 
-	"{{.AggregatorImportPath}}/engine"
-	"{{.AggregatorImportPath}}/pipeline"
+	"{{.VirtualImportPath}}/engine"
+	"{{.VirtualImportPath}}/pipeline"
 )
 
-// aggregateRegistry adapts native MCP tools for the aggregate tool engine.
-type aggregateRegistry struct{}
+// virtualRegistry adapts native MCP tools for the virtual tool engine.
+type virtualRegistry struct{}
 
-func (r *aggregateRegistry) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
+func (r *virtualRegistry) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
 	entry, ok := mcptools.Registry[name]
 	if !ok {
 		return nil, fmt.Errorf("tool not found: %s", name)
@@ -44,10 +44,10 @@ func (r *aggregateRegistry) CallTool(ctx context.Context, name string, args map[
 	return out, nil
 }
 
-// loadAggregateTools loads aggregate tools from config and returns a name→entry map.
-func loadAggregateTools() map[string]pipeline.AggregatedToolEntry {
-	cfgPath := mcputils.AggregatedConfigPath("{{.BinaryName}}")
-	aggEngine, err := engine.New(cfgPath, &aggregateRegistry{})
+// loadVirtualTools loads virtual tools from config and returns a name→entry map.
+func loadVirtualTools() map[string]pipeline.VirtualToolEntry {
+	cfgPath := mcputils.VirtualConfigPath("{{.BinaryName}}")
+	aggEngine, err := engine.New(cfgPath, &virtualRegistry{})
 	if err != nil {
 		return nil
 	}
@@ -55,7 +55,7 @@ func loadAggregateTools() map[string]pipeline.AggregatedToolEntry {
 	if err != nil {
 		return nil
 	}
-	m := make(map[string]pipeline.AggregatedToolEntry, len(entries))
+	m := make(map[string]pipeline.VirtualToolEntry, len(entries))
 	for _, e := range entries {
 		m[e.Name] = e
 	}
@@ -85,8 +85,8 @@ func ListTools() {
 		}
 	}
 
-	aggTools := loadAggregateTools()
-	for name, entry := range aggTools {
+	vtTools := loadVirtualTools()
+	for name, entry := range vtTools {
 		if len(enabled) == 0 || enabled[name] {
 			allTools = append(allTools, toolInfo{name: name, desc: entry.Description})
 		}
@@ -108,10 +108,10 @@ func Call(binName, toolName string, args []string) error {
 	if entry, ok := mcptools.Registry[toolName]; ok {
 		return callNative(binName, toolName, args, entry)
 	}
-	// Try aggregate tool
-	aggTools := loadAggregateTools()
-	if entry, ok := aggTools[toolName]; ok {
-		return callAggregate(binName, toolName, args, entry)
+	// Try virtual tool
+	vtTools := loadVirtualTools()
+	if entry, ok := vtTools[toolName]; ok {
+		return callVirtual(binName, toolName, args, entry)
 	}
 	return fmt.Errorf("unknown tool %q — use -t cli list to see available tools", toolName)
 }
@@ -182,7 +182,7 @@ func callNative(binName, toolName string, args []string, entry mcptools.ToolEntr
 	return nil
 }
 
-func callAggregate(binName, toolName string, args []string, entry pipeline.AggregatedToolEntry) error {
+func callVirtual(binName, toolName string, args []string, entry pipeline.VirtualToolEntry) error {
 	for _, arg := range args {
 		if arg == "--help" || arg == "-h" {
 			schema := entry.InputSchema
