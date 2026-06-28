@@ -243,11 +243,12 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Forward MCP session ID as standard header when enabled
-	if GetUpstreamConfig().EnableMCPSessionInForwarding {
-		if sid := GetSessionID(ctx); sid != "" {
-			req.Header.Set("X-MCP-Session-ID", sid)
-		}
+	// Forward MCP session ID as a standard HTTP header (X-MCP-Session-ID).
+	// The raw "Mcp-Session-Id"/"mcp-session-id" header from the MCP client is
+	// never forwarded as-is because some upstream APIs (e.g. Sonatype IQ)
+	// reject non-standard headers with HTTP 400.
+	if sid := GetSessionID(ctx); sid != "" {
+		req.Header.Set("X-MCP-Session-ID", sid)
 	}
 
 	// Log outgoing request with final headers
