@@ -329,9 +329,9 @@ func LoadConfig(binaryName string) (*Config, error) {
 	return &cfg, nil
 }
 
-// AggregatedConfigPath returns the path to the config file used by the aggregated
+// VirtualConfigPath returns the path to the config file used by the virtual engine
 // tool engine. This is the same config.yaml that LoadConfig reads from.
-func AggregatedConfigPath(binaryName string) string {
+func VirtualConfigPath(binaryName string) string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
