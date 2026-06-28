@@ -1069,7 +1069,7 @@ func TestE2E_VirtualTool_CallJQReturn(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_clean_echo
+  - name: virt_clean_echo
     description: Echo with cleanup
     inputSchema:
       type: object
@@ -1095,7 +1095,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_clean_echo", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_clean_echo", map[string]interface{}{})
 
 	data := mustJSON(t, result)
 	if data["status"] != "ok" {
@@ -1133,7 +1133,7 @@ func TestE2E_VirtualTool_ChainedNativeTools(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_chain
+  - name: virt_chain
     description: Chain echo and greet
     inputSchema:
       type: object
@@ -1171,7 +1171,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_chain", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_chain", map[string]interface{}{
 		"name": "World",
 	})
 
@@ -1212,7 +1212,7 @@ func TestE2E_VirtualTool_ForeachOverInputArray(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_batch_greet
+  - name: virt_batch_greet
     description: Batch greet
     inputSchema:
       type: object
@@ -1253,7 +1253,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_batch_greet", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_batch_greet", map[string]interface{}{
 		"names": []interface{}{"Alice", "Bob", "Charlie"},
 	})
 
@@ -1297,7 +1297,7 @@ func TestE2E_VirtualTool_CoexistsWithNativeTools(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_fast_echo
+  - name: virt_fast_echo
     description: Fast echo wrapper
     inputSchema:
       type: object
@@ -1313,7 +1313,7 @@ virtualTools:
         spec:
           from: $call_echo
 
-  - name: agg_greet_wrapper
+  - name: virt_greet_wrapper
     description: Greet with rename
     inputSchema:
       type: object
@@ -1344,12 +1344,12 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result1 := mcpCallVirtualTool(t, baseURL, "agg_fast_echo", map[string]interface{}{})
+	result1 := mcpCallVirtualTool(t, baseURL, "virt_fast_echo", map[string]interface{}{})
 	if mustJSON(t, result1)["status"] != "echo_ok" {
-		t.Error("agg_fast_echo failed")
+		t.Error("virt_fast_echo failed")
 	}
 
-	result2 := mcpCallVirtualTool(t, baseURL, "agg_greet_wrapper", map[string]interface{}{"person": "Zoe"})
+	result2 := mcpCallVirtualTool(t, baseURL, "virt_greet_wrapper", map[string]interface{}{"person": "Zoe"})
 	data2 := mustJSON(t, result2)
 	if data2["greeting"] != "Zoe" {
 		t.Errorf("greeting = %v", data2["greeting"])
@@ -1437,7 +1437,7 @@ func TestE2E_VirtualTool_CallParseJSON(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_parse_json
+  - name: virt_parse_json
     description: Parse JSON from text response
     inputSchema:
       type: object
@@ -1460,7 +1460,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_parse_json", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_parse_json", map[string]interface{}{})
 	data := mustJSON(t, result)
 	if data["key"] != "hello-world" {
 		t.Errorf("key = %v, want hello-world", data["key"])
@@ -1488,7 +1488,7 @@ func TestE2E_VirtualTool_RequireNonEmptyOnJQ(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_require_jq
+  - name: virt_require_jq
     description: Require nonEmpty on jq step
     inputSchema:
       type: object
@@ -1518,7 +1518,7 @@ virtualTools:
 	defer cleanup()
 
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
-		"name":      "agg_require_jq",
+		"name":      "virt_require_jq",
 		"arguments": map[string]interface{}{},
 	})
 	defer resp.Body.Close()
@@ -1546,7 +1546,7 @@ func TestE2E_VirtualTool_ForeachConcurrencyFromInput(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_concurrent
+  - name: virt_concurrent
     description: Foreach with input concurrency
     inputSchema:
       type: object
@@ -1589,7 +1589,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_concurrent", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_concurrent", map[string]interface{}{
 		"names":   []interface{}{"Alice", "Bob", "Charlie", "Diana"},
 		"workers": 2,
 	})
@@ -1626,7 +1626,7 @@ func TestE2E_VirtualTool_ReturnWithVarsAndExpr(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_summary
+  - name: virt_summary
     description: Build summary with vars and expr
     inputSchema:
       type: object
@@ -1661,7 +1661,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_summary", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_summary", map[string]interface{}{
 		"name": "World",
 	})
 	data := mustJSON(t, result)
@@ -1704,7 +1704,7 @@ func TestE2E_VirtualTool_AnnotationsPropagated(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_annotated
+  - name: virt_annotated
     description: Annotated tool
     annotations:
       readOnlyHint: true
@@ -1741,9 +1741,9 @@ virtualTools:
 	}
 
 	// Also verify the tool is callable
-	result := mcpCallVirtualTool(t, baseURL, "agg_annotated", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_annotated", map[string]interface{}{})
 	if mustJSON(t, result)["status"] != "ok" {
-		t.Error("agg_annotated should still work")
+		t.Error("virt_annotated should still work")
 	}
 }
 
@@ -1764,7 +1764,7 @@ func TestE2E_VirtualTool_RequireNonEmptyPasses(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_require_ok
+  - name: virt_require_ok
     description: Require validation that passes
     inputSchema:
       type: object
@@ -1793,7 +1793,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_require_ok", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_require_ok", map[string]interface{}{})
 	items := mustJSONArray(t, result)
 	if len(items) != 3 {
 		t.Fatalf("expected 3 items, got %d", len(items))
@@ -1999,7 +1999,7 @@ func TestE2E_SonatypeIQ_FullPipeline(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_sonatype_report
+  - name: virt_sonatype_report
     description: SonatypeIQ-style full pipeline report
     inputSchema:
       type: object
@@ -2068,7 +2068,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_sonatype_report", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_sonatype_report", map[string]interface{}{
 		"appPublicId": "app-123",
 	})
 
@@ -2113,7 +2113,7 @@ func TestE2E_SonatypeIQ_RequireValidation(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_require_sonatype
+  - name: virt_require_sonatype
     description: Require validation test
     inputSchema:
       type: object
@@ -2144,7 +2144,7 @@ virtualTools:
 	defer cleanup()
 
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
-		"name":      "agg_require_sonatype",
+		"name":      "virt_require_sonatype",
 		"arguments": map[string]interface{}{},
 	})
 	defer resp.Body.Close()
@@ -2170,7 +2170,7 @@ func TestE2E_SonatypeIQ_ParseJSON(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_parse_json
+  - name: virt_parse_json
     description: Parse JSON from text/plain response
     inputSchema:
       type: object
@@ -2194,7 +2194,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_parse_json", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_parse_json", map[string]interface{}{})
 	if result != "deep-value" {
 		t.Errorf("expected 'deep-value', got %q", result)
 	}
@@ -2216,7 +2216,7 @@ func TestE2E_SonatypeIQ_ReturnWithVarsExpr(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_return_vars
+  - name: virt_return_vars
     description: Return with vars and expression
     inputSchema:
       type: object
@@ -2250,7 +2250,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_return_vars", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_return_vars", map[string]interface{}{
 		"name": "World",
 	})
 
@@ -2282,7 +2282,7 @@ func TestE2E_SonatypeIQ_ForeachConcurrency(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_foreach_concurrent
+  - name: virt_foreach_concurrent
     description: Foreach with concurrency from input
     inputSchema:
       type: object
@@ -2329,7 +2329,7 @@ virtualTools:
 	for i := 0; i < 6; i++ {
 		items[i] = fmt.Sprintf("item-%d", i)
 	}
-	result := mcpCallVirtualTool(t, baseURL, "agg_foreach_concurrent", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_foreach_concurrent", map[string]interface{}{
 		"items":   items,
 		"workers": float64(3),
 	})
@@ -2369,7 +2369,7 @@ func TestE2E_SonatypeIQ_SimpleChain(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_simple
+  - name: virt_simple
     description: Simple call→jq→return chain
     inputSchema:
       type: object
@@ -2395,7 +2395,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_simple", map[string]interface{}{})
+	result := mcpCallVirtualTool(t, baseURL, "virt_simple", map[string]interface{}{})
 
 	data := mustJSON(t, result)
 	if data["status"] != "ok" {
