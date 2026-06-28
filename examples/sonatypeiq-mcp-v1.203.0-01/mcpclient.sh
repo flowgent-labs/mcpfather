@@ -53,16 +53,84 @@ Tips:
 Examples:
 USAGE
   cat <<'EOEX'
-  # GetPolicyViolations (GET)
-  ./mcpclient.sh call GetPolicyViolations '{"openTimeAfter": "openTimeAfter_value", "openTimeBefore": "openTimeBefore_value", "p": [], "type": []}'
+  # Add (POST)
+  ./mcpclient.sh call Add '{"body": {"firstName": "firstName_value", "lastName": "lastName_value", "password": "password_value", "realm": "realm_value", "username": "username_value", "email": "email_value"}}'
 EOEX
   cat <<'EOEX'
-  # GetReportHistoryForApplication (GET)
-  ./mcpclient.sh call GetReportHistoryForApplication '{"applicationId": "applicationId_value", "limit": 0, "stage": "stage_value"}'
+  # AddApplication (POST)
+  ./mcpclient.sh call AddApplication '{"body": {"applicationTags": [], "contactUserName": "contactUserName_value", "id": "id_value", "name": "name_value", "organizationId": "organizationId_value", "publicId": "publicId_value"}}'
 EOEX
   cat <<'EOEX'
-  # GetSuggestedRemediationForComponent (POST)
-  ./mcpclient.sh call GetSuggestedRemediationForComponent '{"identificationSource": "identificationSource_value", "includeParentRemediation": false, "ownerId": "ownerId_value", "ownerType": "application", "scanId": "scanId_value", "stageId": "stageId_value", "body": {"componentIdentifier": {}, "displayName": "displayName_value", "hash": "hash_value", "originalPurl": "originalPurl_value", "packageUrl": "packageUrl_value", "proprietary": false, "sha256": "sha256_value", "thirdParty": false}}'
+  # AddArtifactoryConnection (POST)
+  ./mcpclient.sh call AddArtifactoryConnection '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"baseUrl": "baseUrl_value", "isAnonymous": false, "ownerId": "ownerId_value", "ownerType": "application", "password": "password_value", "username": "username_value", "artifactoryConnectionId": "artifactoryConnectionId_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddAutoPolicyWaiveExclusion (POST)
+  ./mcpclient.sh call AddAutoPolicyWaiveExclusion '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"applicationPublicId": "applicationPublicId_value", "autoPolicyWaiverId": "autoPolicyWaiverId_value", "matchStrategy": "EXACT_COMPONENT", "ownerId": "ownerId_value", "policyViolationId": "policyViolationId_value", "scanId": "scanId_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddAutoPolicyWaiver (POST)
+  ./mcpclient.sh call AddAutoPolicyWaiver '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"ownerType": "ownerType_value", "autoPolicyWaiverId": "autoPolicyWaiverId_value", "creatorId": "creatorId_value", "ownerId": "ownerId_value", "pathForward": false, "threatLevel": 0, "publicId": "publicId_value", "creatorName": "creatorName_value", "reachability": false, "ownerName": "ownerName_value", "scopesOperatorAny": false, "createTime": "2025-01-01"}}'
+EOEX
+  cat <<'EOEX'
+  # AddAutoPolicyWaivers (POST)
+  ./mcpclient.sh call AddAutoPolicyWaivers '{"ownerId": "ownerId_value", "ownerType": "application", "body": "value"}'
+EOEX
+  cat <<'EOEX'
+  # AddBulkPolicyWaivers (POST)
+  ./mcpclient.sh call AddBulkPolicyWaivers '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"apiWaiverOptionsDTO": {}, "violationIds": ["violation-id-1","violation-id-2","violation-id-3"]}}'
+EOEX
+  cat <<'EOEX'
+  # AddLabel (POST)
+  ./mcpclient.sh call AddLabel '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"ownerId": "ownerId_value", "ownerType": "ownerType_value", "color": "color_value", "description": "description_value", "id": "id_value", "label": "label_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddLicenseOverride (POST)
+  ./mcpclient.sh call AddLicenseOverride '{"ownerId": "ownerId_value", "ownerType": "application", "where": "where_value", "body": {"id": "id_value", "licenseIds": [], "ownerId": "ownerId_value", "status": "OPEN", "comment": "comment_value", "componentIdentifier": {}}}'
+EOEX
+  cat <<'EOEX'
+  # AddOrganization (POST)
+  ./mcpclient.sh call AddOrganization '{"body": {"name": "name_value", "parentOrganizationId": "parentOrganizationId_value", "tags": [], "id": "id_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddPolicyWaiverByPolicyViolationId (POST)
+  ./mcpclient.sh call AddPolicyWaiverByPolicyViolationId '{"ownerId": "ownerId_value", "ownerType": "application", "policyViolationId": "policyViolationId_value", "body": {"waiverReasonId": "waiver-reason-id-123", "comment": "False positive - internal tool approved by security team", "expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01", "matcherStrategy": "EXACT_COMPONENT"}}'
+EOEX
+  cat <<'EOEX'
+  # AddPolicyWaiverRequestByPolicyViolationId (POST)
+  ./mcpclient.sh call AddPolicyWaiverRequestByPolicyViolationId '{"ownerId": "ownerId_value", "ownerType": "application", "policyViolationId": "policyViolationId_value", "body": {"expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01", "matcherStrategy": "DEFAULT", "noteToReviewer": "noteToReviewer_value", "waiverReasonId": "waiverReasonId_value", "comment": "comment_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddProprietaryComponentNames (POST)
+  ./mcpclient.sh call AddProprietaryComponentNames '{"format": "format_value", "body": "value"}'
+EOEX
+  cat <<'EOEX'
+  # AddRepositoryManager (POST)
+  ./mcpclient.sh call AddRepositoryManager '{"body": {"id": "id_value", "instanceId": "instanceId_value", "name": "name_value", "productName": "productName_value", "productVersion": "productVersion_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddRole (POST)
+  ./mcpclient.sh call AddRole '{"body": {"builtIn": false, "description": "description_value", "id": "id_value", "name": "name_value", "permissionCategories": []}}'
+EOEX
+  cat <<'EOEX'
+  # AddSourceControl (POST)
+  ./mcpclient.sh call AddSourceControl '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"remediationPullRequestsEnabled": false, "closePrAfterDays": 0, "enableStatusChecks": false, "commitStatusEnabled": false, "enablePullRequests": false, "closePrAfterDaysOpenEnabled": false, "provider": "provider_value", "username": "username_value", "sshEnabled": false, "githubAppId": "githubAppId_value", "statusChecksEnabled": false, "id": "id_value", "authenticationType": "authenticationType_value", "sourceControlEvaluationsEnabled": false, "closePrOnFailedChecksEnabled": false, "ownerId": "ownerId_value", "pullRequestCommentingEnabled": false, "repositoryUrl": "repositoryUrl_value", "baseBranch": "baseBranch_value", "nonGoldenPullRequestsEnabled": false, "sourceControlScanTarget": "sourceControlScanTarget_value", "token": "token_value", "innerSourceAutomatedUpdatesEnabled": false, "manualPullRequestsEnabled": false}}'
+EOEX
+  cat <<'EOEX'
+  # AddTag (POST)
+  ./mcpclient.sh call AddTag '{"organizationId": "organizationId_value", "body": {"description": "description_value", "id": "id_value", "name": "name_value", "organizationId": "organizationId_value", "color": "color_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddUserMappings (POST)
+  ./mcpclient.sh call AddUserMappings '{"organizationId": "organizationId_value", "body": {"mappings": [], "role": "role_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddWaiver (POST)
+  ./mcpclient.sh call AddWaiver '{"containerImageId": "containerImageId_value", "body": {"comment": "comment_value", "expiryTime": "2025-01-01", "waiverReasonId": "waiverReasonId_value"}}'
+EOEX
+  cat <<'EOEX'
+  # AddWaiverToTransitivePolicyViolationsByAppScanComponent (POST)
+  ./mcpclient.sh call AddWaiverToTransitivePolicyViolationsByAppScanComponent '{"componentIdentifier": {}, "hash": "hash_value", "ownerId": "ownerId_value", "ownerType": "application", "packageUrl": "packageUrl_value", "scanId": "scanId_value", "body": {"matcherStrategy": "EXACT_COMPONENT", "waiverReasonId": "waiver-reason-id-123", "comment": "False positive - internal tool approved by security team", "expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01"}}'
 EOEX
 }
 
@@ -155,7 +223,8 @@ try:
         if desc:
             # take first line only
             desc = desc.split("\n")[0].strip()
-        print(f"  {t[\"name\"]:<{maxlen+4}}{desc}")
+        name = t["name"]
+        print(f"  {name:<{maxlen+4}}{desc}")
 except Exception as e:
     print("(parse error: {})".format(e), file=sys.stderr)
 '
