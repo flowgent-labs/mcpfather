@@ -10,20 +10,20 @@ import (
 
 // CallNode executes a call step — invoking a native MCP tool.
 func CallNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.StepContext, registry pipeline.ToolRegistry) (interface{}, error) {
-	cfg := step.Call
+	spec := step.Spec
 
-	resolvedArgs, err := rctx.ResolveMap(cfg.Args)
+	resolvedArgs, err := rctx.ResolveMap(spec.Args)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve call args: %w", err)
 	}
 
-	result, err := registry.CallTool(ctx, cfg.Tool, resolvedArgs)
+	result, err := registry.CallTool(ctx, spec.Tool, resolvedArgs)
 	if err != nil {
-		return nil, fmt.Errorf("tool %q failed: %w", cfg.Tool, err)
+		return nil, fmt.Errorf("tool %q failed: %w", spec.Tool, err)
 	}
 
 	if result.IsError {
-		return nil, fmt.Errorf("tool %q returned error", cfg.Tool)
+		return nil, fmt.Errorf("tool %q returned error", spec.Tool)
 	}
 
 	text := extractTextContent(result)
@@ -31,6 +31,16 @@ func CallNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 		return result, nil
 	}
 
+	// Parse JSON if spec.parse is "json" or the result looks like JSON
+	if spec.Parse == "json" {
+		var parsed interface{}
+		if err := json.Unmarshal([]byte(text), &parsed); err != nil {
+			return nil, fmt.Errorf("failed to parse tool response as JSON: %w", err)
+		}
+		return parsed, nil
+	}
+
+	// Auto-detect JSON
 	var parsed interface{}
 	if err := json.Unmarshal([]byte(text), &parsed); err == nil {
 		return parsed, nil

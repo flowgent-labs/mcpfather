@@ -13,7 +13,7 @@ import (
 const GetConfigurationInputSchema = "{\n  \"properties\": {\n    \"direct\": {\n      \"default\": false,\n      \"description\": \"Set to true to retrieve only direct configuration, false (default) to retrieve merged configuration from hierarchy\",\n      \"type\": \"boolean\"\n    },\n    \"ownerId\": {\n      \"description\": \"The internal ID of the owner\",\n      \"type\": \"string\"\n    },\n    \"ownerType\": {\n      \"description\": \"The owner type (application or organization)\",\n      \"enum\": [\n        \"application\",\n        \"organization\"\n      ],\n      \"pattern\": \"application|organization\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"ownerId\",\n    \"ownerType\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetConfiguration tool (Status: 200, Content-Type: application/json)
-const GetConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains:\n<ul>\n<li>" + "\x60" + "configuration" + "\x60" + " - the CI integration configuration as a JSON object</li>\n<li>" + "\x60" + "source" + "\x60" + " - a map of field names to owner IDs indicating provenance (empty for direct queries)</li>\n</ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **data** (Type: object):\n    - **failBuildOnScanningErrors** (Type: boolean):\n    - **enableDebugLogging** (Type: boolean):\n    - **resultFile** (Type: string):\n    - **scanPatterns** (Type: array):\n      - **Items** (Type: string):\n    - **failBuildOnPolicyWarnings** (Type: boolean):\n    - **download** (Type: object):\n      - **iqCliVersion** (Type: string):\n      - **iqCliUrl** (Type: string):\n    - **parameterPriority** (Type: string):\n    - **proxy** (Type: object):\n      - **host** (Type: string):\n    - **reachability** (Type: object):\n      - **javaScriptAnalysis** (Type: object):\n        - **projectRoot** (Type: string):\n        - **enabled** (Type: boolean):\n        - **jsExcludes** (Type: array):\n          - **Items** (Type: string):\n        - **jsSources** (Type: array):\n          - **Items** (Type: string):\n        - **nodeJsExecutable** (Type: string):\n      - **failOnError** (Type: boolean):\n      - **javaAnalysis** (Type: object):\n        - **enabled** (Type: boolean):\n        - **entrypointStrategy** (Type: string):\n        - **namespaces** (Type: array):\n          - **Items** (Type: string):\n    - **unstableBuildOnPolicyWarnings** (Type: boolean):\n    - **advancedProperties** (Type: array):\n      - **Items** (Type: string):\n    - **failBuildOnNetworkError** (Type: boolean):\n    - **sarifFile** (Type: string):\n    - **failBuildOnReachabilityErrors** (Type: boolean):\n    - **moduleExcludes** (Type: array):\n      - **Items** (Type: string):\n  - **source** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: string):\n"
+const GetConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains:\n<ul>\n<li>" + "\x60" + "configuration" + "\x60" + " - the CI integration configuration as a JSON object</li>\n<li>" + "\x60" + "source" + "\x60" + " - a map of field names to owner IDs indicating provenance (empty for direct queries)</li>\n</ul>\n\n## Response Structure\n\n- Structure (Type: object):\n  - **data** (Type: object):\n    - **unstableBuildOnPolicyWarnings** (Type: boolean):\n    - **failBuildOnReachabilityErrors** (Type: boolean):\n    - **advancedProperties** (Type: array):\n      - **Items** (Type: string):\n    - **moduleExcludes** (Type: array):\n      - **Items** (Type: string):\n    - **sarifFile** (Type: string):\n    - **failBuildOnNetworkError** (Type: boolean):\n    - **proxy** (Type: object):\n      - **host** (Type: string):\n    - **failBuildOnPolicyWarnings** (Type: boolean):\n    - **enableDebugLogging** (Type: boolean):\n    - **parameterPriority** (Type: string):\n    - **failBuildOnScanningErrors** (Type: boolean):\n    - **resultFile** (Type: string):\n    - **reachability** (Type: object):\n      - **failOnError** (Type: boolean):\n      - **javaAnalysis** (Type: object):\n        - **entrypointStrategy** (Type: string):\n        - **namespaces** (Type: array):\n          - **Items** (Type: string):\n        - **enabled** (Type: boolean):\n      - **javaScriptAnalysis** (Type: object):\n        - **nodeJsExecutable** (Type: string):\n        - **projectRoot** (Type: string):\n        - **enabled** (Type: boolean):\n        - **jsExcludes** (Type: array):\n          - **Items** (Type: string):\n        - **jsSources** (Type: array):\n          - **Items** (Type: string):\n    - **download** (Type: object):\n      - **iqCliUrl** (Type: string):\n      - **iqCliVersion** (Type: string):\n    - **scanPatterns** (Type: array):\n      - **Items** (Type: string):\n  - **source** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: string):\n"
 
 // NewGetConfigurationMCPTool creates the MCP Tool instance for GetConfiguration
 func NewGetConfigurationMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetConfigurationHandler(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetConfiguration")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetConfiguration"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

@@ -165,7 +165,41 @@ func buildAggregatedMCPTool(entry pipeline.AggregatedToolEntry) mcp.Tool {
 	if desc == "" {
 		desc = entry.Name
 	}
-	return mcp.NewToolWithRawSchema(entry.Name, desc, schemaBytes)
+	tool := mcp.NewToolWithRawSchema(entry.Name, desc, schemaBytes)
+	if len(entry.Annotations) > 0 {
+		tool.Annotations = buildToolAnnotation(entry.Annotations)
+	}
+	return tool
+}
+
+func buildToolAnnotation(ann map[string]interface{}) mcp.ToolAnnotation {
+	var ta mcp.ToolAnnotation
+	if v, ok := ann["title"]; ok {
+		if s, ok := v.(string); ok {
+			ta.Title = s
+		}
+	}
+	if v, ok := ann["readOnlyHint"]; ok {
+		if b, ok := v.(bool); ok {
+			ta.ReadOnlyHint = &b
+		}
+	}
+	if v, ok := ann["destructiveHint"]; ok {
+		if b, ok := v.(bool); ok {
+			ta.DestructiveHint = &b
+		}
+	}
+	if v, ok := ann["idempotentHint"]; ok {
+		if b, ok := v.(bool); ok {
+			ta.IdempotentHint = &b
+		}
+	}
+	if v, ok := ann["openWorldHint"]; ok {
+		if b, ok := v.(bool); ok {
+			ta.OpenWorldHint = &b
+		}
+	}
+	return ta
 }
 
 func buildAggregatedHandler(entry pipeline.AggregatedToolEntry) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

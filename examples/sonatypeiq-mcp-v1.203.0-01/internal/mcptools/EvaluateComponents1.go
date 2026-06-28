@@ -13,7 +13,7 @@ import (
 const EvaluateComponents1InputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Provide the array of component identifiers to be evaluated. Each component requires **one of the following combinations**:\\n\\n**For Coordinate-Based Formats (golang, conan, cargo, cocoapods, cran, conda, composer, hf-model):**\\n- **packageUrl only** - Hash is optional\\n- **packageUrl + hash** - Hash is optional, will be used if provided\\n- **pathname + hash** - Hash required (pathname approach always requires hash)\\n\\n**For Hash-Based Formats (maven, npm, pypi, nuget, docker, rubygems, etc.):**\\n- **packageUrl + hash** - Hash REQUIRED to identify exact file content\\n- **pathname + hash** - Hash REQUIRED\\n- Providing packageUrl without hash for these formats will result in incorrect identification\\n\\nA maximum of 100 components can be evaluated in one request.\",\n      \"properties\": {\n        \"components\": {\n          \"items\": {\n            \"properties\": {\n              \"hash\": {\n                \"type\": \"string\"\n              },\n              \"packageUrl\": {\n                \"type\": \"string\"\n              },\n              \"pathname\": {\n                \"type\": \"string\"\n              }\n            },\n            \"type\": \"object\"\n          },\n          \"type\": \"array\"\n        },\n        \"format\": {\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"repositoryId\": {\n      \"description\": \"Enter the repository ID.\",\n      \"type\": \"string\"\n    },\n    \"repositoryManagerId\": {\n      \"description\": \"Enter the repository manager ID.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"repositoryId\",\n    \"repositoryManagerId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the EvaluateComponents1 tool (Status: 200, Content-Type: application/json)
-const EvaluateComponents1ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the evaluation results.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **results** (Type: array):\n    - **Items** (Type: object):\n      - **component** (Type: object):\n        - **packageUrl** (Type: string):\n        - **pathname** (Type: string):\n        - **hash** (Type: string):\n      - **policyViolations** (Type: array):\n        - **Items** (Type: object):\n          - **constraintViolations** (Type: array):\n            - **Items** (Type: object):\n              - **reasons** (Type: array):\n                - **Items** (Type: object):\n                  - **reason** (Type: string):\n                  - **reference** (Type: object):\n                    - **type** (Type: string):\n                        - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n                    - **value** (Type: string):\n              - **constraintId** (Type: string):\n              - **constraintName** (Type: string):\n          - **openTime** (Type: string, date-time):\n          - **fixTime** (Type: string, date-time):\n          - **policyId** (Type: string):\n          - **policyName** (Type: string):\n          - **legacyViolationTime** (Type: string, date-time):\n          - **policyViolationId** (Type: string):\n          - **threatLevel** (Type: integer, int32):\n          - **waiveTime** (Type: string, date-time):\n      - **quarantineDate** (Type: string, date-time):\n      - **quarantined** (Type: boolean):\n      - **catalogDate** (Type: string, date-time):\n  - **repositoryId** (Type: string):\n  - **repositoryManagerId** (Type: string):\n  - **repositoryPublicId** (Type: string):\n  - **repositoryType** (Type: string):\n"
+const EvaluateComponents1ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the evaluation results.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **repositoryType** (Type: string):\n  - **results** (Type: array):\n    - **Items** (Type: object):\n      - **catalogDate** (Type: string, date-time):\n      - **component** (Type: object):\n        - **packageUrl** (Type: string):\n        - **pathname** (Type: string):\n        - **hash** (Type: string):\n      - **policyViolations** (Type: array):\n        - **Items** (Type: object):\n          - **openTime** (Type: string, date-time):\n          - **policyViolationId** (Type: string):\n          - **threatLevel** (Type: integer, int32):\n          - **constraintViolations** (Type: array):\n            - **Items** (Type: object):\n              - **constraintId** (Type: string):\n              - **constraintName** (Type: string):\n              - **reasons** (Type: array):\n                - **Items** (Type: object):\n                  - **reference** (Type: object):\n                    - **value** (Type: string):\n                    - **type** (Type: string):\n                        - Enum: ['SECURITY_VULNERABILITY_REFID', 'SAST_FINDING_ID']\n                  - **reason** (Type: string):\n          - **policyId** (Type: string):\n          - **policyName** (Type: string):\n          - **waiveTime** (Type: string, date-time):\n          - **legacyViolationTime** (Type: string, date-time):\n          - **fixTime** (Type: string, date-time):\n      - **quarantineDate** (Type: string, date-time):\n      - **quarantined** (Type: boolean):\n  - **repositoryId** (Type: string):\n  - **repositoryManagerId** (Type: string):\n  - **repositoryPublicId** (Type: string):\n"
 
 // NewEvaluateComponents1MCPTool creates the MCP Tool instance for EvaluateComponents1
 func NewEvaluateComponents1MCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func EvaluateComponents1Handler(ctx context.Context, request mcp.CallToolRequest
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "EvaluateComponents1")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "EvaluateComponents1"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

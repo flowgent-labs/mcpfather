@@ -13,7 +13,7 @@ import (
 const GetCascadeStatusInputSchema = "{\n  \"properties\": {\n    \"requestId\": {\n      \"description\": \"The cascade request ID to check status for\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"requestId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetCascadeStatus tool (Status: 200, Content-Type: application/json)
-const GetCascadeStatusResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Cascade status retrieved successfully\n\n## Response Structure\n\n- Structure (Type: object):\n  - **evaluated** (Type: array):\n    - **Items** (Type: object):\n      - **componentId** (Type: string):\n      - **quarantined** (Type: boolean):\n      - **repositoryId** (Type: string):\n      - **repositoryManagerId** (Type: string):\n  - **failed** (Type: array):\n    - **[cyclic reference]**\n  - **pending** (Type: array):\n    - **[cyclic reference]**\n  - **referenceComponentHash** (Type: string):\n  - **status** (Type: string):\n      - Enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'NO_COMPONENTS_FOUND', 'FAILED']\n"
+const GetCascadeStatusResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Cascade status retrieved successfully\n\n## Response Structure\n\n- Structure (Type: object):\n  - **status** (Type: string):\n      - Enum: ['PENDING', 'IN_PROGRESS', 'COMPLETED', 'NO_COMPONENTS_FOUND', 'FAILED']\n  - **evaluated** (Type: array):\n    - **Items** (Type: object):\n      - **componentId** (Type: string):\n      - **quarantined** (Type: boolean):\n      - **repositoryId** (Type: string):\n      - **repositoryManagerId** (Type: string):\n  - **failed** (Type: array):\n    - **[cyclic reference]**\n  - **pending** (Type: array):\n    - **[cyclic reference]**\n  - **referenceComponentHash** (Type: string):\n"
 
 // NewGetCascadeStatusMCPTool creates the MCP Tool instance for GetCascadeStatus
 func NewGetCascadeStatusMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetCascadeStatusHandler(ctx context.Context, request mcp.CallToolRequest) (
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetCascadeStatus")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetCascadeStatus"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

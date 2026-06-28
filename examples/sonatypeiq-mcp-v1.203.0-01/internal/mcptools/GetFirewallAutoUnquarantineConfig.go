@@ -13,7 +13,7 @@ import (
 const GetFirewallAutoUnquarantineConfigInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetFirewallAutoUnquarantineConfig tool (Status: 200, Content-Type: application/json)
-const GetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a list of repositories and the corresponding configuration for auto-release from quarantine.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **name** (Type: string):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n    - **id** (Type: string):\n"
+const GetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a list of repositories and the corresponding configuration for auto-release from quarantine.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **id** (Type: string):\n    - **name** (Type: string):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n"
 
 // NewGetFirewallAutoUnquarantineConfigMCPTool creates the MCP Tool instance for GetFirewallAutoUnquarantineConfig
 func NewGetFirewallAutoUnquarantineConfigMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetFirewallAutoUnquarantineConfigHandler(ctx context.Context, request mcp.C
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetFirewallAutoUnquarantineConfig")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetFirewallAutoUnquarantineConfig"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

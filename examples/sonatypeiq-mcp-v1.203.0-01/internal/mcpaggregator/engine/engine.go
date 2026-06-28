@@ -6,7 +6,6 @@ import (
 
 	"sonatypeiq-mcp-v1.203.0-01/internal/mcpaggregator/config"
 	"sonatypeiq-mcp-v1.203.0-01/internal/mcpaggregator/pipeline"
-	"sonatypeiq-mcp-v1.203.0-01/internal/mcpaggregator/runtime"
 )
 
 // ToolRegistry provides access to native MCP tools for the aggregated tool engine.
@@ -36,7 +35,6 @@ func NewFromConfig(cfg *config.Config, registry ToolRegistry) (*Engine, error) {
 }
 
 // Tools returns all aggregated tool entries for registration with an MCP server.
-// Returns an error if any tool's configuration is invalid.
 func (e *Engine) Tools() ([]AggregatedToolEntry, error) {
 	if e.config == nil || len(e.config.AggregateTools) == 0 {
 		return nil, nil
@@ -67,6 +65,7 @@ func (e *Engine) buildTool(at config.AggregatedToolConfig) (AggregatedToolEntry,
 		Name:        at.Name,
 		Description: at.Description,
 		InputSchema: at.InputSchema,
+		Annotations: at.Annotations,
 		Handler:     handler,
 	}, nil
 }
@@ -76,7 +75,7 @@ func (e *Engine) buildHandler(at config.AggregatedToolConfig) func(ctx context.C
 		if args == nil {
 			args = make(map[string]interface{})
 		}
-		executor := runtime.NewExecutor(e.registry)
+		executor := NewExecutor(e.registry)
 		return executor.Execute(ctx, at.Pipeline, args)
 	}
 }

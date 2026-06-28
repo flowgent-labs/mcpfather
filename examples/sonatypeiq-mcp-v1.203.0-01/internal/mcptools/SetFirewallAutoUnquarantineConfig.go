@@ -13,7 +13,7 @@ import (
 const SetFirewallAutoUnquarantineConfigInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Enter value for each repository and the required status for auto-release as " + "\x60" + "true" + "\x60" + " or " + "\x60" + "false" + "\x60" + ".\",\n      \"items\": {\n        \"properties\": {\n          \"autoReleaseQuarantineEnabled\": {\n            \"type\": \"boolean\"\n          },\n          \"id\": {\n            \"type\": \"string\"\n          },\n          \"name\": {\n            \"type\": \"string\"\n          }\n        },\n        \"type\": \"object\"\n      },\n      \"type\": \"array\"\n    }\n  },\n  \"required\": [\n    \"body\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the SetFirewallAutoUnquarantineConfig tool (Status: 200, Content-Type: application/json)
-const SetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains each updated " + "\x60" + "autoReleaseQuarantineEnabled" + "\x60" + " status for the repositories requested.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n    - **id** (Type: string):\n    - **name** (Type: string):\n"
+const SetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains each updated " + "\x60" + "autoReleaseQuarantineEnabled" + "\x60" + " status for the repositories requested.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **name** (Type: string):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n    - **id** (Type: string):\n"
 
 // NewSetFirewallAutoUnquarantineConfigMCPTool creates the MCP Tool instance for SetFirewallAutoUnquarantineConfig
 func NewSetFirewallAutoUnquarantineConfigMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func SetFirewallAutoUnquarantineConfigHandler(ctx context.Context, request mcp.C
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "SetFirewallAutoUnquarantineConfig")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "SetFirewallAutoUnquarantineConfig"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

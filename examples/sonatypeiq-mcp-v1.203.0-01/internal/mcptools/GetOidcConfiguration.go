@@ -13,7 +13,7 @@ import (
 const GetOidcConfigurationInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetOidcConfiguration tool (Status: 200, Content-Type: application/json)
-const GetOidcConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains:\n - " + "\x60" + "oidcConfiguration" + "\x60" + " field that contains all the oidc configuration data \n - " + "\x60" + "oAuth2Configuration" + "\x60" + " field that contains the OAuth2 configuration required for oidc\n\n## Response Structure\n\n- Structure (Type: object):\n  - **oauth2Configuration** (Type: object):\n    - **idpJwsAlgorithm** (Type: string):\n    - **firstNameClaim** (Type: string):\n    - **groupsClaim** (Type: string):\n    - **emailClaim** (Type: string):\n    - **idpJwks** (Type: string):\n    - **idpJwksUrl** (Type: string):\n    - **lastNameClaim** (Type: string):\n    - **exactMatchClaimsJson** (Type: string):\n    - **idpIssuer** (Type: string):\n    - **usernameClaim** (Type: string):\n  - **oidcConfiguration** (Type: object):\n    - **authorizationCustomParamsJson** (Type: string):\n    - **clientId** (Type: string):\n    - **clientSecret** (Type: string):\n    - **idpAuthorizationUrl** (Type: string):\n    - **idpIssuer** (Type: string):\n    - **idpTokenUrl** (Type: string):\n    - **tokenRequestCustomParamsJson** (Type: string):\n"
+const GetOidcConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains:\n - " + "\x60" + "oidcConfiguration" + "\x60" + " field that contains all the oidc configuration data \n - " + "\x60" + "oAuth2Configuration" + "\x60" + " field that contains the OAuth2 configuration required for oidc\n\n## Response Structure\n\n- Structure (Type: object):\n  - **oidcConfiguration** (Type: object):\n    - **tokenRequestCustomParamsJson** (Type: string):\n    - **authorizationCustomParamsJson** (Type: string):\n    - **clientId** (Type: string):\n    - **clientSecret** (Type: string):\n    - **idpAuthorizationUrl** (Type: string):\n    - **idpIssuer** (Type: string):\n    - **idpTokenUrl** (Type: string):\n  - **oauth2Configuration** (Type: object):\n    - **emailClaim** (Type: string):\n    - **firstNameClaim** (Type: string):\n    - **exactMatchClaimsJson** (Type: string):\n    - **groupsClaim** (Type: string):\n    - **idpJwks** (Type: string):\n    - **idpIssuer** (Type: string):\n    - **idpJwksUrl** (Type: string):\n    - **idpJwsAlgorithm** (Type: string):\n    - **lastNameClaim** (Type: string):\n    - **usernameClaim** (Type: string):\n"
 
 // NewGetOidcConfigurationMCPTool creates the MCP Tool instance for GetOidcConfiguration
 func NewGetOidcConfigurationMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetOidcConfigurationHandler(ctx context.Context, request mcp.CallToolReques
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetOidcConfiguration")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetOidcConfiguration"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }

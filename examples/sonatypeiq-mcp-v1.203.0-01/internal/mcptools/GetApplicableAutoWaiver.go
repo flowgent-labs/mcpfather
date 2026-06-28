@@ -13,7 +13,7 @@ import (
 const GetApplicableAutoWaiverInputSchema = "{\n  \"properties\": {\n    \"violationId\": {\n      \"description\": \"Enter the policy violationId for which you want to obtain the applicable auto policy waiver \",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"violationId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetApplicableAutoWaiver tool (Status: 200, Content-Type: application/json)
-const GetApplicableAutoWaiverResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains details for applicable auto waiver for the " + "\x60" + "violationId" + "\x60" + " specified. \n\n## Response Structure\n\n- Structure (Type: object):\n  - **ownerName** (Type: string):\n  - **ownerType** (Type: string):\n  - **reachability** (Type: boolean):\n  - **pathForward** (Type: boolean):\n  - **scopesOperatorAny** (Type: boolean):\n  - **threatLevel** (Type: integer, int32):\n  - **autoPolicyWaiverId** (Type: string):\n  - **createTime** (Type: string, date-time):\n  - **creatorId** (Type: string):\n  - **creatorName** (Type: string):\n  - **publicId** (Type: string):\n  - **ownerId** (Type: string):\n"
+const GetApplicableAutoWaiverResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains details for applicable auto waiver for the " + "\x60" + "violationId" + "\x60" + " specified. \n\n## Response Structure\n\n- Structure (Type: object):\n  - **publicId** (Type: string):\n  - **autoPolicyWaiverId** (Type: string):\n  - **ownerName** (Type: string):\n  - **pathForward** (Type: boolean):\n  - **scopesOperatorAny** (Type: boolean):\n  - **threatLevel** (Type: integer, int32):\n  - **createTime** (Type: string, date-time):\n  - **creatorName** (Type: string):\n  - **reachability** (Type: boolean):\n  - **creatorId** (Type: string):\n  - **ownerId** (Type: string):\n  - **ownerType** (Type: string):\n"
 
 // NewGetApplicableAutoWaiverMCPTool creates the MCP Tool instance for GetApplicableAutoWaiver
 func NewGetApplicableAutoWaiverMCPTool() mcp.Tool {
@@ -41,22 +41,27 @@ func GetApplicableAutoWaiverHandler(ctx context.Context, request mcp.CallToolReq
 	}
 	defer resp.Body.Close()
 
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetApplicableAutoWaiver")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
 	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
-	}
-
-	if filePath, err := mcputils.SaveBinaryResponse(resp, body, "GetApplicableAutoWaiver"); err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	} else if filePath != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, len(body))), nil
-	}
 
 	return mcp.NewToolResultText(string(body)), nil
 }
