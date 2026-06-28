@@ -1497,7 +1497,7 @@ func TestE2E_Core_ChainedNativeTools(t *testing.T) {
 
 	virtConfig := `
 virtualTools:
-  - name: agg_chain
+  - name: virt_chain
     description: Chain echo and greet
     inputSchema:
       type: object
@@ -1528,7 +1528,7 @@ virtualTools:
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
-	result := mcpCallVirtualTool(t, baseURL, "agg_chain", map[string]interface{}{
+	result := mcpCallVirtualTool(t, baseURL, "virt_chain", map[string]interface{}{
 		"name": "Alice",
 	})
 
