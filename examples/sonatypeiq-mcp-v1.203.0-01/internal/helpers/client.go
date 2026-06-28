@@ -49,10 +49,10 @@ var upstreamTokenVal string
 var upstreamTokenOnce sync.Once
 
 // GetUpstreamToken returns the upstream token using the following priority:
-//   1. MCP_UPSTREAM_TOKEN environment variable
-//   2. MCP_UPSTREAM_TOKEN_FILE (read token from file, for Kubernetes secrets etc.)
-//   3. macOS Keychain (darwin): security find-generic-password -s mcpgen-upstream
-//   4. Windows Credential Manager (windows): cmdkey /get:mcpgen-upstream
+//  1. MCP_UPSTREAM_TOKEN environment variable
+//  2. MCP_UPSTREAM_TOKEN_FILE (read token from file, for Kubernetes secrets etc.)
+//  3. macOS Keychain (darwin): security find-generic-password -s mcpgen-upstream
+//  4. Windows Credential Manager (windows): cmdkey /get:mcpgen-upstream
 //
 // To store a token in macOS Keychain:
 //
@@ -85,8 +85,8 @@ var upstreamCookieVal string
 var upstreamCookieOnce sync.Once
 
 // GetUpstreamCookie returns the upstream cookie using the following priority:
-//   1. MCP_UPSTREAM_COOKIE environment variable
-//   2. MCP_UPSTREAM_COOKIE_FILE (read cookie from file)
+//  1. MCP_UPSTREAM_COOKIE environment variable
+//  2. MCP_UPSTREAM_COOKIE_FILE (read cookie from file)
 func GetUpstreamCookie() string {
 	upstreamCookieOnce.Do(func() {
 		upstreamCookieVal = os.Getenv("MCP_UPSTREAM_COOKIE")

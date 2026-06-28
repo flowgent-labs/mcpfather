@@ -46,7 +46,7 @@ confluence-mcp/
 The server defaults to httpbin.org which echoes requests — great for quick verification:
 
 ```sh
-./confluence-mcp --transport http --port 8080 -v 1
+/path/to/confluence-mcp --transport http --port 8080 -v 1
 # MCP_UPSTREAM_ENDPOINT=https://httpbin.org/anything
 ```
 
@@ -55,11 +55,11 @@ Set your actual upstream to enable real API calls:
 ```sh
 export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 # Optional 1: pass token via env var
-MCP_UPSTREAM_TOKEN=your-token ./confluence-mcp --transport http --port 8080 -v 1
+MCP_UPSTREAM_TOKEN=your-token /path/to/confluence-mcp --transport http --port 8080 -v 1
 
 # Optional 2: read token from file (safer, no shell history exposure)
 echo -n "your-token" > .credentials
-MCP_UPSTREAM_TOKEN_FILE=.credentials ./confluence-mcp --transport http --port 8080 -v 1
+MCP_UPSTREAM_TOKEN_FILE=.credentials /path/to/confluence-mcp --transport http --port 8080 -v 1
 ```
 
 ### Test with mcpclient.sh for `HTTP` transport only.
@@ -133,18 +133,24 @@ Values are matched against the `operationId` field in the OpenAPI spec (exact st
 
 Use `--includes` and `--excludes` to control which operations generate MCP tools. Values are the `operationId` strings from your OpenAPI spec.
 
+- for example - Generate the Atlassian Confluence MCP server
+
 ```sh
 # Only generate tools for specific operations
-./bin/mcpgen -i spec.yaml -o mymcp --includes "listSpaces,createPage,getSpaceContent"
+./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o examples/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
 
 # Generate all tools except health checks
-./bin/mcpgen -i spec.yaml -o mymcp --excludes "healthCheck,status"
+./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o examples/confluence-mcp --excludes "healthCheck,status"
 
 # Generate all tools except a few
-./bin/mcpgen -i spec.yaml -o mymcp --excludes "uploadAttachment,removeLabel"
+./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o examples/confluence-mcp --excludes "uploadAttachment,removeLabel"
 
 # Preview what gets included/excluded
-./bin/mcpgen -i spec.yaml -o mymcp --includes "listSpaces" -v
+./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o examples/confluence-mcp --includes "listSpaces" -v
 ```
 
 ### Tool name truncation
@@ -201,7 +207,7 @@ For specs with many operations, limit which tools AI agents can discover via an 
 
 ```sh
 # Print the default config template
-./confluence-mcp --print-default-config
+/path/to/confluence-mcp --print-default-config
 
 # Edit ~/.confluence-mcp/config.yaml and list only the tools you want
 ```
@@ -217,6 +223,43 @@ tools:
 
 When `tools.include` is non-empty, only those tools are registered with the MCP server and shown in `-t cli list`. When absent or empty, all tools are available.
 
+### Virtual Tools (Composition)
+
+Compose multiple native tools into a single AI-callable tool via a declarative 5-step pipeline DSL. Add a `virtualTools` list to your config file:
+
+`$HOME/.{binaryName}/config.yaml`:
+
+```yaml
+virtualTools:
+  - name: MyVirtualTool
+    description: Retrieve application details with remediation suggestions
+    inputSchema:
+      type: object
+      properties:
+        appId:
+          type: string
+      required: [appId]
+    pipeline:
+      - id: getApp
+        kind: call
+        spec:
+          tool: GetApplication
+          parse: json
+          args:
+            applicationId: $input.appId
+      - id: appName
+        kind: jq
+        spec:
+          from: $getApp
+          expr: .name
+      - id: done
+        kind: return
+        spec:
+          from: $appName
+```
+
+Pipeline step kinds: `call` (invoke an MCP tool), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
+
 
 ## Generated MCP Server - Agent Integration
 
@@ -231,9 +274,9 @@ Run the MCP server as a child process — recommended for local development.
 ```json
 {
   "mcp": {
-    "myconfluence": {
+    "confluence-mcp": {
       "type": "local",
-      "command": ["bash", "-c", "./confluence-mcp"],
+      "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
@@ -254,7 +297,7 @@ Run the MCP server as a child process — recommended for local development.
 {
   "mcpServers": {
     "confluence-mcp": {
-      "command": "./confluence-mcp",
+      "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
@@ -274,7 +317,7 @@ Run the MCP server as a child process — recommended for local development.
 {
   "mcpServers": {
     "confluence-mcp": {
-      "command": ["bash", "-c", "./confluence-mcp"],
+      "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
@@ -294,7 +337,7 @@ Run the MCP server as a child process — recommended for local development.
 mcp:
   servers:
     confluence-mcp:
-      command: ./confluence-mcp
+      command: /path/to/confluence-mcp
       args: ["--transport", "stdio"]
       env:
         MCP_UPSTREAM_ENDPOINT: https://api.example.com
@@ -310,7 +353,7 @@ mcp:
 {
   "mcpServers": {
     "confluence-mcp": {
-      "command": "./confluence-mcp",
+      "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
@@ -331,7 +374,7 @@ Start the server:
 ```sh
 export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 export MCP_UPSTREAM_TOKEN=your-token
-./confluence-mcp --transport http --port 8080 -v 1
+/path/to/confluence-mcp --transport http --port 8080 -v 1
 ```
 
 ### OpenCode (remote)
@@ -436,20 +479,20 @@ export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 export MCP_UPSTREAM_TOKEN=your-token
 
 # First call: list available tools
-./confluence-mcp -t cli list
+/path/to/confluence-mcp -t cli list
 
 # First tool call: fetch a page by ID
-./confluence-mcp -t cli Getpage --id 123456
+/path/to/confluence-mcp -t cli Getpage --id 123456
 
 # Show tool-specific help (GNU-style usage)
-./confluence-mcp -t cli Getpage --help
+/path/to/confluence-mcp -t cli Getpage --help
 
 # Call a tool with GNU-style --flag arguments
-./confluence-mcp -t cli ListSpaces --limit=5 --type global
-./confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
+/path/to/confluence-mcp -t cli ListSpaces --limit=5 --type global
+/path/to/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
 
 # Call a tool without arguments (for tools that have no required params)
-./confluence-mcp -t cli ListSpaces
+/path/to/confluence-mcp -t cli ListSpaces
 ```
 
 ## License

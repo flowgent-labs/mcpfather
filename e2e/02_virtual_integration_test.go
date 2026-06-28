@@ -862,7 +862,7 @@ func TestScenario_Call_BodyObjectArg(t *testing.T) {
 		{ID: "create", Kind: "call", Spec: pipeline.StepSpec{
 			Tool: "createItem",
 			Args: map[string]interface{}{
-				"body": map[string]interface{}{"name": "$input.itemName", "tags": []interface{}{"$input.tag"}},
+				"body":  map[string]interface{}{"name": "$input.itemName", "tags": []interface{}{"$input.tag"}},
 				"query": map[string]interface{}{"dryRun": true},
 			},
 		}},
@@ -1027,7 +1027,7 @@ func mcpCallVirtualTool(t *testing.T, baseURL string, toolName string, args map[
 	return rpcResp.Result.Content[0].Text
 }
 
-func startAggTestServer(t *testing.T, projectDir string, mockURL string, homeDir string) (cleanup func(), baseURL string) {
+func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, homeDir string) (cleanup func(), baseURL string) {
 	t.Helper()
 	binPath := buildServer(t, projectDir)
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
@@ -1067,7 +1067,7 @@ func TestE2E_VirtualTool_CallJQReturn(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_clean_echo
     description: Echo with cleanup
@@ -1090,9 +1090,9 @@ virtualTools:
         spec:
           from: $clean
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_clean_echo", map[string]interface{}{})
@@ -1131,7 +1131,7 @@ func TestE2E_VirtualTool_ChainedNativeTools(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_chain
     description: Chain echo and greet
@@ -1166,9 +1166,9 @@ virtualTools:
         spec:
           from: $merge_step
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_chain", map[string]interface{}{
@@ -1210,7 +1210,7 @@ func TestE2E_VirtualTool_ForeachOverInputArray(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_batch_greet
     description: Batch greet
@@ -1248,9 +1248,9 @@ virtualTools:
         spec:
           from: $process_all
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_batch_greet", map[string]interface{}{
@@ -1295,7 +1295,7 @@ func TestE2E_VirtualTool_CoexistsWithNativeTools(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_fast_echo
     description: Fast echo wrapper
@@ -1339,9 +1339,9 @@ virtualTools:
         spec:
           from: $rename_greeting
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result1 := mcpCallVirtualTool(t, baseURL, "agg_fast_echo", map[string]interface{}{})
@@ -1379,7 +1379,7 @@ func TestE2E_VirtualTool_InvalidConfigServerStarts(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	// Duplicate step ids — validation should fail
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: bad_tool
     description: Broken
@@ -1397,9 +1397,9 @@ virtualTools:
         spec:
           from: $step1
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	// Native EchoHeaders tool should still be callable
@@ -1435,7 +1435,7 @@ func TestE2E_VirtualTool_CallParseJSON(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_parse_json
     description: Parse JSON from text response
@@ -1455,9 +1455,9 @@ virtualTools:
           from: $fetch
           expr: '{key: .nested.key, count: .nested.count}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_parse_json", map[string]interface{}{})
@@ -1486,7 +1486,7 @@ func TestE2E_VirtualTool_RequireNonEmptyOnJQ(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_require_jq
     description: Require nonEmpty on jq step
@@ -1512,9 +1512,9 @@ virtualTools:
         spec:
           from: $extract
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
@@ -1544,7 +1544,7 @@ func TestE2E_VirtualTool_ForeachConcurrencyFromInput(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_concurrent
     description: Foreach with input concurrency
@@ -1584,9 +1584,9 @@ virtualTools:
         spec:
           from: $batch
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_concurrent", map[string]interface{}{
@@ -1624,7 +1624,7 @@ func TestE2E_VirtualTool_ReturnWithVarsAndExpr(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_summary
     description: Build summary with vars and expr
@@ -1656,9 +1656,9 @@ virtualTools:
             code: $greet.code
           expr: '{summary: {origin: .server, greeting_text: $greeting, status_code: $code}, trace: .trace_id}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_summary", map[string]interface{}{
@@ -1702,7 +1702,7 @@ func TestE2E_VirtualTool_AnnotationsPropagated(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_annotated
     description: Annotated tool
@@ -1724,9 +1724,9 @@ virtualTools:
         spec:
           from: $fetch
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	// List tools and verify annotations are present
@@ -1762,7 +1762,7 @@ func TestE2E_VirtualTool_RequireNonEmptyPasses(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_require_ok
     description: Require validation that passes
@@ -1788,9 +1788,9 @@ virtualTools:
         spec:
           from: $extract_items
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_require_ok", map[string]interface{}{})
@@ -1809,8 +1809,9 @@ virtualTools:
 // ===========================================================================
 
 // TestE2E_MCP_HeaderForwarding_DisabledByDefault verifies that
-// Mcp-Session-Id and X-MCP-Session-ID are NOT forwarded to upstream
-// by default (enable_mcp_session_in_forwarding defaults to false).
+// X-MCP-Session-ID is always forwarded to upstream even when
+// enable_mcp_session_in_forwarding is explicitly set to false
+// (backward-compatible — the config key is deprecated and always-on).
 func TestE2E_MCP_HeaderForwarding_DisabledByDefault(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1846,7 +1847,7 @@ virtualTools:
 `
 	writeVirtualConfig(t, homeDir, binaryName, cfg)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	// Call a native tool — ForwardRequest is used in all tool handlers
@@ -1862,14 +1863,14 @@ virtualTools:
 	if req.Headers.Get("Mcp-Session-Id") != "" {
 		t.Error("Mcp-Session-Id should NOT be forwarded to upstream")
 	}
-	if req.Headers.Get("X-MCP-Session-ID") != "" {
-		t.Error("X-MCP-Session-ID should NOT be forwarded when disabled")
+	if req.Headers.Get("X-MCP-Session-ID") == "" {
+		t.Error("X-MCP-Session-ID should always be forwarded (deprecated gate is ignored)")
 	}
 }
 
-// TestE2E_MCP_HeaderForwarding_Enabled verifies that when
-// enable_mcp_session_in_forwarding is true, X-MCP-Session-ID IS forwarded
-// but the original Mcp-Session-Id is NOT.
+// TestE2E_MCP_HeaderForwarding_Enabled verifies that X-MCP-Session-ID
+// is always forwarded to upstream (enable_mcp_session_in_forwarding is
+// deprecated and always-on). The original Mcp-Session-Id is never forwarded.
 func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1903,7 +1904,7 @@ virtualTools:
 `
 	writeVirtualConfig(t, homeDir, binaryName, cfg)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "EchoHeaders", map[string]interface{}{})
@@ -1919,13 +1920,13 @@ virtualTools:
 		t.Error("Mcp-Session-Id should never be forwarded directly to upstream")
 	}
 	if req.Headers.Get("X-MCP-Session-ID") == "" {
-		t.Error("X-MCP-Session-ID should be forwarded when enabled")
+		t.Error("X-MCP-Session-ID should always be forwarded")
 	}
 }
 
 // TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled verifies that
-// when no upstream config is present, the default behavior is disabled
-// (enable_mcp_session_in_forwarding defaults to false).
+// X-MCP-Session-ID is always forwarded to upstream even when no config
+// is present (always-on behavior).
 func TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -1937,7 +1938,7 @@ func TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	// Config without any upstream section — should default to disabled
+	// Config without any upstream section — session ID is always forwarded
 	cfg := `
 virtualTools:
   - name: simple_passthrough
@@ -1958,7 +1959,7 @@ virtualTools:
 `
 	writeVirtualConfig(t, homeDir, binaryName, cfg)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "EchoHeaders", map[string]interface{}{})
@@ -1973,8 +1974,8 @@ virtualTools:
 	if req.Headers.Get("Mcp-Session-Id") != "" {
 		t.Error("Mcp-Session-Id should NOT be forwarded by default")
 	}
-	if req.Headers.Get("X-MCP-Session-ID") != "" {
-		t.Error("X-MCP-Session-ID should NOT be forwarded by default")
+	if req.Headers.Get("X-MCP-Session-ID") == "" {
+		t.Error("X-MCP-Session-ID should always be forwarded")
 	}
 }
 
@@ -1996,7 +1997,7 @@ func TestE2E_SonatypeIQ_FullPipeline(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_sonatype_report
     description: SonatypeIQ-style full pipeline report
@@ -2062,9 +2063,9 @@ virtualTools:
             comps: $foreach_comp
           expr: '{appName: $app.name, appId: $app.publicId, totalViolations: ($comps | length), componentDetails: $comps}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_sonatype_report", map[string]interface{}{
@@ -2110,7 +2111,7 @@ func TestE2E_SonatypeIQ_RequireValidation(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_require_sonatype
     description: Require validation test
@@ -2137,9 +2138,9 @@ virtualTools:
         spec:
           from: $extract
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
@@ -2167,7 +2168,7 @@ func TestE2E_SonatypeIQ_ParseJSON(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_parse_json
     description: Parse JSON from text/plain response
@@ -2188,9 +2189,9 @@ virtualTools:
           from: $fetch
           expr: '.nested.key'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_parse_json", map[string]interface{}{})
@@ -2213,7 +2214,7 @@ func TestE2E_SonatypeIQ_ReturnWithVarsExpr(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_return_vars
     description: Return with vars and expression
@@ -2244,9 +2245,9 @@ virtualTools:
             h: $call_hello
           expr: '{echo_status: $e.echo_status, trace: $e.trace_id, greeting: $h.greeting, hello_code: $h.code}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_return_vars", map[string]interface{}{
@@ -2279,7 +2280,7 @@ func TestE2E_SonatypeIQ_ForeachConcurrency(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_foreach_concurrent
     description: Foreach with concurrency from input
@@ -2319,9 +2320,9 @@ virtualTools:
           from: $batch
           expr: '[.[] | {processed_name: .processed, result_status: .status}]'
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	items := make([]interface{}, 6)
@@ -2366,7 +2367,7 @@ func TestE2E_SonatypeIQ_SimpleChain(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: agg_simple
     description: Simple call→jq→return chain
@@ -2389,9 +2390,9 @@ virtualTools:
         spec:
           from: $project
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, dir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "agg_simple", map[string]interface{}{})
@@ -2413,7 +2414,7 @@ virtualTools:
 // ===========================================================================
 
 // ---------------------------------------------------------------------------
-// SonatypeIQ Real Test: Full pipeline using real example project + virtual config
+// SonatypeIQ-v1.203.0-01 Real Test: Full pipeline using real example project + virtual config
 // ---------------------------------------------------------------------------
 
 func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
@@ -2426,7 +2427,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp-v1.203.0-01"
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: get_scan_violations_recommends
     description: Retrieve policy violations for a scan, keep components at or above a threat threshold, enrich each component with remediation suggestions.
@@ -2446,7 +2447,7 @@ virtualTools:
       properties:
         applicationPublicId:
           type: string
-          default: 12609073_bff_peak_transformation_service_fxscenario
+          default: 12609073_rengine
           description: Sonatype IQ application public id.
 
         scanId:
@@ -2490,7 +2491,7 @@ virtualTools:
       - id: policy
         kind: call
         spec:
-          tool: GetPolicyViolations1
+          tool: GetPolicyViolations
           parse: json
           args:
             applicationPublicId: $input.applicationPublicId
@@ -2678,13 +2679,13 @@ virtualTools:
               components: .
             }
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, projectDir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "get_scan_violations_recommends", map[string]interface{}{
-		"applicationPublicId":      "12609073_bff_peak_transformation_service_fxscenario",
+		"applicationPublicId":      "12609073_rengine",
 		"scanId":                   "b3a29500a885473ca6b4b5c759c39bf2",
 		"minThreatLevel":           float64(5),
 		"includeViolationTimes":    true,
@@ -2700,7 +2701,7 @@ virtualTools:
 	if !ok {
 		t.Fatalf("application should be object, got %T", data["application"])
 	}
-	if app["publicId"] != "12609073_bff_peak_transformation_service_fxscenario" {
+	if app["publicId"] != "12609073_rengine" {
 		t.Errorf("application.publicId = %v", app["publicId"])
 	}
 	if app["internalId"] != "app-internal-uuid-12345" {
@@ -2786,7 +2787,7 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp-v1.203.0-01"
 
-	aggConfig := `
+	virtConfig := `
 virtualTools:
   - name: get_scan_violations_recommends
     description: Simple pipeline to verify threat level filtering
@@ -2820,7 +2821,7 @@ virtualTools:
       - id: policy
         kind: call
         spec:
-          tool: GetPolicyViolations1
+          tool: GetPolicyViolations
           parse: json
           args:
             applicationPublicId: $input.applicationPublicId
@@ -2845,9 +2846,9 @@ virtualTools:
         spec:
           from: $threatComponents
 `
-	writeVirtualConfig(t, homeDir, binaryName, aggConfig)
+	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
 
-	cleanup, baseURL := startAggTestServer(t, projectDir, mock.server.URL, homeDir)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
 	defer cleanup()
 
 	// Test with minThreatLevel=5 (threshold 5): should keep log4j (max 9) and spring (max 7), filter safe-lib (max 2)
