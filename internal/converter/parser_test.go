@@ -7,7 +7,6 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 )
 
-
 func getTestSpecBytes(t *testing.T) []byte {
 	return []byte(testSpecOAS30)
 }
@@ -48,6 +47,35 @@ func TestParser_ParseFile(t *testing.T) {
 	doc := p.GetDocument()
 	if doc == nil {
 		t.Fatal("expected parsed document from file")
+	}
+}
+
+func TestParser_ParseXquikOAS31Fixture(t *testing.T) {
+	p := NewParser(true)
+	err := p.ParseFile("../../e2e/testdata/xquik_spec.yaml")
+	if err != nil {
+		t.Fatalf("ParseFile failed: %v", err)
+	}
+
+	paths := p.GetPaths()
+	if len(paths) != 3 {
+		t.Fatalf("expected 3 paths, got %d", len(paths))
+	}
+
+	search, ok := paths["/api/v1/x/tweets/search"]
+	if !ok {
+		t.Fatal("expected search path")
+	}
+	if search.Get == nil || search.Get.OperationID != "searchTweets" {
+		t.Fatalf("unexpected search operation: %#v", search.Get)
+	}
+
+	user, ok := paths["/api/v1/x/users/{id}"]
+	if !ok {
+		t.Fatal("expected user path")
+	}
+	if user.Get == nil || user.Get.OperationID != "getUser" {
+		t.Fatalf("unexpected user operation: %#v", user.Get)
 	}
 }
 
