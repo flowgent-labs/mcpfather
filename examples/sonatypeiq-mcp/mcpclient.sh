@@ -58,19 +58,19 @@ USAGE
 EOEX
   cat <<'EOEX'
   # AddApplication (POST)
-  ./mcpclient.sh call AddApplication '{"body": {"publicId": "publicId_value", "applicationTags": [], "contactUserName": "contactUserName_value", "id": "id_value", "name": "name_value", "organizationId": "organizationId_value"}}'
+  ./mcpclient.sh call AddApplication '{"body": {"name": "name_value", "organizationId": "organizationId_value", "publicId": "publicId_value", "applicationTags": [], "contactUserName": "contactUserName_value", "id": "id_value"}}'
 EOEX
   cat <<'EOEX'
   # AddArtifactoryConnection (POST)
-  ./mcpclient.sh call AddArtifactoryConnection '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"ownerType": "application", "password": "password_value", "username": "username_value", "artifactoryConnectionId": "artifactoryConnectionId_value", "baseUrl": "baseUrl_value", "isAnonymous": false, "ownerId": "ownerId_value"}}'
+  ./mcpclient.sh call AddArtifactoryConnection '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"baseUrl": "baseUrl_value", "isAnonymous": false, "ownerId": "ownerId_value", "ownerType": "application", "password": "password_value", "username": "username_value", "artifactoryConnectionId": "artifactoryConnectionId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddAutoPolicyWaiveExclusion (POST)
-  ./mcpclient.sh call AddAutoPolicyWaiveExclusion '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"autoPolicyWaiverId": "autoPolicyWaiverId_value", "matchStrategy": "EXACT_COMPONENT", "ownerId": "ownerId_value", "policyViolationId": "policyViolationId_value", "scanId": "scanId_value", "applicationPublicId": "applicationPublicId_value"}}'
+  ./mcpclient.sh call AddAutoPolicyWaiveExclusion '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"applicationPublicId": "applicationPublicId_value", "autoPolicyWaiverId": "autoPolicyWaiverId_value", "matchStrategy": "EXACT_COMPONENT", "ownerId": "ownerId_value", "policyViolationId": "policyViolationId_value", "scanId": "scanId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddAutoPolicyWaiver (POST)
-  ./mcpclient.sh call AddAutoPolicyWaiver '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"autoPolicyWaiverId": "autoPolicyWaiverId_value", "scopesOperatorAny": false, "creatorId": "creatorId_value", "threatLevel": 0, "reachability": false, "createTime": "2025-01-01", "creatorName": "creatorName_value", "ownerName": "ownerName_value", "ownerType": "ownerType_value", "ownerId": "ownerId_value", "pathForward": false, "publicId": "publicId_value"}}'
+  ./mcpclient.sh call AddAutoPolicyWaiver '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"creatorName": "creatorName_value", "publicId": "publicId_value", "scopesOperatorAny": false, "ownerName": "ownerName_value", "ownerType": "ownerType_value", "creatorId": "creatorId_value", "pathForward": false, "autoPolicyWaiverId": "autoPolicyWaiverId_value", "ownerId": "ownerId_value", "reachability": false, "threatLevel": 0, "createTime": "2025-01-01"}}'
 EOEX
   cat <<'EOEX'
   # AddAutoPolicyWaivers (POST)
@@ -78,19 +78,19 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddBulkPolicyWaivers (POST)
-  ./mcpclient.sh call AddBulkPolicyWaivers '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"apiWaiverOptionsDTO": {}, "violationIds": ["violation-id-1","violation-id-2","violation-id-3"]}}'
+  ./mcpclient.sh call AddBulkPolicyWaivers '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"violationIds": ["violation-id-1","violation-id-2","violation-id-3"], "apiWaiverOptionsDTO": {}}}'
 EOEX
   cat <<'EOEX'
   # AddLabel (POST)
-  ./mcpclient.sh call AddLabel '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"id": "id_value", "label": "label_value", "ownerId": "ownerId_value", "ownerType": "ownerType_value", "color": "color_value", "description": "description_value"}}'
+  ./mcpclient.sh call AddLabel '{"ownerId": "ownerId_value", "ownerType": "application", "body": {"label": "label_value", "ownerId": "ownerId_value", "ownerType": "ownerType_value", "color": "color_value", "description": "description_value", "id": "id_value"}}'
 EOEX
   cat <<'EOEX'
   # AddLicenseOverride (POST)
-  ./mcpclient.sh call AddLicenseOverride '{"ownerId": "ownerId_value", "ownerType": "application", "where": "where_value", "body": {"licenseIds": [], "ownerId": "ownerId_value", "status": "OPEN", "comment": "comment_value", "componentIdentifier": {}, "id": "id_value"}}'
+  ./mcpclient.sh call AddLicenseOverride '{"ownerId": "ownerId_value", "ownerType": "application", "where": "where_value", "body": {"status": "OPEN", "comment": "comment_value", "componentIdentifier": {}, "id": "id_value", "licenseIds": [], "ownerId": "ownerId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddOrganization (POST)
-  ./mcpclient.sh call AddOrganization '{"body": {"parentOrganizationId": "parentOrganizationId_value", "tags": [], "id": "id_value", "name": "name_value"}}'
+  ./mcpclient.sh call AddOrganization '{"body": {"id": "id_value", "name": "name_value", "parentOrganizationId": "parentOrganizationId_value", "tags": []}}'
 EOEX
   cat <<'EOEX'
   # AddPolicyWaiverByPolicyViolationId (POST)
@@ -98,7 +98,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddPolicyWaiverRequestByPolicyViolationId (POST)
-  ./mcpclient.sh call AddPolicyWaiverRequestByPolicyViolationId '{"ownerId": "ownerId_value", "ownerType": "application", "policyViolationId": "policyViolationId_value", "body": {"comment": "comment_value", "expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01", "matcherStrategy": "DEFAULT", "noteToReviewer": "noteToReviewer_value", "waiverReasonId": "waiverReasonId_value"}}'
+  ./mcpclient.sh call AddPolicyWaiverRequestByPolicyViolationId '{"ownerId": "ownerId_value", "ownerType": "application", "policyViolationId": "policyViolationId_value", "body": {"matcherStrategy": "DEFAULT", "noteToReviewer": "noteToReviewer_value", "waiverReasonId": "waiverReasonId_value", "comment": "comment_value", "expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01"}}'
 EOEX
   cat <<'EOEX'
   # AddProprietaryComponentNames (POST)
@@ -106,7 +106,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddRepositoryManager (POST)
-  ./mcpclient.sh call AddRepositoryManager '{"body": {"name": "name_value", "productName": "productName_value", "productVersion": "productVersion_value", "id": "id_value", "instanceId": "instanceId_value"}}'
+  ./mcpclient.sh call AddRepositoryManager '{"body": {"instanceId": "instanceId_value", "name": "name_value", "productName": "productName_value", "productVersion": "productVersion_value", "id": "id_value"}}'
 EOEX
   cat <<'EOEX'
   # AddRole (POST)
@@ -114,7 +114,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddSourceControl (POST)
-  ./mcpclient.sh call AddSourceControl '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"sshEnabled": false, "githubAppId": "githubAppId_value", "username": "username_value", "repositoryUrl": "repositoryUrl_value", "enableStatusChecks": false, "statusChecksEnabled": false, "manualPullRequestsEnabled": false, "ownerId": "ownerId_value", "sourceControlScanTarget": "sourceControlScanTarget_value", "pullRequestCommentingEnabled": false, "provider": "provider_value", "closePrAfterDays": 0, "enablePullRequests": false, "token": "token_value", "closePrOnFailedChecksEnabled": false, "commitStatusEnabled": false, "remediationPullRequestsEnabled": false, "baseBranch": "baseBranch_value", "sourceControlEvaluationsEnabled": false, "closePrAfterDaysOpenEnabled": false, "id": "id_value", "authenticationType": "authenticationType_value", "nonGoldenPullRequestsEnabled": false, "innerSourceAutomatedUpdatesEnabled": false}}'
+  ./mcpclient.sh call AddSourceControl '{"internalOwnerId": "internalOwnerId_value", "ownerType": "application", "body": {"pullRequestCommentingEnabled": false, "token": "token_value", "githubAppId": "githubAppId_value", "closePrAfterDays": 0, "remediationPullRequestsEnabled": false, "ownerId": "ownerId_value", "baseBranch": "baseBranch_value", "enableStatusChecks": false, "statusChecksEnabled": false, "innerSourceAutomatedUpdatesEnabled": false, "provider": "provider_value", "repositoryUrl": "repositoryUrl_value", "sourceControlScanTarget": "sourceControlScanTarget_value", "username": "username_value", "sourceControlEvaluationsEnabled": false, "authenticationType": "authenticationType_value", "nonGoldenPullRequestsEnabled": false, "closePrAfterDaysOpenEnabled": false, "id": "id_value", "enablePullRequests": false, "commitStatusEnabled": false, "sshEnabled": false, "manualPullRequestsEnabled": false, "closePrOnFailedChecksEnabled": false}}'
 EOEX
   cat <<'EOEX'
   # AddTag (POST)
@@ -126,11 +126,11 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddWaiver (POST)
-  ./mcpclient.sh call AddWaiver '{"containerImageId": "containerImageId_value", "body": {"expiryTime": "2025-01-01", "waiverReasonId": "waiverReasonId_value", "comment": "comment_value"}}'
+  ./mcpclient.sh call AddWaiver '{"containerImageId": "containerImageId_value", "body": {"comment": "comment_value", "expiryTime": "2025-01-01", "waiverReasonId": "waiverReasonId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddWaiverToTransitivePolicyViolationsByAppScanComponent (POST)
-  ./mcpclient.sh call AddWaiverToTransitivePolicyViolationsByAppScanComponent '{"componentIdentifier": {}, "hash": "hash_value", "ownerId": "ownerId_value", "ownerType": "application", "packageUrl": "packageUrl_value", "scanId": "scanId_value", "body": {"comment": "False positive - internal tool approved by security team", "expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01", "matcherStrategy": "EXACT_COMPONENT", "waiverReasonId": "waiver-reason-id-123"}}'
+  ./mcpclient.sh call AddWaiverToTransitivePolicyViolationsByAppScanComponent '{"componentIdentifier": {}, "hash": "hash_value", "ownerId": "ownerId_value", "ownerType": "application", "packageUrl": "packageUrl_value", "scanId": "scanId_value", "body": {"expireWhenRemediationAvailable": false, "expiryTime": "2025-01-01", "matcherStrategy": "EXACT_COMPONENT", "waiverReasonId": "waiver-reason-id-123", "comment": "False positive - internal tool approved by security team"}}'
 EOEX
 }
 

@@ -13,7 +13,7 @@ import (
 const GetFirewallAutoUnquarantineConfigInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetFirewallAutoUnquarantineConfig tool (Status: 200, Content-Type: application/json)
-const GetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a list of repositories and the corresponding configuration for auto-release from quarantine.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **name** (Type: string):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n    - **id** (Type: string):\n"
+const GetFirewallAutoUnquarantineConfigResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a list of repositories and the corresponding configuration for auto-release from quarantine.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **autoReleaseQuarantineEnabled** (Type: boolean):\n    - **id** (Type: string):\n    - **name** (Type: string):\n"
 
 // NewGetFirewallAutoUnquarantineConfigMCPTool creates the MCP Tool instance for GetFirewallAutoUnquarantineConfig
 func NewGetFirewallAutoUnquarantineConfigMCPTool() mcp.Tool {

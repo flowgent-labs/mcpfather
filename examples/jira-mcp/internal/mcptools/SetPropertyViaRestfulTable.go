@@ -13,7 +13,7 @@ import (
 const SetPropertyViaRestfulTableInputSchema = "{\n  \"properties\": {\n    \"id\": {\n      \"description\": \"a String containing the property key.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"id\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the SetPropertyViaRestfulTable tool (Status: 200, Content-Type: application/json)
-const SetPropertyViaRestfulTableResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the property exists and the currently authenticated user has permission to edit it.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **example** (Type: string):\n  - **key** (Type: string):\n  - **value** (Type: string):\n"
+const SetPropertyViaRestfulTableResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the property exists and the currently authenticated user has permission to edit it.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **value** (Type: string):\n  - **example** (Type: string):\n  - **key** (Type: string):\n"
 
 // NewSetPropertyViaRestfulTableMCPTool creates the MCP Tool instance for SetPropertyViaRestfulTable
 func NewSetPropertyViaRestfulTableMCPTool() mcp.Tool {

@@ -10,13 +10,13 @@ import (
 )
 
 // Input Schema for the SetProperty1_d12577d8 tool
-const SetProperty1_d12577d8InputSchema = "{\n  \"properties\": {\n    \"commentId\": {\n      \"description\": \"the comment on which the property will be set.\",\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"description\": \"the key of the comment's property. The maximum length of the key is 255 bytes.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"commentId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
+const SetProperty1_d12577d8InputSchema = "{\n  \"properties\": {\n    \"propertyKey\": {\n      \"description\": \"The key of the sprint's property. The maximum length of the key is 255 bytes.\",\n      \"type\": \"string\"\n    },\n    \"sprintId\": {\n      \"description\": \"The id of the sprint on which the property will be set.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"propertyKey\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewSetProperty1_d12577d8MCPTool creates the MCP Tool instance for SetProperty1_d12577d8
 func NewSetProperty1_d12577d8MCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"SetProperty1_d12577d8",
-		"Set a property on a comment - Sets the value of the specified comment's property.",
+		"Update a sprint's property - Sets the value of the specified sprint's property. You can use this resource to store a custom data against the sprint identified by the id. The user who stores the data is required to have permissions to modify the sprint.",
 		[]byte(SetProperty1_d12577d8InputSchema),
 	)
 }
@@ -30,9 +30,9 @@ func SetProperty1_d12577d8Handler(ctx context.Context, request mcp.CallToolReque
 	if args == nil {
 		args = make(map[string]interface{})
 	}
-	contentType := "application/json"
+	contentType := ""
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "PUT", "/rest/api/2/comment/{commentId}/properties/{propertyKey}", args, []string{"commentId", "propertyKey"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "PUT", "/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}", args, []string{"propertyKey", "sprintId"}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}

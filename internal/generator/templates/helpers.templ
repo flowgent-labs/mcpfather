@@ -192,6 +192,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Build request body
 	var bodyReader io.Reader
 	var bodyBytes []byte
+	var err error
 	if method != "GET" && method != "HEAD" {
 		var bodyData interface{}
 		if bodyArg, ok := args["body"]; ok {
@@ -201,7 +202,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 			// Otherwise, send all non-path args as the body
 			bodyData = buildJSONBody(args, pathKeys)
 		}
-		bodyBytes, err := marshalJSONNoSci(bodyData)
+		bodyBytes, err = marshalJSONNoSci(bodyData)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}

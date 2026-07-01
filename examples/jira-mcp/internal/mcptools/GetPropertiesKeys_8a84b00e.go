@@ -10,16 +10,16 @@ import (
 )
 
 // Input Schema for the GetPropertiesKeys_8a84b00e tool
-const GetPropertiesKeys_8a84b00eInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"The id of the board from which property keys will be returned.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
+const GetPropertiesKeys_8a84b00eInputSchema = "{\n  \"properties\": {\n    \"dashboardId\": {\n      \"description\": \"The dashboard id.\",\n      \"type\": \"string\"\n    },\n    \"itemId\": {\n      \"description\": \"The dashboard item from which keys will be returned.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"dashboardId\",\n    \"itemId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetPropertiesKeys_8a84b00e tool (Status: 200, Content-Type: application/json)
-const GetPropertiesKeys_8a84b00eResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property keys.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **keys** (Type: array):\n    - **Items** (Type: object):\n      - **key** (Type: string):\n          - Example: 'issue.support'\n      - **self** (Type: string):\n          - Example: 'http://www.example.com/jira/rest/api/2/issue/EX-2/properties/issue.support'\n"
+const GetPropertiesKeys_8a84b00eResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the dashboard item was found.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **keys** (Type: array):\n    - **Items** (Type: object):\n      - **key** (Type: string):\n          - Example: 'issue.support'\n      - **self** (Type: string):\n          - Example: 'http://www.example.com/jira/rest/api/2/issue/EX-2/properties/issue.support'\n"
 
 // NewGetPropertiesKeys_8a84b00eMCPTool creates the MCP Tool instance for GetPropertiesKeys_8a84b00e
 func NewGetPropertiesKeys_8a84b00eMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"GetPropertiesKeys_8a84b00e",
-		"Get all properties keys for a board - Returns the keys of all properties for the board identified by the id. The user who retrieves the property keys is required to have permissions to view the board.",
+		"Get all properties keys for a dashboard item - Returns the keys of all properties for the dashboard item identified by the id.",
 		[]byte(GetPropertiesKeys_8a84b00eInputSchema),
 	)
 }
@@ -35,7 +35,7 @@ func GetPropertiesKeys_8a84b00eHandler(ctx context.Context, request mcp.CallTool
 	}
 	contentType := ""
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/rest/agile/1.0/board/{boardId}/properties", args, []string{"boardId"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties", args, []string{"dashboardId", "itemId"}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
