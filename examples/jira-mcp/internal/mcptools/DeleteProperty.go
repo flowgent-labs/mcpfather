@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the DeleteProperty tool
-const DeletePropertyInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
+const DeletePropertyInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"The id of the board from which the property will be removed.\",\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"description\": \"The key of the property to remove.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewDeletePropertyMCPTool creates the MCP Tool instance for DeleteProperty
 func NewDeletePropertyMCPTool() mcp.Tool {

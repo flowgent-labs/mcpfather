@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the MoveIssuesToEpic tool
-const MoveIssuesToEpicInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The issues to move to the epic.\",\n      \"properties\": {\n        \"issues\": {\n          \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n          \"items\": {\n            \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"epicIdOrKey\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"epicIdOrKey\"\n  ],\n  \"type\": \"object\"\n}"
+const MoveIssuesToEpicInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The issues to move to the epic.\",\n      \"properties\": {\n        \"issues\": {\n          \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n          \"items\": {\n            \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"epicIdOrKey\": {\n      \"description\": \"The id or key of the epic that you want to assign issues to.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"epicIdOrKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewMoveIssuesToEpicMCPTool creates the MCP Tool instance for MoveIssuesToEpic
 func NewMoveIssuesToEpicMCPTool() mcp.Tool {

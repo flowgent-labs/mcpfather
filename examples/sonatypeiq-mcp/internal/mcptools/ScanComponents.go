@@ -33,7 +33,7 @@ func ScanComponentsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	if args == nil {
 		args = make(map[string]interface{})
 	}
-	contentType := "application/json"
+	contentType := "application/xml"
 	startTime := time.Now()
 	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/v2/scan/applications/{applicationId}/sources/{source}", args, []string{"applicationId", "source"}, contentType)
 	if err != nil {

@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the GetRefinedVelocity tool
-const GetRefinedVelocityInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
+const GetRefinedVelocityInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"The id of the board from which the settings will be returned.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetRefinedVelocity tool (Status: 200, Content-Type: application/json)
 const GetRefinedVelocityResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the board exists and the property was found.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **value** (Type: boolean):\n      - Example: 'true'\n"

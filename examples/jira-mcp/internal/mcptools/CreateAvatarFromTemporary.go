@@ -10,13 +10,16 @@ import (
 )
 
 // Input Schema for the CreateAvatarFromTemporary tool
-const CreateAvatarFromTemporaryInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"cropping instructions\",\n      \"properties\": {\n        \"cropperOffsetX\": {\n          \"example\": 50,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"cropperOffsetY\": {\n          \"example\": 50,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"cropperWidth\": {\n          \"example\": 120,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"needsCropping\": {\n          \"example\": true,\n          \"type\": \"boolean\"\n        },\n        \"url\": {\n          \"example\": \"http://example.com/jira/secure/temporaryavatar?cropped=true\",\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"type\": {\n      \"description\": \"the avatar type\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"type\"\n  ],\n  \"type\": \"object\"\n}"
+const CreateAvatarFromTemporaryInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Cropping instructions.\",\n      \"properties\": {\n        \"cropperOffsetX\": {\n          \"example\": 50,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"cropperOffsetY\": {\n          \"example\": 50,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"cropperWidth\": {\n          \"example\": 120,\n          \"format\": \"int32\",\n          \"type\": \"integer\"\n        },\n        \"needsCropping\": {\n          \"example\": true,\n          \"type\": \"boolean\"\n        },\n        \"url\": {\n          \"example\": \"http://example.com/jira/secure/temporaryavatar?cropped=true\",\n          \"type\": \"string\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"id\": {\n      \"description\": \"The issue type id.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"id\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the CreateAvatarFromTemporary tool (Status: 201, Content-Type: application/json)
+const CreateAvatarFromTemporaryResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 201\n\n**Content-Type:** application/json\n\n> Returns created avatar.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: string):\n      - Example: '1000'\n  - **owner** (Type: string):\n      - Example: 'fred'\n  - **selected** (Type: boolean):\n"
 
 // NewCreateAvatarFromTemporaryMCPTool creates the MCP Tool instance for CreateAvatarFromTemporary
 func NewCreateAvatarFromTemporaryMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"CreateAvatarFromTemporary",
-		"Update avatar cropping - Updates the cropping instructions of the temporary avatar",
+		"Convert temporary avatar into a real avatar - Converts temporary avatar into a real avatar",
 		[]byte(CreateAvatarFromTemporaryInputSchema),
 	)
 }
@@ -32,7 +35,7 @@ func CreateAvatarFromTemporaryHandler(ctx context.Context, request mcp.CallToolR
 	}
 	contentType := "application/json"
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/rest/api/2/avatar/{type}/temporaryCrop", args, []string{"type"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/rest/api/2/issuetype/{id}/avatar", args, []string{"id"}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}

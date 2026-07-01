@@ -16,7 +16,7 @@ const RequestCurrentIndexFromNodeInputSchema = "{\n  \"properties\": {\n    \"no
 func NewRequestCurrentIndexFromNodeMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"RequestCurrentIndexFromNode",
-		"Request node index snapshot - Request current index from node (the request is processed asynchronously). This method is deprecated as it is Lucene specific and is planned for removal in Jira 11.",
+		"Request node index snapshot - Request current index from node (the request is processed asynchronously). ",
 		[]byte(RequestCurrentIndexFromNodeInputSchema),
 	)
 }
