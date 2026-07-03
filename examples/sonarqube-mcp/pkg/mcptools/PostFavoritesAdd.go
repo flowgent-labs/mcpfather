@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostFavoritesAdd tool
+const PostFavoritesAddInputSchema = "{\n  \"properties\": {\n    \"component\": {\n      \"description\": \"Component key. Only components with qualifiers TRK, VW, SVW, APP are supported\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"component\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostFavoritesAddMCPTool creates the MCP Tool instance for PostFavoritesAdd
+func NewPostFavoritesAddMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostFavoritesAdd",
+		"Add a component (project, portfolio, etc.) as favorite for the authenticated user. - Add a component (project, portfolio, etc.) as favorite for the authenticated user. Only 100 components by qualifier can be added as favorite. Requires authentication and the following permission: 'Browse' on the component.",
+		[]byte(PostFavoritesAddInputSchema),
+	)
+}
+
+// PostFavoritesAddHandler is the handler function for the PostFavoritesAdd tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostFavoritesAddHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/favorites/add", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostFavoritesAdd")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}
