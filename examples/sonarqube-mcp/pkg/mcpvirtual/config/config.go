@@ -17,6 +17,7 @@ type Config struct {
 type VirtualToolConfig struct {
 	Name        string                 `yaml:"name"`
 	Description string                 `yaml:"description"`
+	Enabled     *bool                  `yaml:"enabled,omitempty"`
 	Annotations map[string]interface{} `yaml:"annotations,omitempty"`
 	InputSchema map[string]interface{} `yaml:"inputSchema"`
 	Pipeline    []pipeline.StepConfig  `yaml:"pipeline"`

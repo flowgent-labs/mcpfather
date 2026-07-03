@@ -13,7 +13,7 @@ import (
 const GetProjectRoleActorsForRoleInputSchema = "{\n  \"properties\": {\n    \"id\": {\n      \"description\": \"The role id\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"id\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetProjectRoleActorsForRole tool (Status: 200, Content-Type: application/json)
-const GetProjectRoleActorsForRoleResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns actor list.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **actors** (Type: array):\n    - **Items** (Type: object):\n      - **name** (Type: string):\n          - Example: 'jira-developers'\n      - **avatarUrl** (Type: string, uri):\n"
+const GetProjectRoleActorsForRoleResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns actor list.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **actors** (Type: array):\n    - **Items** (Type: object):\n      - **avatarUrl** (Type: string, uri):\n      - **name** (Type: string):\n          - Example: 'jira-developers'\n"
 
 // NewGetProjectRoleActorsForRoleMCPTool creates the MCP Tool instance for GetProjectRoleActorsForRole
 func NewGetProjectRoleActorsForRoleMCPTool() mcp.Tool {

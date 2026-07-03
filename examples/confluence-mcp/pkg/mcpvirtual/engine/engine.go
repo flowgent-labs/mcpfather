@@ -42,6 +42,9 @@ func (e *Engine) Tools() ([]VirtualToolEntry, error) {
 
 	var entries []VirtualToolEntry
 	for _, at := range e.config.VirtualTools {
+		if at.Enabled != nil && !*at.Enabled {
+			continue
+		}
 		entry, err := e.buildTool(at)
 		if err != nil {
 			return nil, fmt.Errorf("virtual tool %q: %w", at.Name, err)

@@ -440,7 +440,7 @@ func (g *Generator) GenerateReadme() error {
 		"./bin/" + binName + " --print-default-config > ~/." + binName + "/config.yaml\n" +
 		"```\n\n" +
 		"Edit `~/." + binName + "/config.yaml` and configure `tools.expose` to control which tools are available:\n\n" +
-		"```yaml\ntools:\n  expose:\n    # all-native-tools-by-default: false  # default — only tools in includes are exposed\n    includes:\n      - ListSpaces\n      - SearchContent\n    # excludes:\n    #   - DeleteSpace  # explicitly hide a tool\n```\n\n" +
+		"```yaml\ntools:\n  expose:\n    # register-all-tools-by-default: false  # default — only tools in includes are exposed\n    includes:\n      - ListSpaces\n      - SearchContent\n    # excludes:\n    #   - DeleteSpace  # explicitly hide a tool\n```\n\n" +
 		"Tools listed in both `includes` and `excludes` cause the server to fail at startup.\n\n" +
 		"### Virtual Tools (Composition)\n\n" +
 		"Compose multiple native tools into a single AI-callable tool via a declarative " +

@@ -49,10 +49,12 @@ func loadVirtualTools() map[string]pipeline.VirtualToolEntry {
 	cfgPath := mcputils.VirtualConfigPath("confluence-mcp")
 	aggEngine, err := engine.New(cfgPath, &virtualRegistry{})
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
 		return nil
 	}
 	entries, err := aggEngine.Tools()
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
 		return nil
 	}
 	m := make(map[string]pipeline.VirtualToolEntry, len(entries))
@@ -80,11 +82,10 @@ func ListTools() {
 		}
 	}
 
+	// Virtual tools are always listed (matching HTTP/stdio server behavior).
 	vtTools := loadVirtualTools()
 	for name, entry := range vtTools {
-		if enabled == nil || enabled[name] {
-			allTools = append(allTools, toolInfo{name: name, desc: entry.Description})
-		}
+		allTools = append(allTools, toolInfo{name: name, desc: entry.Description})
 	}
 
 	sort.Slice(allTools, func(i, j int) bool {
@@ -113,7 +114,7 @@ func resolveEnabledTools(cfg *mcputils.Config) map[string]bool {
 		}
 	}
 	enabled := make(map[string]bool)
-	if expose.AllNativeToolsByDefault {
+	if expose.RegisterAllToolsByDefault {
 		for name := range mcptools.Registry {
 			enabled[name] = true
 		}

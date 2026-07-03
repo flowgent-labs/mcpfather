@@ -5,11 +5,11 @@ tools:
     # (individual tools can be hidden via excludes).
     # When false (the default), only tools listed in includes
     # are exposed.
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
 
     # Explicitly expose these tools (operationId values).
     # Takes precedence: tools listed here are always exposed,
-    # even if all-native-tools-by-default is false.
+    # even if register-all-tools-by-default is false.
     includes:
       - GetIssuesList
       - GetIssuesSearch
@@ -20,7 +20,7 @@ tools:
       - GetQualityProfilesShow
 
     # Explicitly hide these tools from external agents (operationId values).
-    # Takes precedence over all-native-tools-by-default.
+    # Takes precedence over register-all-tools-by-default.
     # A tool listed in BOTH includes and excludes will cause
     # the server to fail at startup.
     excludes: []
@@ -39,6 +39,7 @@ upstream:
 virtualTools:
   # ---- get_newcode_issues --------------------------------------------------
   - name: get_newcode_issues
+    enabled: true
     description: |
       Get all issues for new/changed code in a pull request on a branch,
       optionally filtered by source file path. Returns minimal fields +
@@ -167,6 +168,7 @@ virtualTools:
 
   # ---- get_overall_issues ---------------------------------------------------
   - name: get_overall_issues
+    enabled: true
     description: |
       Get all open issues for a project on a branch, optionally filtered
       by source file path. Returns minimal fields + code snippet lines

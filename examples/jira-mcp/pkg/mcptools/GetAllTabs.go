@@ -13,7 +13,7 @@ import (
 const GetAllTabsInputSchema = "{\n  \"properties\": {\n    \"projectKey\": {\n      \"description\": \"the key of the project; this parameter is optional\",\n      \"type\": \"string\"\n    },\n    \"screenId\": {\n      \"description\": \"id of screen\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"screenId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAllTabs tool (Status: 200, Content-Type: application/json)
-const GetAllTabsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of Jira issue tabs.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: integer, int64):\n      - Example: '10000'\n  - **name** (Type: string):\n      - Example: 'Fields Tab'\n"
+const GetAllTabsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of Jira issue tabs.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **name** (Type: string):\n      - Example: 'Fields Tab'\n  - **id** (Type: integer, int64):\n      - Example: '10000'\n"
 
 // NewGetAllTabsMCPTool creates the MCP Tool instance for GetAllTabs
 func NewGetAllTabsMCPTool() mcp.Tool {

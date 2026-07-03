@@ -293,9 +293,9 @@ type ToolsConfig struct {
 // When absent (nil), all native tools are registered (backward compatible).
 // Virtual tools always have access to all native tools regardless of this setting.
 type ToolsExposeConfig struct {
-	// AllNativeToolsByDefault starts with all tools exposed when true.
+	// RegisterAllToolsByDefault starts with all tools exposed when true.
 	// Defaults to false — only tools listed in Includes are exposed.
-	AllNativeToolsByDefault bool `yaml:"all-native-tools-by-default"`
+	RegisterAllToolsByDefault bool `yaml:"register-all-tools-by-default"`
 
 	// Includes lists tools that are explicitly exposed.
 	Includes []string `yaml:"includes"`

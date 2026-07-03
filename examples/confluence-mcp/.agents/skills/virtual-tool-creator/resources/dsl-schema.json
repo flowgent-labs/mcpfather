@@ -237,6 +237,9 @@
         "description": {
           "type": "string"
         },
+        "enabled": {
+          "type": "boolean"
+        },
         "inputSchema": {
           "additionalProperties": true,
           "type": "object"

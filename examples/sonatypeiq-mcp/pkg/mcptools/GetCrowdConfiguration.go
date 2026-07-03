@@ -13,7 +13,7 @@ import (
 const GetCrowdConfigurationInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetCrowdConfiguration tool (Status: 200, Content-Type: application/json)
-const GetCrowdConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the " + "\x60" + "serverUrl" + "\x60" + " and " + "\x60" + "applicationName" + "\x60" + " provided at the time of setting up the Crowd Server.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationPassword** (Type: string):\n  - **serverUrl** (Type: string):\n  - **applicationName** (Type: string):\n"
+const GetCrowdConfigurationResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the " + "\x60" + "serverUrl" + "\x60" + " and " + "\x60" + "applicationName" + "\x60" + " provided at the time of setting up the Crowd Server.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationName** (Type: string):\n  - **applicationPassword** (Type: string):\n  - **serverUrl** (Type: string):\n"
 
 // NewGetCrowdConfigurationMCPTool creates the MCP Tool instance for GetCrowdConfiguration
 func NewGetCrowdConfigurationMCPTool() mcp.Tool {

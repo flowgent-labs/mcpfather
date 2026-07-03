@@ -13,7 +13,7 @@ import (
 const GetLicensedSolutionsInputSchema = "{\n  \"properties\": {\n    \"allowRelativeUrls\": {\n      \"default\": false,\n      \"description\": \"Whether or not relative URLs should be allowed.\",\n      \"type\": \"boolean\"\n    }\n  },\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetLicensedSolutions tool (Status: 200, Content-Type: application/json)
-const GetLicensedSolutionsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved the list of licensed solutions.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **url** (Type: string):\n    - **id** (Type: string):\n"
+const GetLicensedSolutionsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved the list of licensed solutions.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **id** (Type: string):\n    - **url** (Type: string):\n"
 
 // NewGetLicensedSolutionsMCPTool creates the MCP Tool instance for GetLicensedSolutions
 func NewGetLicensedSolutionsMCPTool() mcp.Tool {

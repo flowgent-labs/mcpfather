@@ -71,7 +71,7 @@ Edit `~/.sonatypeiq-mcp/config.yaml` and configure `tools.expose` to control whi
 ```yaml
 tools:
   expose:
-    # all-native-tools-by-default: false  # default — only tools in includes are exposed
+    # register-all-tools-by-default: false  # default — only tools in includes are exposed
     includes:
       - ListSpaces
       - SearchContent

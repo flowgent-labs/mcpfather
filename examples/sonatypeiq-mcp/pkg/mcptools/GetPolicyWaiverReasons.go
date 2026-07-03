@@ -13,7 +13,7 @@ import (
 const GetPolicyWaiverReasonsInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetPolicyWaiverReasons tool (Status: 200, Content-Type: application/json)
-const GetPolicyWaiverReasonsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved all policy waiver reasons.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **reasonText** (Type: string):\n    - **type** (Type: string):\n    - **id** (Type: string):\n"
+const GetPolicyWaiverReasonsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successfully retrieved all policy waiver reasons.\n\n## Response Structure\n\n- Structure (Type: array):\n  - **Items** (Type: object):\n    - **id** (Type: string):\n    - **reasonText** (Type: string):\n    - **type** (Type: string):\n"
 
 // NewGetPolicyWaiverReasonsMCPTool creates the MCP Tool instance for GetPolicyWaiverReasons
 func NewGetPolicyWaiverReasonsMCPTool() mcp.Tool {
