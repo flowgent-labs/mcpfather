@@ -223,7 +223,8 @@ try:
         if desc:
             # take first line only
             desc = desc.split("\n")[0].strip()
-        print(f"  {t[\"name\"]:<{maxlen+4}}{desc}")
+        name = t["name"]
+        print(f"  {name:<{maxlen+4}}{desc}")
 except Exception as e:
     print("(parse error: {})".format(e), file=sys.stderr)
 '

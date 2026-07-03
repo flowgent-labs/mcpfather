@@ -1,36 +1,5 @@
 {
   "$defs": {
-    "VirtualTool": {
-      "additionalProperties": false,
-      "properties": {
-        "annotations": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "description": {
-          "type": "string"
-        },
-        "inputSchema": {
-          "additionalProperties": true,
-          "type": "object"
-        },
-        "name": {
-          "type": "string"
-        },
-        "pipeline": {
-          "items": {
-            "$ref": "#/$defs/Step"
-          },
-          "minItems": 1,
-          "type": "array"
-        }
-      },
-      "required": [
-        "name",
-        "pipeline"
-      ],
-      "type": "object"
-    },
     "CallSpec": {
       "additionalProperties": false,
       "properties": {
@@ -255,6 +224,37 @@
         "id",
         "kind",
         "spec"
+      ],
+      "type": "object"
+    },
+    "VirtualTool": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "inputSchema": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "minItems": 1,
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "pipeline"
       ],
       "type": "object"
     }

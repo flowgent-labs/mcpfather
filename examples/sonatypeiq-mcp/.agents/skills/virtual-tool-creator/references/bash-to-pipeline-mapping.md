@@ -1,8 +1,8 @@
-# Bash/jq → Pipeline DSL 映射参考
+# Bash/jq → Virtual Tool Pipeline DSL Mapping
 
-将 bash 脚本中常见的 API 编排模式翻译为 virtual engine pipeline DSL。
+Translate common bash API orchestration patterns into the virtual tool pipeline DSL.
 
-## 单一 API 调用
+## Single API Call
 
 **Bash**:
 ```bash
@@ -19,7 +19,21 @@ curl "$BASE/api/v2/apps/$ID" -o result.json
       applicationId: $input.appId
 ```
 
-## 链式调用（B 依赖 A 的返回值）
+If the upstream returns JSON and downstream steps need parsed data, add `parse: json`:
+
+```yaml
+- id: getApp
+  kind: call
+  spec:
+    tool: GetApplication
+    parse: json
+    args:
+      applicationId: $input.appId
+```
+
+Without `parse: json`, the response is kept as a raw text string.
+
+## Chained Calls (B depends on A)
 
 **Bash**:
 ```bash
@@ -33,6 +47,7 @@ curl "$BASE/api/v2/apps/$APP/details"
   kind: call
   spec:
     tool: GetApplication
+    parse: json
     args:
       applicationId: $input.publicAppId
 
@@ -44,7 +59,7 @@ curl "$BASE/api/v2/apps/$APP/details"
       internalAppId: $getApp.id
 ```
 
-## 遍历列表 + 每个元素调用 API
+## Iterate a List + Call an API per Element
 
 **Bash**:
 ```bash
@@ -76,7 +91,7 @@ done
           from: $getDetail
 ```
 
-## 获取 A → 遍历 A 的元素 → 每个元素调用 B → 合并结果
+## Fetch A → Foreach over A's Items → Call B per Item → Merge Results
 
 **Bash**:
 ```bash
@@ -93,6 +108,7 @@ done
   kind: call
   spec:
     tool: GetData
+    parse: json
     args:
       id: $input.dataId
 
@@ -124,14 +140,14 @@ done
     from: $enrich
 ```
 
-## 字段过滤 (select)
+## Field Filtering (select)
 
 **Bash**:
 ```bash
 jq '[.[] | select(.policyThreatLevel >= 5)]' data.json
 ```
 
-**Pipeline** (jq 步骤):
+**Pipeline** (jq step):
 ```yaml
 - id: filterThreat
   kind: jq
@@ -142,12 +158,12 @@ jq '[.[] | select(.policyThreatLevel >= 5)]' data.json
     expr: '[.[] | select(.policyThreatLevel >= $min)]'
 ```
 
-## 字段投影（只保留部分字段）
+## Field Projection (keep only selected fields)
 
 **Bash**:
 ```bash
 jq '{name, email}' data.json
-# 或对数组:
+# or for arrays:
 jq '[.[] | {name, email}]' data.json
 ```
 
@@ -160,7 +176,7 @@ jq '[.[] | {name, email}]' data.json
     expr: '{name, email}'
 ```
 
-## 字段重命名
+## Field Renaming
 
 **Bash**:
 ```bash
@@ -176,7 +192,7 @@ jq '{display_name: .displayName, url: .packageUrl}' data.json
     expr: '{display_name: .displayName, url: .packageUrl}'
 ```
 
-## 删除字段
+## Delete Fields
 
 **Bash**:
 ```bash
@@ -192,11 +208,13 @@ jq 'del(.internal, ._links)' data.json
     expr: 'del(.internal, ._links)'
 ```
 
-## 数组第一个元素
+## Pick First Array Element or Default
 
 **Bash**:
 ```bash
 jq '.reports[0].stage' history.json
+# with fallback:
+jq '(.reports[0].stage) // null' history.json
 ```
 
 **Pipeline**:
@@ -205,17 +223,19 @@ jq '.reports[0].stage' history.json
   kind: jq
   spec:
     from: $history
-    expr: '.reports[0].stage // null'
+    vars:
+      scanId: $input.scanId
+    expr: '([.reports[] | select(.scanId == $scanId) | .stage][0] // null)'
 ```
 
-## 构造顶部 JSON
+## Construct a Top-Level Result Object
 
 **Bash**:
 ```bash
 jq -n '{app: $app, items: $items, count: ($items | length)}'
 ```
 
-**Pipeline** (return 步骤 + jq expr):
+**Pipeline** (return step + jq expr):
 ```yaml
 - id: buildSummary
   kind: return
@@ -231,7 +251,7 @@ jq -n '{app: $app, items: $items, count: ($items | length)}'
       }
 ```
 
-## 聚合统计
+## Compute Aggregate Statistics
 
 **Bash**:
 ```bash
@@ -239,7 +259,7 @@ jq 'length' data.json
 jq '[.[] | select(.waived != true)] | length' data.json
 ```
 
-**Pipeline** (jq 步骤):
+**Pipeline** (jq step):
 ```yaml
 - id: computeStats
   kind: jq
@@ -252,7 +272,7 @@ jq '[.[] | select(.waived != true)] | length' data.json
       }
 ```
 
-## 条件分支 (if/then/else)
+## Conditional Branching (if/then/else)
 
 **Bash**:
 ```bash
@@ -263,7 +283,7 @@ else
 fi
 ```
 
-**Pipeline** (jq 表达式内处理):
+**Pipeline** (handled inside a jq expression):
 ```yaml
 - id: handle
   kind: jq
@@ -277,9 +297,49 @@ fi
       end
 ```
 
-## 无法直接翻译的操作
+## Post-Step Validation (require non-empty)
 
-| Bash/jq 操作 | 原因 | 建议 |
-|-------------|------|------|
-| `io.ReadAll` 大文件下载 | 无流式下载 | call 步骤本身处理 |
-| 字符串拼接/格式化 | 无字符串操作 | jq 表达式内用 `+` 处理 |
+**Bash**:
+```bash
+result="$(jq '.app.id' response.json)"
+if [ -z "$result" ]; then
+  echo "ERROR: missing app id" >&2
+  exit 1
+fi
+```
+
+**Pipeline**:
+```yaml
+- id: appId
+  kind: jq
+  spec:
+    from: $policy
+    expr: '.application.id'
+  require:
+    nonEmpty: true
+    message: "Cannot find application id in policy response."
+```
+
+## Operations Without a Direct DSL Equivalent
+
+| Bash/jq operation | Reason | Suggestion |
+|---|---|---|
+| Streaming large file download | No streaming in pipeline | Handled by the `call` step; the native tool performs the download |
+| String concatenation / formatting | No dedicated string step | Use `+` inside a jq expression |
+| Date arithmetic | No date functions | Compute inside a jq expression with `now` and `strftime`, or push logic into the native tool |
+| External process / sub-shell | DSL is declarative only | Embed logic in the native MCP tool implementation |
+
+## Reference Syntax Quick Reference
+
+| Context | Syntax | Examples |
+|---|---|---|
+| `spec.args` values | `$root.path` | `$input.userId`, `$getApp.id`, `$item.name` |
+| `spec.from` | `$stepId` or `$varName` | `$history`, `$component` |
+| `spec.in` (foreach) | `$ref` | `$threatComponents` |
+| `spec.vars` keys | any string | `vars: { scanId: $input.scanId }` |
+| `spec.vars` values | `$ref` | `minLevel: $input.minThreatLevel` |
+
+The first path segment after `$` resolves to:
+- `input` — the virtual tool's input arguments
+- A step `id` — that step's output
+- A foreach `as` name — the current iteration element

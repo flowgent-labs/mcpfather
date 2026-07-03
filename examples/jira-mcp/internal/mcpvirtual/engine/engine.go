@@ -75,7 +75,33 @@ func (e *Engine) buildHandler(at config.VirtualToolConfig) func(ctx context.Cont
 		if args == nil {
 			args = make(map[string]interface{})
 		}
+		applyDefaults(at.InputSchema, args)
 		executor := NewExecutor(e.registry)
 		return executor.Execute(ctx, at.Pipeline, args)
+	}
+}
+
+// applyDefaults merges default values from JSON Schema properties into args.
+// Only keys that are missing from args are set (provided values take precedence).
+func applyDefaults(schema map[string]interface{}, args map[string]interface{}) {
+	props, ok := schema["properties"]
+	if !ok {
+		return
+	}
+	propsMap, ok := props.(map[string]interface{})
+	if !ok {
+		return
+	}
+	for key, propRaw := range propsMap {
+		if _, exists := args[key]; exists {
+			continue
+		}
+		prop, ok := propRaw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if defaultVal, ok := prop["default"]; ok {
+			args[key] = defaultVal
+		}
 	}
 }
