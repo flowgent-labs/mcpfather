@@ -138,13 +138,17 @@ Example:
 	}
 
 	// Verify the generated code actually compiles
+		proxyURL := os.Getenv("MCPGEN_TEST_PROXY")
+		if proxyURL == "" {
+			proxyURL = os.Getenv("HTTPS_PROXY")
+		}
 		buildEnv := append(os.Environ(),
 			"GOPROXY=https://proxy.golang.org,direct",
 			"GONOSUMCHECK=*",
 			"GOSUMDB=off",
 		)
-		if proxy := os.Getenv("HTTPS_PROXY"); proxy != "" {
-			buildEnv = append(buildEnv, "HTTPS_PROXY="+proxy)
+		if proxyURL != "" {
+			buildEnv = append(buildEnv, "HTTPS_PROXY="+proxyURL)
 		}
 		tidyCmd := exec.Command("go", "mod", "tidy")
 		tidyCmd.Dir = tmpDir

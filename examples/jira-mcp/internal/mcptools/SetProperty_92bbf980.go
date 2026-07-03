@@ -10,16 +10,13 @@ import (
 )
 
 // Input Schema for the SetProperty_92bbf980 tool
-const SetProperty_92bbf980InputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
-
-// Response Template for the SetProperty_92bbf980 tool (Status: 200, Content-Type: application/json)
-const SetProperty_92bbf980ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the board property is successfully updated.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **keys** (Type: array):\n    - **Items** (Type: object):\n      - **key** (Type: string):\n          - Example: 'issue.support'\n      - **self** (Type: string):\n          - Example: 'http://www.example.com/jira/rest/api/2/issue/EX-2/properties/issue.support'\n"
+const SetProperty_92bbf980InputSchema = "{\n  \"properties\": {\n    \"dashboardId\": {\n      \"description\": \"The dashboard id.\",\n      \"type\": \"string\"\n    },\n    \"itemId\": {\n      \"description\": \"The dashboard item on which the property will be set.\",\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"description\": \"The key of the dashboard item's property. The maximum length of the key is 255 bytes.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"dashboardId\",\n    \"itemId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewSetProperty_92bbf980MCPTool creates the MCP Tool instance for SetProperty_92bbf980
 func NewSetProperty_92bbf980MCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"SetProperty_92bbf980",
-		"Update a board's property - Sets the value of the specified board's property. You can use this resource to store a custom data against the board identified by the id. The user who stores the data is required to have permissions to modify the board.",
+		"Set a property on a dashboard item - Sets the value of the property with a given key on the dashboard item identified by the id.",
 		[]byte(SetProperty_92bbf980InputSchema),
 	)
 }

@@ -66,7 +66,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddComment (POST)
-  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"updated": "2012-07-06T18:30:00.000+0000", "id": "10000", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "updateAuthor": "value", "visibility": {}, "properties": [], "author": {}, "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "created": "2012-07-06T18:30:00.000+0000"}}'
+  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "updated": "2012-07-06T18:30:00.000+0000", "author": {}, "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "id": "10000", "properties": [], "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "visibility": {}, "updateAuthor": "value", "created": "2012-07-06T18:30:00.000+0000"}}'
 EOEX
   cat <<'EOEX'
   # AddField (POST)
@@ -82,11 +82,11 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddProjectRoleActorsToRole (POST)
-  ./mcpclient.sh call AddProjectRoleActorsToRole '{"id": 0, "body": {"group": [], "user": []}}'
+  ./mcpclient.sh call AddProjectRoleActorsToRole '{"id": 0, "body": {"user": [], "group": []}}'
 EOEX
   cat <<'EOEX'
   # AddSharePermission (POST)
-  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value", "userKey": "userKey_value", "view": false, "edit": false}}'
+  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"userKey": "userKey_value", "view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value"}}'
 EOEX
   cat <<'EOEX'
   # AddTab (POST)
@@ -110,7 +110,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddWorklog (POST)
-  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "started": "2010-07-14T18:23:23.733+0000", "author": "value", "timeSpent": "3h 20m", "timeSpentSeconds": 12000, "visibility": {}, "id": "100028", "updated": "2010-07-14T18:23:23.733+0000", "created": "2010-07-14T18:23:23.733+0000", "issueId": "10002", "updateAuthor": {}, "comment": "I did some work here."}}'
+  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"author": {}, "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "timeSpentSeconds": 12000, "updated": "2010-07-14T18:23:23.733+0000", "updateAuthor": "value", "visibility": {}, "comment": "I did some work here.", "timeSpent": "3h 20m", "issueId": "10002", "created": "2010-07-14T18:23:23.733+0000", "id": "100028", "started": "2010-07-14T18:23:23.733+0000"}}'
 EOEX
   cat <<'EOEX'
   # ApplyEmailTemplates (POST)
@@ -223,7 +223,8 @@ try:
         if desc:
             # take first line only
             desc = desc.split("\n")[0].strip()
-        print(f"  {t[\"name\"]:<{maxlen+4}}{desc}")
+        name = t["name"]
+        print(f"  {name:<{maxlen+4}}{desc}")
 except Exception as e:
     print("(parse error: {})".format(e), file=sys.stderr)
 '

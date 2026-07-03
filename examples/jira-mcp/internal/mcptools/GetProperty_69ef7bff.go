@@ -10,16 +10,16 @@ import (
 )
 
 // Input Schema for the GetProperty_69ef7bff tool
-const GetProperty_69ef7bffInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
+const GetProperty_69ef7bffInputSchema = "{\n  \"properties\": {\n    \"key\": {\n      \"description\": \"a String containing the property key.\",\n      \"type\": \"string\"\n    },\n    \"keyFilter\": {\n      \"description\": \"when fetching a list allows the list to be filtered by the property's start of key\\ne.g. \\\"jira.lf.*\\\" whould fetch only those permissions that are editable and whose keys start with\\n     *                        \\\"jira.lf.\\\". This is a regex.\",\n      \"type\": \"string\"\n    },\n    \"permissionLevel\": {\n      \"description\": \"when fetching a list specifies the permission level of all items in the list\\nsee {@link com.atlassian.jira.bc.admin.ApplicationPropertiesService.EditPermissionLevel}\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"key\",\n    \"permissionLevel\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetProperty_69ef7bff tool (Status: 200, Content-Type: application/json)
-const GetProperty_69ef7bffResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **keys** (Type: array):\n    - **Items** (Type: object):\n      - **key** (Type: string):\n          - Example: 'issue.support'\n      - **self** (Type: string):\n          - Example: 'http://www.example.com/jira/rest/api/2/issue/EX-2/properties/issue.support'\n"
+const GetProperty_69ef7bffResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the property exists and the currently authenticated user has permission to view it. Contains a full representation of the property.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **key** (Type: string):\n  - **value** (Type: string):\n  - **example** (Type: string):\n"
 
 // NewGetProperty_69ef7bffMCPTool creates the MCP Tool instance for GetProperty_69ef7bff
 func NewGetProperty_69ef7bffMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"GetProperty_69ef7bff",
-		"Get a property from a board - Returns the value of the property with a given key from the board identified by the provided id. The user who retrieves the property is required to have permissions to view the board.",
+		"Get an application property by key - Returns an application property.",
 		[]byte(GetProperty_69ef7bffInputSchema),
 	)
 }

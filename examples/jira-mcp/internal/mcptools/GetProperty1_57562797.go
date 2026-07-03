@@ -13,7 +13,7 @@ import (
 const GetProperty1_57562797InputSchema = "{\n  \"properties\": {\n    \"propertyKey\": {\n      \"type\": \"string\"\n    },\n    \"sprintId\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"propertyKey\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetProperty1_57562797 tool (Status: 200, Content-Type: application/json)
-const GetProperty1_57562797ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **value** (Type: string):\n      - Example: '{\"hipchat.room.id\":\"support-123\",\"support.time\":\"1m\"}'\n  - **key** (Type: string):\n      - Example: 'issue.support'\n"
+const GetProperty1_57562797ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **key** (Type: string):\n      - Example: 'issue.support'\n  - **value** (Type: string):\n      - Example: '{\"hipchat.room.id\":\"support-123\",\"support.time\":\"1m\"}'\n"
 
 // NewGetProperty1_57562797MCPTool creates the MCP Tool instance for GetProperty1_57562797
 func NewGetProperty1_57562797MCPTool() mcp.Tool {

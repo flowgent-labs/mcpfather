@@ -77,6 +77,41 @@ tools:
 
 When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.
 
+### Virtual Tools (Composition)
+
+Compose multiple native tools into a single AI-callable tool via a declarative 5-step pipeline DSL. Add a `virtualTools` list to your config file:
+
+```yaml
+virtualTools:
+  - name: MyVirtualTool
+    description: Retrieve application details with remediation suggestions
+    inputSchema:
+      type: object
+      properties:
+        appId:
+          type: string
+      required: [appId]
+    pipeline:
+      - id: getApp
+        kind: call
+        spec:
+          tool: GetApplication
+          parse: json
+          args:
+            applicationId: $input.appId
+      - id: appName
+        kind: jq
+        spec:
+          from: $getApp
+          expr: .name
+      - id: done
+        kind: return
+        spec:
+          from: $appName
+```
+
+Pipeline step kinds: `call`, `jq`, `foreach`, `emit`, `return`. See the virtual-tool-creator skill for details.
+
 ## Agent Integration
 
 All env vars from [Authentication](#authentication) above (including `MCP_UPSTREAM_COOKIE` / `MCP_UPSTREAM_COOKIE_FILE`) can be set in the `env` block of any agent config below.
