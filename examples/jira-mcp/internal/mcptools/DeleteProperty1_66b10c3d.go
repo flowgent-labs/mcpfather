@@ -10,13 +10,13 @@ import (
 )
 
 // Input Schema for the DeleteProperty1_66b10c3d tool
-const DeleteProperty1_66b10c3dInputSchema = "{\n  \"properties\": {\n    \"propertyKey\": {\n      \"description\": \"The key of the property to remove.\",\n      \"type\": \"string\"\n    },\n    \"sprintId\": {\n      \"description\": \"The id of the sprint from which the property will be removed.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"propertyKey\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
+const DeleteProperty1_66b10c3dInputSchema = "{\n  \"properties\": {\n    \"dashboardId\": {\n      \"description\": \"The dashboard id.\",\n      \"type\": \"string\"\n    },\n    \"itemId\": {\n      \"description\": \"The dashboard item from which the property will be removed.\",\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"description\": \"The key of the property to remove.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"dashboardId\",\n    \"itemId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewDeleteProperty1_66b10c3dMCPTool creates the MCP Tool instance for DeleteProperty1_66b10c3d
 func NewDeleteProperty1_66b10c3dMCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"DeleteProperty1_66b10c3d",
-		"Delete a sprint's property - Removes the property from the sprint identified by the id. Ths user removing the property is required to have permissions to modify the sprint.",
+		"Delete a property from a dashboard item - Removes the property from the dashboard item identified by the key or by the id.",
 		[]byte(DeleteProperty1_66b10c3dInputSchema),
 	)
 }
@@ -32,7 +32,7 @@ func DeleteProperty1_66b10c3dHandler(ctx context.Context, request mcp.CallToolRe
 	}
 	contentType := ""
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "DELETE", "/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}", args, []string{"propertyKey", "sprintId"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "DELETE", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}", args, []string{"dashboardId", "itemId", "propertyKey"}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}

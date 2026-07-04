@@ -13,7 +13,7 @@ import (
 const VerifyConnectionAndGetApplicationsInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the VerifyConnectionAndGetApplications tool (Status: 200, Content-Type: application/json)
-const VerifyConnectionAndGetApplicationsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Connection verified successfully. Returns list of applications accessible to the user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationSummaries** (Type: array):\n    - **Items** (Type: object):\n      - **name** (Type: string):\n      - **publicId** (Type: string):\n      - **id** (Type: string):\n"
+const VerifyConnectionAndGetApplicationsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Connection verified successfully. Returns list of applications accessible to the user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **applicationSummaries** (Type: array):\n    - **Items** (Type: object):\n      - **id** (Type: string):\n      - **name** (Type: string):\n      - **publicId** (Type: string):\n"
 
 // NewVerifyConnectionAndGetApplicationsMCPTool creates the MCP Tool instance for VerifyConnectionAndGetApplications
 func NewVerifyConnectionAndGetApplicationsMCPTool() mcp.Tool {
