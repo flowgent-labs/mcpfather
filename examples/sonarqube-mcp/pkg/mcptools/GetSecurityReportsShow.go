@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetSecurityReportsShow tool
+const GetSecurityReportsShowInputSchema = "{\n  \"properties\": {\n    \"branch\": {\n      \"description\": \"Branch name\",\n      \"type\": \"string\"\n    },\n    \"includeDistribution\": {\n      \"description\": \"To return CWE distribution\",\n      \"enum\": [\n        \"true\",\n        \"false\",\n        \"yes\",\n        \"no\"\n      ],\n      \"type\": \"string\"\n    },\n    \"project\": {\n      \"description\": \"Project, view or application key\",\n      \"type\": \"string\"\n    },\n    \"standard\": {\n      \"description\": \"Security standard\",\n      \"enum\": [\n        \"owaspMasvs-v2\",\n        \"owaspLlmTop10\",\n        \"owaspMobileTop10\",\n        \"owaspTop10\",\n        \"sonarsourceSecurity\",\n        \"cweTop25\",\n        \"pciDss\",\n        \"owaspAsvs\",\n        \"stig\",\n        \"casa\",\n        \"cra\"\n      ],\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"project\",\n    \"standard\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetSecurityReportsShow tool (Status: 200, Content-Type: application/json)
+const GetSecurityReportsShowResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetSecurityReportsShowMCPTool creates the MCP Tool instance for GetSecurityReportsShow
+func NewGetSecurityReportsShowMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetSecurityReportsShow",
+		"Return data used by security reports. - Return data used by security reports. When issue indexing is in progress returns 503 service unavailable HTTP code.",
+		[]byte(GetSecurityReportsShowInputSchema),
+	)
+}
+
+// GetSecurityReportsShowHandler is the handler function for the GetSecurityReportsShow tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetSecurityReportsShowHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/security_reports/show", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetSecurityReportsShow")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetProjectsSearch tool
+const GetProjectsSearchInputSchema = "{\n  \"properties\": {\n    \"analyzedBefore\": {\n      \"description\": \"Filter the projects for which the last analysis of all branches are older than the given date (exclusive). Either a date (server timezone) or datetime can be provided.\",\n      \"type\": \"string\"\n    },\n    \"onProvisionedOnly\": {\n      \"description\": \"Filter the projects that are provisioned\",\n      \"enum\": [\n        \"true\",\n        \"false\",\n        \"yes\",\n        \"no\"\n      ],\n      \"type\": \"string\"\n    },\n    \"p\": {\n      \"default\": \"1\",\n      \"description\": \"1-based page number\",\n      \"type\": \"string\"\n    },\n    \"projectKeys\": {\n      \"description\": \"Comma-separated list of project keys (case insensitive)\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1000,\n      \"type\": \"array\"\n    },\n    \"projects\": {\n      \"description\": \"Comma-separated list of project keys. Deprecated, use projectKeys instead\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 1000,\n      \"type\": \"array\"\n    },\n    \"ps\": {\n      \"description\": \"Page size. Must be greater than 0 and less or equal than 500\",\n      \"maximum\": 500,\n      \"type\": \"integer\"\n    },\n    \"q\": {\n      \"description\": \"Limit search to: - component names that contain the supplied string - component keys that contain the supplied string\",\n      \"type\": \"string\"\n    },\n    \"qualifiers\": {\n      \"description\": \"Comma-separated list of component qualifiers. Filter the results with the specified qualifiers\",\n      \"enum\": [\n        \"TRK\",\n        \"VW\",\n        \"APP\"\n      ],\n      \"type\": \"string\"\n    },\n    \"visibility\": {\n      \"description\": \"Filter the projects that should be visible to everyone (public), or only specific user/groups (private). If no visibility is specified, the default project visibility will be used.\",\n      \"enum\": [\n        \"private\",\n        \"public\"\n      ],\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetProjectsSearch tool (Status: 200, Content-Type: application/json)
+const GetProjectsSearchResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetProjectsSearchMCPTool creates the MCP Tool instance for GetProjectsSearch
+func NewGetProjectsSearchMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetProjectsSearch",
+		"Search for projects or views to administrate them. - Search for projects or views to administrate them.\n\n - The response field 'lastAnalysisDate' takes into account the analysis of all branches and pull requests, not only the main branch.\n - The response field 'revision' takes into account the analysis of the main branch only.\n\nRequires 'Administer System' permission",
+		[]byte(GetProjectsSearchInputSchema),
+	)
+}
+
+// GetProjectsSearchHandler is the handler function for the GetProjectsSearch tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetProjectsSearchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/projects/search", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetProjectsSearch")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

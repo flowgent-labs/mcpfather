@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostHotspotsChangeStatus tool
+const PostHotspotsChangeStatusInputSchema = "{\n  \"properties\": {\n    \"comment\": {\n      \"description\": \"Comment text.\",\n      \"type\": \"string\"\n    },\n    \"hotspot\": {\n      \"description\": \"Key of the Security Hotspot\",\n      \"type\": \"string\"\n    },\n    \"resolution\": {\n      \"description\": \"Resolution of the Security Hotspot when new status is REVIEWED, otherwise must not be set.\",\n      \"enum\": [\n        \"FIXED\",\n        \"SAFE\",\n        \"ACKNOWLEDGED\"\n      ],\n      \"type\": \"string\"\n    },\n    \"status\": {\n      \"description\": \"New status of the Security Hotspot.\",\n      \"enum\": [\n        \"TO_REVIEW\",\n        \"REVIEWED\"\n      ],\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"hotspot\",\n    \"status\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostHotspotsChangeStatusMCPTool creates the MCP Tool instance for PostHotspotsChangeStatus
+func NewPostHotspotsChangeStatusMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostHotspotsChangeStatus",
+		"Change the status of a Security Hotpot. - Change the status of a Security Hotpot. Requires the 'Administer Security Hotspot' permission.",
+		[]byte(PostHotspotsChangeStatusInputSchema),
+	)
+}
+
+// PostHotspotsChangeStatusHandler is the handler function for the PostHotspotsChangeStatus tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostHotspotsChangeStatusHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/hotspots/change_status", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostHotspotsChangeStatus")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}
