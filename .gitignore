@@ -25,3 +25,6 @@ main
 
 # Go coverage
 *.coverprofile
+
+# Environment files (may contain credentials)
+.env

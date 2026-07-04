@@ -24,7 +24,7 @@ build-all:
 	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe $(CMD_PATH)
 
 test:
-	go test -v -count=1 ./...
+	go test -v -count=1 -timeout 300s ./...
 
 install:
 	go install $(BUILD_FLAGS) $(LDFLAGS) $(CMD_PATH)
