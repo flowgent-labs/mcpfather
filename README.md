@@ -23,13 +23,12 @@ This produces a complete Go project with tools for every operation:
 ```plaintext
 confluence-mcp/
 ├── bin
-├   └── confluence-mcp            # compiled binary
+├   └── confluence-mcp           # compiled binary
 ├── .credentials                 # file-based token (set MCP_UPSTREAM_TOKEN_FILE)
 ├── main.go                      # entry point (stdio/http/cli transport)
-├── mcpclient.sh                    # quick curl-based test script
+├── mcpclient.sh                 # quick curl-based test script
 ├── Makefile                     # build / run / clean / test
-├── confluence-mcp               # compiled binary
-└── internal/
+└── pkg/
     ├── mcpserver/server.go      # MCP server setup + tool registration
     ├── helpers/                 # ForwardRequest, logging, parameter parsing
     └── mcptools/                # one file per API operation
@@ -108,9 +107,12 @@ MCP_UPSTREAM_TOKEN_FILE=.credentials /path/to/confluence-mcp --transport http --
 
 ### Sonarqube (*Not support swagger*)
 
-- [SonarQube Web API](https://next.sonarqube.com/sonarqube/web_api)
-- [sonarqube-mcp-server](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
-- [go-sonarqube-mcp-server](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
+- [SonarQube API (Schema) - Recommends](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
+    - It need use tool to convert ([sonarqube-convert-webservice-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-webservice-to-oas.py)) to OAS format from [sonarqube webservices schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
+- [SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)
+- [SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)
+- [sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
+- [go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
 
 ## Generator Configuration
 
