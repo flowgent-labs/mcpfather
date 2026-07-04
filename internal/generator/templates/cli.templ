@@ -332,6 +332,13 @@ func parseGNUArgs(args []string) (map[string]interface{}, error) {
 }
 
 func parseValue(raw string) interface{} {
+    trimmed := strings.TrimSpace(raw)
+    if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+        var parsed interface{}
+        if err := json.Unmarshal([]byte(trimmed), &parsed); err == nil {
+            return parsed
+        }
+    }
 	if raw == "true" {
 		return true
 	}
