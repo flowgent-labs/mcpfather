@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetIssuesPull tool
+const GetIssuesPullInputSchema = "{\n  \"properties\": {\n    \"branchName\": {\n      \"description\": \"Branch name for which issues are fetched.\",\n      \"type\": \"string\"\n    },\n    \"changedSince\": {\n      \"description\": \"Timestamp. If present only issues modified after given timestamp are returned (both open and closed). If not present all non-closed issues are returned.\",\n      \"type\": \"string\"\n    },\n    \"languages\": {\n      \"description\": \"Comma separated list of languages. If not present all issues regardless of their language are returned.\",\n      \"type\": \"string\"\n    },\n    \"projectKey\": {\n      \"description\": \"Project key for which issues are fetched.\",\n      \"type\": \"string\"\n    },\n    \"resolvedOnly\": {\n      \"description\": \"If true only issues with resolved status are returned\",\n      \"type\": \"string\"\n    },\n    \"ruleRepositories\": {\n      \"description\": \"Comma separated list of rule repositories. If not present all issues regardless of their rule repository are returned.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"branchName\",\n    \"projectKey\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetIssuesPull tool (Status: 200, Content-Type: application/json)
+const GetIssuesPullResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetIssuesPullMCPTool creates the MCP Tool instance for GetIssuesPull
+func NewGetIssuesPullMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetIssuesPull",
+		"This endpoint fetches and returns all (unless filtered by optional params) the issues for a given branch. - This endpoint fetches and returns all (unless filtered by optional params) the issues for a given branch. The issues returned are not paginated, so the response size can be big. Requires project 'Browse' permission.",
+		[]byte(GetIssuesPullInputSchema),
+	)
+}
+
+// GetIssuesPullHandler is the handler function for the GetIssuesPull tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetIssuesPullHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/issues/pull", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetIssuesPull")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

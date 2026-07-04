@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostSettingsSet tool
+const PostSettingsSetInputSchema = "{\n  \"properties\": {\n    \"component\": {\n      \"description\": \"Component key. Only keys for projects, applications, portfolios or subportfolios are accepted.\",\n      \"type\": \"string\"\n    },\n    \"fieldValues\": {\n      \"description\": \"Setting field values. To set several values, the parameter must be called once for each value.\",\n      \"type\": \"string\"\n    },\n    \"key\": {\n      \"description\": \"Setting key\",\n      \"type\": \"string\"\n    },\n    \"value\": {\n      \"description\": \"Setting value. To reset a value, please use the reset web service.\",\n      \"maxLength\": 4000,\n      \"type\": \"string\"\n    },\n    \"values\": {\n      \"description\": \"Setting multi value. To set several values, the parameter must be called once for each value.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"key\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostSettingsSetMCPTool creates the MCP Tool instance for PostSettingsSet
+func NewPostSettingsSetMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostSettingsSet",
+		"Update a setting value. - Update a setting value. Either 'value' or 'values' must be provided. The settings defined in conf/sonar.properties are read-only and can't be changed. Requires one of the following permissions: - 'Administer System' - 'Administer' rights on the specified component",
+		[]byte(PostSettingsSetInputSchema),
+	)
+}
+
+// PostSettingsSetHandler is the handler function for the PostSettingsSet tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostSettingsSetHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/settings/set", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostSettingsSet")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

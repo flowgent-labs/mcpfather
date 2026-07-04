@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostAlmSettingsUpdateBitbucket tool
+const PostAlmSettingsUpdateBitbucketInputSchema = "{\n  \"properties\": {\n    \"key\": {\n      \"description\": \"Unique key of the Bitbucket instance setting\",\n      \"maxLength\": 200,\n      \"type\": \"string\"\n    },\n    \"newKey\": {\n      \"description\": \"Optional new value for an unique key of the Bitbucket instance setting\",\n      \"maxLength\": 200,\n      \"type\": \"string\"\n    },\n    \"personalAccessToken\": {\n      \"description\": \"Bitbucket personal access token\",\n      \"maxLength\": 2000,\n      \"type\": \"string\"\n    },\n    \"url\": {\n      \"description\": \"Bitbucket API URL\",\n      \"maxLength\": 2000,\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"key\",\n    \"url\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostAlmSettingsUpdateBitbucketMCPTool creates the MCP Tool instance for PostAlmSettingsUpdateBitbucket
+func NewPostAlmSettingsUpdateBitbucketMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostAlmSettingsUpdateBitbucket",
+		"Update Bitbucket instance Setting. - Update Bitbucket instance Setting. Requires the 'Administer System' permission",
+		[]byte(PostAlmSettingsUpdateBitbucketInputSchema),
+	)
+}
+
+// PostAlmSettingsUpdateBitbucketHandler is the handler function for the PostAlmSettingsUpdateBitbucket tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostAlmSettingsUpdateBitbucketHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/alm_settings/update_bitbucket", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostAlmSettingsUpdateBitbucket")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

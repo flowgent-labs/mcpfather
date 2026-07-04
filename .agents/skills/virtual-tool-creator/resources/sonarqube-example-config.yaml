@@ -1,0 +1,293 @@
+# ---- Native MCP Tools ----
+tools:
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    all-native-tools-by-default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if all-native-tools-by-default is false.
+    includes:
+      - GetIssuesList
+      - GetIssuesSearch
+      - GetSourcesIssueSnippets
+      - GetComponentsShow
+      - GetProjectsExportFindings
+      - GetQualityProfilesSearch
+      - GetQualityProfilesShow
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over all-native-tools-by-default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
+
+# ---- Upstream Request Forwarding ----
+upstream:
+  # When true, the MCP session ID from client requests is forwarded
+  # to upstream APIs as the X-MCP-Session-ID HTTP header.
+  # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)
+  enable_mcp_session_in_forwarding: false
+
+# ---- Virtual Tools ----
+# Compose multiple native tools into a single virtual tool via a declarative
+# e.g: 5-step pipeline (call → jq → foreach → emit → return).
+# Schema: https://github.com/wl4g-ai/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+virtualTools:
+  # ---- get_newcode_issues --------------------------------------------------
+  - name: get_newcode_issues
+    description: |
+      Get all issues for new/changed code in a pull request on a branch,
+      optionally filtered by source file path. Returns minimal fields +
+      code snippet lines to conserve AI agent tokens.
+    inputSchema:
+      type: object
+      required: [projectKey, branch, pullRequest]
+      properties:
+        projectKey:
+          type: string
+          description: SonarQube project key (e.g., rengine).
+        branch:
+          type: string
+          description: Git branch name (e.g., main).
+        pullRequest:
+          type: string
+          description: Pull request ID.
+        component:
+          type: string
+          default: ""
+          description: Optional file path filter. Full SonarQube component key (e.g., "rengine:src/main/java/Foo.java") or relative path under project.
+        limit:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+        snippetConcurrency:
+          type: integer
+          default: 6
+          minimum: 1
+          maximum: 16
+    pipeline:
+      - id: opts
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              scope: (if (.component // "") != "" then .component else .projectKey end),
+              limit: (.limit // 50),
+              snippetConcurrency: (.snippetConcurrency // 6)
+            }
+      - id: rawIssues
+        kind: call
+        spec:
+          tool: GetIssuesSearch
+          parse: json
+          args:
+            components: $opts.scope
+            branch: $input.branch
+            pullRequest: $input.pullRequest
+            types: "CODE_SMELL,BUG,VULNERABILITY"
+            resolved: "false"
+            ps: $opts.limit
+        require:
+          nonEmpty: true
+          message: No issues found for the given project, branch and pull request.
+      - id: enriched
+        kind: foreach
+        spec:
+          in: $rawIssues.issues
+          as: issue
+          concurrency: $opts.snippetConcurrency
+          preserveOrder: true
+          pipeline:
+            - id: snippet
+              kind: call
+              spec:
+                tool: GetSourcesIssueSnippets
+                parse: json
+                args:
+                  issueKey: $issue.key
+            - id: emitMinimal
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  snippet: $snippet
+                expr: |
+                  {
+                    key,
+                    rule,
+                    severity,
+                    type,
+                    message,
+                    component,
+                    startLine: (.textRange.startLine // .line),
+                    endLine: (.textRange.endLine // .line),
+                    debt,
+                    codeSnippet: [
+                      ($snippet | .[] | .sources[]?)
+                      | {
+                          lineNumber: .line,
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          )
+                        }
+                    ]
+                  }
+      - id: done
+        kind: return
+        spec:
+          from: $enriched
+          vars:
+            project: $input.projectKey
+            branch: $input.branch
+            pullRequest: $input.pullRequest
+            total: $rawIssues.total
+          expr: |
+            {
+              project: $project,
+              branch: $branch,
+              pullRequest: $pullRequest,
+              summary: {
+                total: $total,
+                returned: length
+              },
+              issues: .
+            }
+
+  # ---- get_overall_issues ---------------------------------------------------
+  - name: get_overall_issues
+    description: |
+      Get all open issues for a project on a branch, optionally filtered
+      by source file path. Returns minimal fields + code snippet lines
+      to conserve AI agent tokens.
+    inputSchema:
+      type: object
+      required: [projectKey, branch]
+      properties:
+        projectKey:
+          type: string
+          description: SonarQube project key (e.g., rengine).
+        branch:
+          type: string
+          description: Git branch name (e.g., main).
+        component:
+          type: string
+          default: ""
+          description: Optional file path filter. Full SonarQube component key (e.g., "rengine:src/main/java/Foo.java") or relative path under project.
+        limit:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+        newCodeOnly:
+          type: boolean
+          default: false
+        snippetConcurrency:
+          type: integer
+          default: 6
+          minimum: 1
+          maximum: 16
+    pipeline:
+      - id: opts
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              scope: (if (.component // "") != "" then .component else .projectKey end),
+              limit: (.limit // 50),
+              newCodeOnly: (.newCodeOnly // false),
+              snippetConcurrency: (.snippetConcurrency // 6)
+            }
+      - id: rawIssues
+        kind: call
+        spec:
+          tool: GetIssuesSearch
+          parse: json
+          args:
+            components: $opts.scope
+            branch: $input.branch
+            types: "CODE_SMELL,BUG,VULNERABILITY"
+            resolved: "false"
+            inNewCodePeriod: $opts.newCodeOnly
+            ps: $opts.limit
+        require:
+          nonEmpty: true
+          message: No issues found for the given project and branch.
+      - id: enriched
+        kind: foreach
+        spec:
+          in: $rawIssues.issues
+          as: issue
+          concurrency: $opts.snippetConcurrency
+          preserveOrder: true
+          pipeline:
+            - id: snippet
+              kind: call
+              spec:
+                tool: GetSourcesIssueSnippets
+                parse: json
+                args:
+                  issueKey: $issue.key
+            - id: emitMinimal
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  snippet: $snippet
+                expr: |
+                  {
+                    key,
+                    rule,
+                    severity,
+                    type,
+                    message,
+                    component,
+                    startLine: (.textRange.startLine // .line),
+                    endLine: (.textRange.endLine // .line),
+                    debt,
+                    codeSnippet: [
+                      ($snippet | .[] | .sources[]?)
+                      | {
+                          lineNumber: .line,
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          )
+                        }
+                    ]
+                  }
+      - id: done
+        kind: return
+        spec:
+          from: $enriched
+          vars:
+            project: $input.projectKey
+            branch: $input.branch
+            total: $rawIssues.total
+          expr: |
+            {
+              project: $project,
+              branch: $branch,
+              summary: {
+                total: $total,
+                returned: length
+              },
+              issues: .
+            }

@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostQualitygatesSetAiCodeAssurance tool
+const PostQualitygatesSetAiCodeAssuranceInputSchema = "{\n  \"properties\": {\n    \"aiCodeAssurance\": {\n      \"description\": \"Sets if Quality Gate is AI Code Assured\",\n      \"enum\": [\n        \"true\",\n        \"false\",\n        \"yes\",\n        \"no\"\n      ],\n      \"type\": \"string\"\n    },\n    \"gateName\": {\n      \"description\": \"Quality Gate name\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"aiCodeAssurance\",\n    \"gateName\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostQualitygatesSetAiCodeAssuranceMCPTool creates the MCP Tool instance for PostQualitygatesSetAiCodeAssurance
+func NewPostQualitygatesSetAiCodeAssuranceMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostQualitygatesSetAiCodeAssurance",
+		"Qualify or disqualify a custom Quality Gate as AI Code Assured. - Qualify or disqualify a custom Quality Gate as AI Code Assured. Requires 'Administer Quality Gates' permission.",
+		[]byte(PostQualitygatesSetAiCodeAssuranceInputSchema),
+	)
+}
+
+// PostQualitygatesSetAiCodeAssuranceHandler is the handler function for the PostQualitygatesSetAiCodeAssurance tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostQualitygatesSetAiCodeAssuranceHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/qualitygates/set_ai_code_assurance", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostQualitygatesSetAiCodeAssurance")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

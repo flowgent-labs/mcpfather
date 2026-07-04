@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpvirtual/config"
-	"github.com/wl4g-ai/mcpgen/internal/generator/mcpvirtual/pipeline"
+	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/config"
+	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/pipeline"
 )
 
 type schema map[string]interface{}

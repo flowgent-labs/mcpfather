@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostUserGroupsUpdate tool
+const PostUserGroupsUpdateInputSchema = "{\n  \"properties\": {\n    \"currentName\": {\n      \"description\": \"Name of the group to be updated.\",\n      \"type\": \"string\"\n    },\n    \"description\": {\n      \"description\": \"New optional description for the group. A group description cannot be larger than 200 characters. If value is not defined, then description is not changed.\",\n      \"maxLength\": 200,\n      \"type\": \"string\"\n    },\n    \"name\": {\n      \"description\": \"New optional name for the group. A group name cannot be larger than 255 characters and must be unique. Value 'anyone' (whatever the case) is reserved and cannot be used. If value is empty or not defined, then name is not changed.\",\n      \"maxLength\": 255,\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"currentName\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostUserGroupsUpdateMCPTool creates the MCP Tool instance for PostUserGroupsUpdate
+func NewPostUserGroupsUpdateMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostUserGroupsUpdate",
+		"Update a group. - Update a group. Requires the following permission: 'Administer System'.",
+		[]byte(PostUserGroupsUpdateInputSchema),
+	)
+}
+
+// PostUserGroupsUpdateHandler is the handler function for the PostUserGroupsUpdate tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostUserGroupsUpdateHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/user_groups/update", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostUserGroupsUpdate")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

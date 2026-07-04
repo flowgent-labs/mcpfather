@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetDismissMessageCheck tool
+const GetDismissMessageCheckInputSchema = "{\n  \"properties\": {\n    \"messageType\": {\n      \"description\": \"The type of the message dismissed\",\n      \"type\": \"string\"\n    },\n    \"projectKey\": {\n      \"description\": \"The project key\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"messageType\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetDismissMessageCheck tool (Status: 200, Content-Type: application/json)
+const GetDismissMessageCheckResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetDismissMessageCheckMCPTool creates the MCP Tool instance for GetDismissMessageCheck
+func NewGetDismissMessageCheckMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetDismissMessageCheck",
+		"Check if a message has been dismissed. - Check if a message has been dismissed.",
+		[]byte(GetDismissMessageCheckInputSchema),
+	)
+}
+
+// GetDismissMessageCheckHandler is the handler function for the GetDismissMessageCheck tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetDismissMessageCheckHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/dismiss_message/check", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetDismissMessageCheck")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}
