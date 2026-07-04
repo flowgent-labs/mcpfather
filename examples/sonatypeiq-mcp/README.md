@@ -66,16 +66,20 @@ mkdir -p ~/.sonatypeiq-mcp
 ./bin/sonatypeiq-mcp --print-default-config > ~/.sonatypeiq-mcp/config.yaml
 ```
 
-Edit `~/.sonatypeiq-mcp/config.yaml` and set `tools.include` to the operation IDs you want:
+Edit `~/.sonatypeiq-mcp/config.yaml` and configure `tools.expose` to control which tools are available:
 
 ```yaml
 tools:
-  include:
-    - ListSpaces
-    - SearchContent
+  expose:
+    # all-native-tools-by-default: false  # default — only tools in includes are exposed
+    includes:
+      - ListSpaces
+      - SearchContent
+    # excludes:
+    #   - DeleteSpace  # explicitly hide a tool
 ```
 
-When `tools.include` is non-empty, only those tools are registered and shown in `-t cli list`.
+Tools listed in both `includes` and `excludes` cause the server to fail at startup.
 
 ### Virtual Tools (Composition)
 

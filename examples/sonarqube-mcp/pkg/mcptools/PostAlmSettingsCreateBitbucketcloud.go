@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostAlmSettingsCreateBitbucketcloud tool
+const PostAlmSettingsCreateBitbucketcloudInputSchema = "{\n  \"properties\": {\n    \"clientId\": {\n      \"description\": \"Bitbucket Cloud Client ID\",\n      \"maxLength\": 2000,\n      \"type\": \"string\"\n    },\n    \"clientSecret\": {\n      \"description\": \"Bitbucket Cloud Client Secret\",\n      \"maxLength\": 2000,\n      \"type\": \"string\"\n    },\n    \"key\": {\n      \"description\": \"Unique key of the Bitbucket Cloud setting\",\n      \"maxLength\": 200,\n      \"type\": \"string\"\n    },\n    \"workspace\": {\n      \"description\": \"Bitbucket Cloud workspace ID\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"clientId\",\n    \"clientSecret\",\n    \"key\",\n    \"workspace\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostAlmSettingsCreateBitbucketcloudMCPTool creates the MCP Tool instance for PostAlmSettingsCreateBitbucketcloud
+func NewPostAlmSettingsCreateBitbucketcloudMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostAlmSettingsCreateBitbucketcloud",
+		"Configure a new instance of Bitbucket Cloud. - Configure a new instance of Bitbucket Cloud. Requires the 'Administer System' permission",
+		[]byte(PostAlmSettingsCreateBitbucketcloudInputSchema),
+	)
+}
+
+// PostAlmSettingsCreateBitbucketcloudHandler is the handler function for the PostAlmSettingsCreateBitbucketcloud tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostAlmSettingsCreateBitbucketcloudHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/alm_settings/create_bitbucketcloud", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostAlmSettingsCreateBitbucketcloud")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

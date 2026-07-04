@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetMeasuresSearchHistory tool
+const GetMeasuresSearchHistoryInputSchema = "{\n  \"properties\": {\n    \"branch\": {\n      \"description\": \"Branch key. Not available in the community edition.\",\n      \"type\": \"string\"\n    },\n    \"component\": {\n      \"description\": \"Component key\",\n      \"type\": \"string\"\n    },\n    \"from\": {\n      \"description\": \"Filter measures created after the given date (inclusive). Either a date (server timezone) or datetime can be provided\",\n      \"type\": \"string\"\n    },\n    \"metrics\": {\n      \"description\": \"Comma-separated list of metric keys\",\n      \"type\": \"string\"\n    },\n    \"p\": {\n      \"default\": \"1\",\n      \"description\": \"1-based page number\",\n      \"type\": \"string\"\n    },\n    \"ps\": {\n      \"description\": \"Page size. Must be greater than 0 and less or equal than 1000\",\n      \"maximum\": 1000,\n      \"type\": \"integer\"\n    },\n    \"pullRequest\": {\n      \"description\": \"Pull request id. Not available in the community edition.\",\n      \"type\": \"string\"\n    },\n    \"to\": {\n      \"description\": \"Filter measures created before the given date (inclusive). Either a date (server timezone) or datetime can be provided\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"component\",\n    \"metrics\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetMeasuresSearchHistory tool (Status: 200, Content-Type: application/json)
+const GetMeasuresSearchHistoryResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetMeasuresSearchHistoryMCPTool creates the MCP Tool instance for GetMeasuresSearchHistory
+func NewGetMeasuresSearchHistoryMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetMeasuresSearchHistory",
+		"Search measures history of a component. - Search measures history of a component. Measures are ordered chronologically. Pagination applies to the number of measures for each metric. Requires the following permission: 'Browse' on the specified component. For applications, it also requires 'Browse' permission on its child projects.",
+		[]byte(GetMeasuresSearchHistoryInputSchema),
+	)
+}
+
+// GetMeasuresSearchHistoryHandler is the handler function for the GetMeasuresSearchHistory tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetMeasuresSearchHistoryHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/measures/search_history", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetMeasuresSearchHistory")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

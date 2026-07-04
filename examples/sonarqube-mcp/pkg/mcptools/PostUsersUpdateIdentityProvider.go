@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostUsersUpdateIdentityProvider tool
+const PostUsersUpdateIdentityProviderInputSchema = "{\n  \"properties\": {\n    \"login\": {\n      \"description\": \"User login\",\n      \"type\": \"string\"\n    },\n    \"newExternalIdentity\": {\n      \"description\": \"New external identity, usually the login used in the authentication system. If not provided previous identity will be used.\",\n      \"type\": \"string\"\n    },\n    \"newExternalProvider\": {\n      \"description\": \"New external provider. Only authentication system installed are available. Use 'LDAP' identity provider for single server LDAP setup.Use 'LDAP_{serverKey}' identity provider for multiple LDAP servers setup.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"login\",\n    \"newExternalProvider\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostUsersUpdateIdentityProviderMCPTool creates the MCP Tool instance for PostUsersUpdateIdentityProvider
+func NewPostUsersUpdateIdentityProviderMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostUsersUpdateIdentityProvider",
+		"Update identity provider information. - Update identity provider information. It's only possible to migrate to an installed identity provider. Be careful that as soon as this information has been updated for a user, the user will only be able to authenticate on the new identity provider. It is not possible to migrate external user to local one. Requires Administer System permission.",
+		[]byte(PostUsersUpdateIdentityProviderInputSchema),
+	)
+}
+
+// PostUsersUpdateIdentityProviderHandler is the handler function for the PostUsersUpdateIdentityProvider tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostUsersUpdateIdentityProviderHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/users/update_identity_provider", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostUsersUpdateIdentityProvider")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

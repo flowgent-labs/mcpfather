@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostViewsSetManualMode tool
+const PostViewsSetManualModeInputSchema = "{\n  \"properties\": {\n    \"portfolio\": {\n      \"description\": \"Key of the portfolio or sub-portfolio to update\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"portfolio\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostViewsSetManualModeMCPTool creates the MCP Tool instance for PostViewsSetManualMode
+func NewPostViewsSetManualModeMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostViewsSetManualMode",
+		"Set the projects selection mode of a portfolio on manual selection. - Set the projects selection mode of a portfolio on manual selection. In order to add project, please use api/view/add_project. Requires 'Administrator' permission on the portfolio.",
+		[]byte(PostViewsSetManualModeInputSchema),
+	)
+}
+
+// PostViewsSetManualModeHandler is the handler function for the PostViewsSetManualMode tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostViewsSetManualModeHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/views/set_manual_mode", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostViewsSetManualMode")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

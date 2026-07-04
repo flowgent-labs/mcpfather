@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetProjectsExportFindings tool
+const GetProjectsExportFindingsInputSchema = "{\n  \"properties\": {\n    \"branch\": {\n      \"description\": \"Branch key. When not specified, if no Pull Request key is defined either, it will default to the main branch\",\n      \"type\": \"string\"\n    },\n    \"project\": {\n      \"description\": \"Project key\",\n      \"type\": \"string\"\n    },\n    \"pullRequest\": {\n      \"description\": \"Pull Request key. When not specified, the branch data will be returned instead\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"project\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetProjectsExportFindings tool (Status: 200, Content-Type: application/json)
+const GetProjectsExportFindingsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetProjectsExportFindingsMCPTool creates the MCP Tool instance for GetProjectsExportFindings
+func NewGetProjectsExportFindingsMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetProjectsExportFindings",
+		"Export all findings (issues and hotspots) of a specific project branch. - Export all findings (issues and hotspots) of a specific project branch. Requires 'Administer System' permission. Keep in mind that this endpoint will return all findings, issues and hotspots (no filter), which can take time and use a lot of resources on the SonarQube server side and put pressure on the database until completion. This endpoint can be used to feed third party systems. Either the branch key or the pull request key should be specified, and not both at the same time.",
+		[]byte(GetProjectsExportFindingsInputSchema),
+	)
+}
+
+// GetProjectsExportFindingsHandler is the handler function for the GetProjectsExportFindings tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetProjectsExportFindingsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/projects/export_findings", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetProjectsExportFindings")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostPluginsUpdate tool
+const PostPluginsUpdateInputSchema = "{\n  \"properties\": {\n    \"key\": {\n      \"description\": \"The key identifying the plugin to update\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"key\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostPluginsUpdateMCPTool creates the MCP Tool instance for PostPluginsUpdate
+func NewPostPluginsUpdateMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostPluginsUpdate",
+		"Updates a plugin specified by its key to the latest version compatible with the SonarQube instance. - Updates a plugin specified by its key to the latest version compatible with the SonarQube instance. Plugin information is retrieved from Update Center. Requires user to be authenticated with Administer System permissions",
+		[]byte(PostPluginsUpdateInputSchema),
+	)
+}
+
+// PostPluginsUpdateHandler is the handler function for the PostPluginsUpdate tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostPluginsUpdateHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/plugins/update", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostPluginsUpdate")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

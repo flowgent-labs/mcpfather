@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostViewsAddPortfolio tool
+const PostViewsAddPortfolioInputSchema = "{\n  \"properties\": {\n    \"portfolio\": {\n      \"description\": \"Key of the portfolio where a reference will be added\",\n      \"type\": \"string\"\n    },\n    \"reference\": {\n      \"description\": \"Key of the portfolio to be added\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"portfolio\",\n    \"reference\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostViewsAddPortfolioMCPTool creates the MCP Tool instance for PostViewsAddPortfolio
+func NewPostViewsAddPortfolioMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostViewsAddPortfolio",
+		"Add an existing portfolio to the structure of another portfolio. - Add an existing portfolio to the structure of another portfolio. Authentication is required for this API endpoint.",
+		[]byte(PostViewsAddPortfolioInputSchema),
+	)
+}
+
+// PostViewsAddPortfolioHandler is the handler function for the PostViewsAddPortfolio tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostViewsAddPortfolioHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/views/add_portfolio", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostViewsAddPortfolio")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostViewsRemoveApplication tool
+const PostViewsRemoveApplicationInputSchema = "{\n  \"properties\": {\n    \"application\": {\n      \"description\": \"Key of the application to be removed\",\n      \"type\": \"string\"\n    },\n    \"portfolio\": {\n      \"description\": \"Portfolio key\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"application\",\n    \"portfolio\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostViewsRemoveApplicationMCPTool creates the MCP Tool instance for PostViewsRemoveApplication
+func NewPostViewsRemoveApplicationMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostViewsRemoveApplication",
+		"Remove an application from a portfolio. - Remove an application from a portfolio. Requires 'Administrator' permission on the portfolio.",
+		[]byte(PostViewsRemoveApplicationInputSchema),
+	)
+}
+
+// PostViewsRemoveApplicationHandler is the handler function for the PostViewsRemoveApplication tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostViewsRemoveApplicationHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/views/remove_application", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostViewsRemoveApplication")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

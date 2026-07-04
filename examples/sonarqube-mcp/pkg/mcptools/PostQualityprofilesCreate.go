@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostQualityprofilesCreate tool
+const PostQualityprofilesCreateInputSchema = "{\n  \"properties\": {\n    \"language\": {\n      \"description\": \"Quality profile language\",\n      \"enum\": [\n        \"abap\",\n        \"ansible\",\n        \"apex\",\n        \"azurepipelines\",\n        \"azureresourcemanager\",\n        \"c\",\n        \"cloudformation\",\n        \"cobol\",\n        \"cpp\",\n        \"cs\",\n        \"css\",\n        \"dart\",\n        \"docker\",\n        \"flex\",\n        \"githubactions\",\n        \"go\",\n        \"gosu\",\n        \"groovy\",\n        \"ipynb\",\n        \"java\",\n        \"jcl\",\n        \"js\",\n        \"json\",\n        \"jsp\",\n        \"kotlin\",\n        \"kubernetes\",\n        \"objc\",\n        \"php\",\n        \"pli\",\n        \"plsql\",\n        \"powershell\",\n        \"py\",\n        \"rpg\",\n        \"ruby\",\n        \"rust\",\n        \"scala\",\n        \"secrets\",\n        \"shell\",\n        \"sql\",\n        \"swift\",\n        \"terraform\",\n        \"text\",\n        \"ts\",\n        \"tsql\",\n        \"vb\",\n        \"vbnet\",\n        \"web\",\n        \"xml\",\n        \"yaml\"\n      ],\n      \"type\": \"string\"\n    },\n    \"name\": {\n      \"description\": \"Quality profile name\",\n      \"maxLength\": 100,\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"language\",\n    \"name\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the PostQualityprofilesCreate tool (Status: 200, Content-Type: application/json)
+const PostQualityprofilesCreateResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewPostQualityprofilesCreateMCPTool creates the MCP Tool instance for PostQualityprofilesCreate
+func NewPostQualityprofilesCreateMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostQualityprofilesCreate",
+		"Create a quality profile. - Create a quality profile. Requires to be logged in and the 'Administer Quality Profiles' permission.",
+		[]byte(PostQualityprofilesCreateInputSchema),
+	)
+}
+
+// PostQualityprofilesCreateHandler is the handler function for the PostQualityprofilesCreate tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostQualityprofilesCreateHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/qualityprofiles/create", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostQualityprofilesCreate")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

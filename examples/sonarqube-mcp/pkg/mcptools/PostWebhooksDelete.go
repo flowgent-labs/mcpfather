@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostWebhooksDelete tool
+const PostWebhooksDeleteInputSchema = "{\n  \"properties\": {\n    \"webhook\": {\n      \"description\": \"The key of the webhook to be deleted, auto-generated value can be obtained through api/webhooks/create or api/webhooks/list\",\n      \"maxLength\": 40,\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"webhook\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostWebhooksDeleteMCPTool creates the MCP Tool instance for PostWebhooksDelete
+func NewPostWebhooksDeleteMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostWebhooksDelete",
+		"Delete a Webhook. - Delete a Webhook. Requires 'Administer' permission on the specified project, or global 'Administer' permission.",
+		[]byte(PostWebhooksDeleteInputSchema),
+	)
+}
+
+// PostWebhooksDeleteHandler is the handler function for the PostWebhooksDelete tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostWebhooksDeleteHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/webhooks/delete", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostWebhooksDelete")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

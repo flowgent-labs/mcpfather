@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetProjectBranchesGetAiCodeAssurance tool
+const GetProjectBranchesGetAiCodeAssuranceInputSchema = "{\n  \"properties\": {\n    \"branch\": {\n      \"description\": \"Branch key\",\n      \"type\": \"string\"\n    },\n    \"project\": {\n      \"description\": \"Project key\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"project\"\n  ],\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetProjectBranchesGetAiCodeAssurance tool (Status: 200, Content-Type: application/json)
+const GetProjectBranchesGetAiCodeAssuranceResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetProjectBranchesGetAiCodeAssuranceMCPTool creates the MCP Tool instance for GetProjectBranchesGetAiCodeAssurance
+func NewGetProjectBranchesGetAiCodeAssuranceMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetProjectBranchesGetAiCodeAssurance",
+		"Gets whether a project passed as parameter is AI Code Assured or not. - Gets whether a project passed as parameter is AI Code Assured or not. Possible values: -AI_CODE_ASSURANCE_OFF - if the project has been marked as containing AI code, but doesn't use AI-qualified Quality Gate -AI_CODE_ASSURANCE_ON - if the project has been marked as containing AI code, uses the AI-qualified Quality Gate, but the Quality Gate status hasn't been computed, -AI_CODE_ASSURANCE_PASS - if the project has been marked as containing AI code, uses the AI-qualified Quality Gate, and the Quality Gate passes -AI_CODE_ASSURANCE_FAIL - if the project has been marked as containing AI code, uses the AI-qualified Quality Gate, and the Quality Gate fails -NONE - if the project doesn't contain AI code Requires 'Browse' permission on the specified project if it is private.",
+		[]byte(GetProjectBranchesGetAiCodeAssuranceInputSchema),
+	)
+}
+
+// GetProjectBranchesGetAiCodeAssuranceHandler is the handler function for the GetProjectBranchesGetAiCodeAssurance tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetProjectBranchesGetAiCodeAssuranceHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/project_branches/get_ai_code_assurance", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetProjectBranchesGetAiCodeAssurance")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

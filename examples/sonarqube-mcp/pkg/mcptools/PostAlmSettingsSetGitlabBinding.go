@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostAlmSettingsSetGitlabBinding tool
+const PostAlmSettingsSetGitlabBindingInputSchema = "{\n  \"properties\": {\n    \"almSetting\": {\n      \"description\": \"GitLab setting key\",\n      \"type\": \"string\"\n    },\n    \"monorepo\": {\n      \"description\": \"Is this project part of a monorepo\",\n      \"type\": \"string\"\n    },\n    \"project\": {\n      \"description\": \"Project key\",\n      \"type\": \"string\"\n    },\n    \"repository\": {\n      \"description\": \"GitLab project ID\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"almSetting\",\n    \"monorepo\",\n    \"project\",\n    \"repository\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostAlmSettingsSetGitlabBindingMCPTool creates the MCP Tool instance for PostAlmSettingsSetGitlabBinding
+func NewPostAlmSettingsSetGitlabBindingMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostAlmSettingsSetGitlabBinding",
+		"Bind a GitLab instance to a project. - Bind a GitLab instance to a project. If the project was already bound to a previous Gitlab instance, the binding will be updated to the new one.Requires the 'Administer' permission on the project",
+		[]byte(PostAlmSettingsSetGitlabBindingInputSchema),
+	)
+}
+
+// PostAlmSettingsSetGitlabBindingHandler is the handler function for the PostAlmSettingsSetGitlabBinding tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostAlmSettingsSetGitlabBindingHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/alm_settings/set_gitlab_binding", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostAlmSettingsSetGitlabBinding")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

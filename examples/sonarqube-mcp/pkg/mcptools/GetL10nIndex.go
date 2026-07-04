@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetL10nIndex tool
+const GetL10nIndexInputSchema = "{\n  \"properties\": {\n    \"locale\": {\n      \"default\": \"en\",\n      \"description\": \"BCP47 language tag, used to override the browser Accept-Language header\",\n      \"type\": \"string\"\n    },\n    \"ts\": {\n      \"description\": \"Date of the last cache update.\",\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetL10nIndex tool (Status: 200, Content-Type: application/json)
+const GetL10nIndexResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetL10nIndexMCPTool creates the MCP Tool instance for GetL10nIndex
+func NewGetL10nIndexMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetL10nIndex",
+		"Get all localization messages for a given locale. - Get all localization messages for a given locale",
+		[]byte(GetL10nIndexInputSchema),
+	)
+}
+
+// GetL10nIndexHandler is the handler function for the GetL10nIndex tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetL10nIndexHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/l10n/index", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetL10nIndex")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

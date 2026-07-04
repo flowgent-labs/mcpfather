@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostPermissionsRemoveGroupFromTemplate tool
+const PostPermissionsRemoveGroupFromTemplateInputSchema = "{\n  \"properties\": {\n    \"groupName\": {\n      \"description\": \"Group name or 'anyone' (case insensitive)\",\n      \"type\": \"string\"\n    },\n    \"permission\": {\n      \"description\": \"Permission - Possible values for project permissions admin, codeviewer, issueadmin, securityhotspotadmin, architectureadmin, scan, user\",\n      \"enum\": [\n        \"admin\",\n        \"codeviewer\",\n        \"issueadmin\",\n        \"securityhotspotadmin\",\n        \"architectureadmin\",\n        \"scan\",\n        \"user\"\n      ],\n      \"type\": \"string\"\n    },\n    \"templateId\": {\n      \"description\": \"Template id\",\n      \"type\": \"string\"\n    },\n    \"templateName\": {\n      \"description\": \"Template name\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"groupName\",\n    \"permission\"\n  ],\n  \"type\": \"object\"\n}"
+
+// NewPostPermissionsRemoveGroupFromTemplateMCPTool creates the MCP Tool instance for PostPermissionsRemoveGroupFromTemplate
+func NewPostPermissionsRemoveGroupFromTemplateMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostPermissionsRemoveGroupFromTemplate",
+		"Remove a group from a permission template. - Remove a group from a permission template. The group name must be provided. Requires the following permission: 'Administer System'.",
+		[]byte(PostPermissionsRemoveGroupFromTemplateInputSchema),
+	)
+}
+
+// PostPermissionsRemoveGroupFromTemplateHandler is the handler function for the PostPermissionsRemoveGroupFromTemplate tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostPermissionsRemoveGroupFromTemplateHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/permissions/remove_group_from_template", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostPermissionsRemoveGroupFromTemplate")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

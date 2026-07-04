@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetComponentsSuggestions tool
+const GetComponentsSuggestionsInputSchema = "{\n  \"properties\": {\n    \"more\": {\n      \"description\": \"Category, for which to display the next 20 results (skipping the first 6 results)\",\n      \"enum\": [\n        \"VW\",\n        \"SVW\",\n        \"APP\",\n        \"TRK\"\n      ],\n      \"type\": \"string\"\n    },\n    \"recentlyBrowsed\": {\n      \"description\": \"Comma separated list of component keys, that have recently been browsed by the user. Only the first 50 items will be used. Order is not taken into account.\",\n      \"items\": {\n        \"type\": \"string\"\n      },\n      \"maxItems\": 50,\n      \"type\": \"array\"\n    },\n    \"s\": {\n      \"description\": \"Search query: can contain several search tokens separated by spaces.\",\n      \"minLength\": 2,\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetComponentsSuggestions tool (Status: 200, Content-Type: application/json)
+const GetComponentsSuggestionsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetComponentsSuggestionsMCPTool creates the MCP Tool instance for GetComponentsSuggestions
+func NewGetComponentsSuggestionsMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetComponentsSuggestions",
+		"Internal WS for the top-right search engine. - Internal WS for the top-right search engine. The result will contain component search results, grouped by their qualifiers. Each result contains: - the component key - the component's name (unescaped) - optionally a display name, which puts emphasis to matching characters (this text contains html tags and parts of the html-escaped name)",
+		[]byte(GetComponentsSuggestionsInputSchema),
+	)
+}
+
+// GetComponentsSuggestionsHandler is the handler function for the GetComponentsSuggestions tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetComponentsSuggestionsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/components/suggestions", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetComponentsSuggestions")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

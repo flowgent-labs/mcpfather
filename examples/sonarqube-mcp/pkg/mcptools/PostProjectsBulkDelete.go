@@ -1,0 +1,64 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the PostProjectsBulkDelete tool
+const PostProjectsBulkDeleteInputSchema = "{\n  \"properties\": {\n    \"analyzedBefore\": {\n      \"description\": \"Filter the projects for which last analysis of any branch is older than the given date (exclusive). Either a date (server timezone) or datetime can be provided.\",\n      \"type\": \"string\"\n    },\n    \"onProvisionedOnly\": {\n      \"description\": \"Filter the projects that are provisioned\",\n      \"enum\": [\n        \"true\",\n        \"false\",\n        \"yes\",\n        \"no\"\n      ],\n      \"type\": \"string\"\n    },\n    \"projects\": {\n      \"description\": \"Comma-separated list of project keys\",\n      \"type\": \"string\"\n    },\n    \"q\": {\n      \"description\": \"Limit to: - component names that contain the supplied string - component keys that contain the supplied string\",\n      \"type\": \"string\"\n    },\n    \"qualifiers\": {\n      \"description\": \"Comma-separated list of component qualifiers. Filter the results with the specified qualifiers\",\n      \"enum\": [\n        \"TRK\",\n        \"VW\",\n        \"APP\"\n      ],\n      \"type\": \"string\"\n    },\n    \"visibility\": {\n      \"description\": \"Filter the projects that should be visible to everyone (public), or only specific user/groups (private). If no visibility is specified, the default project visibility will be used.\",\n      \"enum\": [\n        \"private\",\n        \"public\"\n      ],\n      \"type\": \"string\"\n    }\n  },\n  \"type\": \"object\"\n}"
+
+// NewPostProjectsBulkDeleteMCPTool creates the MCP Tool instance for PostProjectsBulkDelete
+func NewPostProjectsBulkDeleteMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"PostProjectsBulkDelete",
+		"Delete one or several projects. - Delete one or several projects. Only the 1'000 first items in project filters are taken into account. Requires 'Administer System' permission. At least one parameter is required among analyzedBefore, projects and q",
+		[]byte(PostProjectsBulkDeleteInputSchema),
+	)
+}
+
+// PostProjectsBulkDeleteHandler is the handler function for the PostProjectsBulkDelete tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func PostProjectsBulkDeleteHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/api/projects/bulk_delete", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "PostProjectsBulkDelete")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "POST", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}

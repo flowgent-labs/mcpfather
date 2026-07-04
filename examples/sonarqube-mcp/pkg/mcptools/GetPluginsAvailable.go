@@ -1,0 +1,67 @@
+package mcptools
+
+import (
+	"context"
+	"fmt"
+	"github.com/mark3labs/mcp-go/mcp"
+	"io"
+	"sonarqube-mcp/pkg/helpers"
+	"time"
+)
+
+// Input Schema for the GetPluginsAvailable tool
+const GetPluginsAvailableInputSchema = "{\n  \"type\": \"object\"\n}"
+
+// Response Template for the GetPluginsAvailable tool (Status: 200, Content-Type: application/json)
+const GetPluginsAvailableResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Successful response\n\n## Response Structure\n\n- Response data (see SonarQube API documentation for schema details) (Type: object):\n"
+
+// NewGetPluginsAvailableMCPTool creates the MCP Tool instance for GetPluginsAvailable
+func NewGetPluginsAvailableMCPTool() mcp.Tool {
+	return mcp.NewToolWithRawSchema(
+		"GetPluginsAvailable",
+		"Get the list of all the plugins available for installation on the SonarQube instance, sorted by plugin name. - Get the list of all the plugins available for installation on the SonarQube instance, sorted by plugin name. Plugin information is retrieved from Update Center. Date and time at which Update Center was last refreshed is provided in the response. Update status values are: - COMPATIBLE: plugin is compatible with current SonarQube instance. - INCOMPATIBLE: plugin is not compatible with current SonarQube instance. - REQUIRES_SYSTEM_UPGRADE: plugin requires SonarQube to be upgraded before being installed. - DEPS_REQUIRE_SYSTEM_UPGRADE: at least one plugin on which the plugin is dependent requires SonarQube to be upgraded.Require 'Administer System' permission.",
+		[]byte(GetPluginsAvailableInputSchema),
+	)
+}
+
+// GetPluginsAvailableHandler is the handler function for the GetPluginsAvailable tool.
+// It reads tool arguments, forwards the request to the upstream service, and returns the response.
+func GetPluginsAvailableHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	upstream := mcputils.GetUpstreamEndpoint()
+
+	args := request.GetArguments()
+	if args == nil {
+		args = make(map[string]interface{})
+	}
+	contentType := ""
+	startTime := time.Now()
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/api/plugins/available", args, []string{}, contentType)
+	if err != nil {
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if mcputils.IsBinaryDownload(resp) {
+		filePath, written, err := mcputils.SaveBinaryStream(resp, "GetPluginsAvailable")
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	mcputils.LogResponse(ctx, resp.StatusCode, "GET", resp.Request.URL.String(), time.Since(startTime), body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}
