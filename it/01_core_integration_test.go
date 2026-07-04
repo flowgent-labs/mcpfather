@@ -1587,10 +1587,10 @@ func TestConfig_NoConfigFile_AllToolsEnabled(t *testing.T) {
 	}
 }
 
-// TestConfig_AllNativeToolsByDefault_True_WithExcludes verifies that when
-// all-native-tools-by-default is true, all tools are available except those
+// TestConfig_RegisterAllToolsByDefault_True_WithExcludes verifies that when
+// register-all-tools-by-default is true, all tools are available except those
 // listed in excludes.
-func TestConfig_AllNativeToolsByDefault_True_WithExcludes(t *testing.T) {
+func TestConfig_RegisterAllToolsByDefault_True_WithExcludes(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoAuthScenario()
 	mock.RegisterGreetingScenario()
@@ -1604,7 +1604,7 @@ func TestConfig_AllNativeToolsByDefault_True_WithExcludes(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: true
+    register-all-tools-by-default: true
     excludes:
       - DownloadReport
 `
@@ -1653,10 +1653,10 @@ tools:
 	}
 }
 
-// TestConfig_AllNativeToolsByDefault_False_WithIncludes verifies that when
-// all-native-tools-by-default is false (the default), only tools listed in
+// TestConfig_RegisterAllToolsByDefault_False_WithIncludes verifies that when
+// register-all-tools-by-default is false (the default), only tools listed in
 // includes are available.
-func TestConfig_AllNativeToolsByDefault_False_WithIncludes(t *testing.T) {
+func TestConfig_RegisterAllToolsByDefault_False_WithIncludes(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoAuthScenario()
 	mock.RegisterGreetingScenario()
@@ -1670,7 +1670,7 @@ func TestConfig_AllNativeToolsByDefault_False_WithIncludes(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes:
       - EchoHeaders
       - SayHello
@@ -1701,10 +1701,10 @@ tools:
 	}
 }
 
-// TestConfig_AllNativeToolsByDefault_False_Default_EmptyIncludes_NoTools
-// verifies that when all-native-tools-by-default is false (or omitted) and
+// TestConfig_RegisterAllToolsByDefault_False_Default_EmptyIncludes_NoTools
+// verifies that when register-all-tools-by-default is false (or omitted) and
 // includes is empty, no native tools are registered.
-func TestConfig_AllNativeToolsByDefault_False_Default_EmptyIncludes_NoTools(t *testing.T) {
+func TestConfig_RegisterAllToolsByDefault_False_Default_EmptyIncludes_NoTools(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoAuthScenario()
 	_ = mock.Start()
@@ -1717,7 +1717,7 @@ func TestConfig_AllNativeToolsByDefault_False_Default_EmptyIncludes_NoTools(t *t
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes: []
 `
 	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
@@ -1733,10 +1733,10 @@ tools:
 
 	// No native tools should be listed
 	if strings.Contains(stdout, "EchoHeaders") {
-		t.Error("CLI list should NOT contain EchoHeaders when all-native-tools-by-default is false and includes is empty")
+		t.Error("CLI list should NOT contain EchoHeaders when register-all-tools-by-default is false and includes is empty")
 	}
 	if strings.Contains(stdout, "SayHello") {
-		t.Error("CLI list should NOT contain SayHello when all-native-tools-by-default is false and includes is empty")
+		t.Error("CLI list should NOT contain SayHello when register-all-tools-by-default is false and includes is empty")
 	}
 }
 
@@ -1756,7 +1756,7 @@ func TestConfig_IncludesAndExcludes_Conflict_ServerFailsToStart(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: true
+    register-all-tools-by-default: true
     includes:
       - EchoHeaders
     excludes:
@@ -1822,7 +1822,7 @@ func TestConfig_IncludesAndExcludes_NoConflict_Success(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: true
+    register-all-tools-by-default: true
     includes:
       - EchoHeaders
     excludes:
@@ -1840,7 +1840,7 @@ tools:
 	})
 	resp.Body.Close()
 
-	// SayHello: enabled by all-native-tools-by-default, not excluded
+	// SayHello: enabled by register-all-tools-by-default, not excluded
 	resp, _ = mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
 		"name":      "SayHello",
 		"arguments": map[string]interface{}{},
@@ -1860,7 +1860,7 @@ tools:
 }
 
 // TestConfig_ExposeIncludes_WithAllDefaultFalse_AddsTools verifies that
-// includes adds tools even when all-native-tools-by-default is false.
+// includes adds tools even when register-all-tools-by-default is false.
 func TestConfig_ExposeIncludes_WithAllDefaultFalse_AddsTools(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoAuthScenario()
@@ -1875,7 +1875,7 @@ func TestConfig_ExposeIncludes_WithAllDefaultFalse_AddsTools(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes:
       - EchoHeaders
     excludes:
@@ -1931,7 +1931,7 @@ func TestConfig_CLI_ListRespectsConfig(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes:
       - EchoHeaders
 `
@@ -1973,7 +1973,7 @@ func TestConfig_CLI_CallRespectsConfig(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes:
       - EchoHeaders
 `
@@ -2049,7 +2049,7 @@ func TestConfig_IncludesNotFoundInRegistry_NoError(t *testing.T) {
 	cfg := `
 tools:
   expose:
-    all-native-tools-by-default: false
+    register-all-tools-by-default: false
     includes:
       - EchoHeaders
       - NonExistentTool

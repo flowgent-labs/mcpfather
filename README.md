@@ -10,62 +10,62 @@ Generate production-ready Model Context Protocol (MCP) servers from OpenAPI spec
 make
 ```
 
-### Generate the Confluence MCP server for examples
+### Generate the Confluence MCP server examples
 
 ```sh
-./bin/mcpgen -v -i examples/confluence-mcp/confluence-server-v10.2.14.oas.v3.0.1.json -o examples/confluence-mcp \
-  --includes "listSpaces,createPage,updatePage,deletePage"
-cd examples/confluence-mcp
+./bin/mcpgen -v \
+    -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o examples/confluence-mcp \
+    --includes "listSpaces,createPage,updatePage,deletePage"
 ```
 
-This produces a complete Go project with tools for every operation:
+### Start in `HTTP` mode (example)
 
-```plaintext
-confluence-mcp/
-├── bin
-├   └── confluence-mcp           # compiled binary
-├── .credentials                 # file-based token (set MCP_UPSTREAM_TOKEN_FILE)
-├── main.go                      # entry point (stdio/http/cli transport)
-├── mcpclient.sh                 # quick curl-based test script
-├── Makefile                     # build / run / clean / test
-└── pkg/
-    ├── mcpserver/server.go      # MCP server setup + tool registration
-    ├── helpers/                 # ForwardRequest, logging, parameter parsing
-    └── mcptools/                # one file per API operation
-        ├── GetPage.go
-        ├── CreatePage.go
-        ├── UpdatePage.go
-        ├── DeletePage.go
-        ├── SearchContent.go
-        └── ...
-```
-
-### Start in `HTTP` mode
-
-The server defaults to httpbin.org which echoes requests — great for quick verification:
-
-```sh
-examples/confluence-mcp --transport http --port 8080 -v 1
-# MCP_UPSTREAM_ENDPOINT=https://httpbin.org/anything
-```
-
-Set your actual upstream to enable real API calls:
+- The server defaults to httpbin.org which echoes requests — great for quick verification:
 
 ```sh
 export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-# Optional 1: pass token via env var
-MCP_UPSTREAM_TOKEN=your-token /path/to/confluence-mcp --transport http --port 8080 -v 1
 
-# Optional 2: read token from file (safer, no shell history exposure)
-echo -n "your-token" > .credentials
-MCP_UPSTREAM_TOKEN_FILE=.credentials /path/to/confluence-mcp --transport http --port 8080 -v 1
+# Optional 1: setup token from env
+export MCP_UPSTREAM_TOKEN=your-token
+examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
+
+# Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
+export MCP_UPSTREAM_TOKEN_FILE=/path/to/.credentials
+examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
-### Test with mcpclient.sh for `HTTP` transport only.
+- Test with `mcpclient.sh` (for `HTTP` transport only)
 
 ```sh
 ./mcpclient.sh list-tools
 ./mcpclient.sh call GetPage '{"id": "123456"}'
+```
+
+### Usage in `CLI` Mode (example)
+
+Invoke tools directly from the command line — no MCP agent needed. Useful for debugging, scripting, and manual API exploration. The CLI reuses the same `mcptools` handlers as the MCP server, so every call makes a real HTTP request upstream.
+
+```sh
+# Set your upstream endpoint (required for real API calls)
+export MCP_UPSTREAM_ENDPOINT=https://api.example.com
+export MCP_UPSTREAM_TOKEN=your-token
+
+# First call: list available tools
+examples/confluence-mcp/bin/confluence-mcp -t cli list
+
+# First tool call: fetch a page by ID
+examples/confluence-mcp/bin/confluence-mcp -t cli Getpage --id 123456
+
+# Show tool-specific help (GNU-style usage)
+examples/confluence-mcp/bin/confluence-mcp -t cli Getpage --help
+
+# Call a tool with GNU-style --flag arguments
+examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces --limit=5 --type global
+examples/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
+
+# Call a tool without arguments (for tools that have no required params)
+examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
 ```
 
 ## Populars application Swagger
@@ -191,7 +191,7 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 
 ### Token retrieval priority
 
-The server tries to obtain a Bearer token in this order:
+> The server tries to obtain a Bearer token in this order:
 
 1. Authorization header from the client's HTTP request (forwarded)
 2. `MCP_UPSTREAM_TOKEN` environment variable
@@ -201,37 +201,62 @@ The server tries to obtain a Bearer token in this order:
 
 ### Token format
 
-The token value is inspected for a recognized prefix. If the value already starts with `Bearer ` or `Basic ` (case-insensitive), it is used as-is in the `Authorization` header. Otherwise, `Bearer ` is automatically prepended.
+- The token value is inspected for a recognized prefix. If the value already starts with `Bearer ` or `Basic ` (case-insensitive), it is used as-is in the `Authorization` header. Otherwise, `Bearer ` is automatically prepended.
 
 ### Tool filtering
 
-For specs with many operations, limit which tools AI agents can discover via an optional config file:
+- For specs with many operations, limit which tools AI agents can discover via an optional config file:
 
 ```sh
 # Print the default config template
-/path/to/confluence-mcp --print-default-config
+examples/confluence-mcp/bin/confluence-mcp --print-default-config
 
-# Edit ~/.confluence-mcp/config.yaml and list only the tools you want
+# Edit: ~/.confluence-mcp/config.yaml and list only the tools you want
 ```
 
-`$HOME/.{binaryName}/config.yaml`:
+- `$HOME/.{binaryName}/config.yaml`:
 
 ```yaml
+# ---- Native MCP Tools ----
 tools:
-  include:
-    - ListSpaces
-    - SearchContent
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    register-all-tools-by-default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if register-all-tools-by-default is false.
+    includes:
+      - ListSpaces
+      - SearchContent
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over register-all-tools-by-default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
 ```
 
-When `tools.include` is non-empty, only those tools are registered with the MCP server and shown in `-t cli list`. When absent or empty, all tools are available.
+- When `tools.expose.include` is non-empty, only those tools are registered with the MCP server and shown in `-t cli list`. When absent or empty, all tools are available.
 
 ### Virtual Tools (Composition)
 
-Compose multiple native tools into a single AI-callable tool via a declarative 5-step pipeline DSL. Add a `virtualTools` list to your config file:
+- Compose multiple native tools into a single AI-callable tool via a declarative 5-step pipeline DSL. Add a `virtualTools` list to your config file:
 
-`$HOME/.{binaryName}/config.yaml`:
+- Real Enterprise Virtual Tools definitions:
+  - [sonarqube-example-config.yaml](.agents/skills/virtual-tool-creator/resources/sonarqube-example-config.yaml)
+  - [sonatypeiq-example-config.yaml](.agents/skills/virtual-tool-creator/resources/sonatypeiq-example-config.yaml)
+
+`$HOME/.{BIN_NAME}/config.yaml`:
 
 ```yaml
+# ---- Virtual Tools ----
+# Compose multiple native tools into a single virtual tool via a declarative
+# e.g: 5-step pipeline (call → jq → foreach → emit → return).
+# Schema: https://github.com/wl4g-ai/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtualTools:
   - name: MyVirtualTool
     description: Retrieve application details with remediation suggestions
@@ -260,18 +285,13 @@ virtualTools:
           from: $appName
 ```
 
-Pipeline step kinds: `call` (invoke an MCP tool), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
-
+- Pipeline step kinds: `call` (invoke an MCP tool), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
 
 ## Generated MCP Server - Agent Integration
 
-### Local Mode (stdio)
-
-Run the MCP server as a child process — recommended for local development.
-
 ### OpenCode
 
-`~/.config/opencode/config.json`:
+- `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -293,33 +313,13 @@ Run the MCP server as a child process — recommended for local development.
 
 ### Claude Code
 
-`~/.claude/settings.json`:
+- `~/.claude.json`:
 
 ```json
 {
   "mcpServers": {
     "confluence-mcp": {
       "command": "/path/to/confluence-mcp",
-      "args": ["--transport", "stdio"],
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
-      }
-    }
-  }
-}
-```
-
-### Claude Desktop
-
-`~/.config/claude-desktop/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "confluence-mcp": {
-      "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
@@ -333,23 +333,17 @@ Run the MCP server as a child process — recommended for local development.
 
 ### Codex CLI
 
-`~/.codex/config.yaml`:
+- `~/.codex/config.toml`:
 
-```yaml
-mcp:
-  servers:
-    confluence-mcp:
-      command: /path/to/confluence-mcp
-      args: ["--transport", "stdio"]
-      env:
-        MCP_UPSTREAM_ENDPOINT: https://api.example.com
-        MCP_UPSTREAM_TOKEN: your-token
-        MCP_UPSTREAM_TOKEN_FILE: "/path/to/fallback/.credentials"
+```toml
+[mcp_servers.confluence-mcp]
+url = "http://localhost:8080/mcp"
+bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
 ```
 
 ### Cursor
 
-`~/.cursor/mcp.json`:
+- `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -367,21 +361,9 @@ mcp:
 }
 ```
 
-### Remote Mode (HTTP)
+### OpenCode (Remote)
 
-Run the server separately and connect agents via HTTP transport. Suitable for shared instances, cloud deployments, or when agent cannot spawn local processes.
-
-Start the server:
-
-```sh
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
-/path/to/confluence-mcp --transport http --port 8080 -v 1
-```
-
-### OpenCode (remote)
-
-`~/.config/opencode/config.json`:
+- `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -399,28 +381,9 @@ export MCP_UPSTREAM_TOKEN=your-token
 }
 ```
 
-### Claude Code (remote)
+### Claude Code (Remote)
 
-`~/.claude/settings.json`:
-
-```json
-{
-  "mcpServers": {
-    "confluence-mcp": {
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
-      }
-    }
-  }
-}
-```
-
-### Claude Desktop (remote)
-
-`~/.config/claude-desktop/claude_desktop_config.json`:
+- `~/.claude.json`:
 
 ```json
 {
@@ -437,24 +400,19 @@ export MCP_UPSTREAM_TOKEN=your-token
 }
 ```
 
-### Codex CLI (remote)
+### Codex CLI (Remote)
 
-`~/.codex/config.yaml`:
+- `~/.codex/config.toml`:
 
-```yaml
-mcp:
-  servers:
-    confluence-mcp:
-      url: http://localhost:8080/mcp
-      env:
-        MCP_UPSTREAM_ENDPOINT: https://api.example.com
-        MCP_UPSTREAM_TOKEN: your-token
-        MCP_UPSTREAM_TOKEN_FILE: "/path/to/fallback/.credentials"
+```toml
+[mcp_servers.confluence-mcp]
+url = "http://localhost:8080/mcp"
+bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
 ```
 
-### Cursor (remote)
+### Cursor (Remote)
 
-`~/.cursor/mcp.json`:
+- `~/.cursor/mcp.json`:
 
 ```json
 {
@@ -469,32 +427,6 @@ mcp:
     }
   }
 }
-```
-
-### Usage for CLI Mode (example)
-
-Invoke tools directly from the command line — no MCP agent needed. Useful for debugging, scripting, and manual API exploration. The CLI reuses the same `mcptools` handlers as the MCP server, so every call makes a real HTTP request upstream.
-
-```sh
-# Set your upstream endpoint (required for real API calls)
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
-
-# First call: list available tools
-/path/to/confluence-mcp -t cli list
-
-# First tool call: fetch a page by ID
-/path/to/confluence-mcp -t cli Getpage --id 123456
-
-# Show tool-specific help (GNU-style usage)
-/path/to/confluence-mcp -t cli Getpage --help
-
-# Call a tool with GNU-style --flag arguments
-/path/to/confluence-mcp -t cli ListSpaces --limit=5 --type global
-/path/to/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
-
-# Call a tool without arguments (for tools that have no required params)
-/path/to/confluence-mcp -t cli ListSpaces
 ```
 
 ## License
