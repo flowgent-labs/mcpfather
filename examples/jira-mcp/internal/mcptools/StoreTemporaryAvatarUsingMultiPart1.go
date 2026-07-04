@@ -83,10 +83,12 @@ func StoreTemporaryAvatarUsingMultiPart1Handler(ctx context.Context, request mcp
 		req.Header.Set("Cookie", cookie)
 	}
 
-	if mcputils.GetUpstreamConfig().EnableMCPSessionInForwarding {
-		if sid := mcputils.GetSessionID(ctx); sid != "" {
-			req.Header.Set("X-MCP-Session-ID", sid)
-		}
+	// Always forward MCP session ID as a standard HTTP header.
+	// The raw "Mcp-Session-Id"/"mcp-session-id" header from the MCP client is
+	// never forwarded as-is because some upstream APIs (e.g. Sonatype IQ)
+	// reject non-standard headers with HTTP 400.
+	if sid := mcputils.GetSessionID(ctx); sid != "" {
+		req.Header.Set("X-MCP-Session-ID", sid)
 	}
 
 	mcputils.LogRequest("POST", upstreamURL, nil, req.Header, nil)

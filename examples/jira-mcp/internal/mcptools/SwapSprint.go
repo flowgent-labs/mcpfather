@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the SwapSprint tool
-const SwapSprintInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The sprint to swap with.\",\n      \"properties\": {\n        \"sprintToSwapWith\": {\n          \"example\": 3,\n          \"format\": \"int64\",\n          \"type\": \"integer\"\n        },\n        \"swap\": {\n          \"format\": \"int64\",\n          \"type\": \"integer\",\n          \"writeOnly\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"sprintId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
+const SwapSprintInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The sprint to swap with.\",\n      \"properties\": {\n        \"sprintToSwapWith\": {\n          \"example\": 3,\n          \"format\": \"int64\",\n          \"type\": \"integer\"\n        },\n        \"swap\": {\n          \"format\": \"int64\",\n          \"type\": \"integer\",\n          \"writeOnly\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"sprintId\": {\n      \"description\": \"The Id of the sprint to swap.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewSwapSprintMCPTool creates the MCP Tool instance for SwapSprint
 func NewSwapSprintMCPTool() mcp.Tool {
