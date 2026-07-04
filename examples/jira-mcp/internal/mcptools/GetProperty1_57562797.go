@@ -10,16 +10,16 @@ import (
 )
 
 // Input Schema for the GetProperty1_57562797 tool
-const GetProperty1_57562797InputSchema = "{\n  \"properties\": {\n    \"dashboardId\": {\n      \"description\": \"The dashboard id.\",\n      \"type\": \"string\"\n    },\n    \"itemId\": {\n      \"description\": \"The dashboard item from which the property will be returned.\",\n      \"type\": \"string\"\n    },\n    \"propertyKey\": {\n      \"description\": \"The key of the property to return.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"dashboardId\",\n    \"itemId\",\n    \"propertyKey\"\n  ],\n  \"type\": \"object\"\n}"
+const GetProperty1_57562797InputSchema = "{\n  \"properties\": {\n    \"propertyKey\": {\n      \"description\": \"The key of the property to return.\",\n      \"type\": \"string\"\n    },\n    \"sprintId\": {\n      \"description\": \"The id of the sprint from which the property will be returned.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"propertyKey\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetProperty1_57562797 tool (Status: 200, Content-Type: application/json)
-const GetProperty1_57562797ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returned if the dashboard item property was found.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **key** (Type: string):\n      - Example: 'issue.support'\n  - **value** (Type: string):\n      - Example: '{\"hipchat.room.id\":\"support-123\",\"support.time\":\"1m\"}'\n"
+const GetProperty1_57562797ResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **key** (Type: string):\n      - Example: 'issue.support'\n  - **value** (Type: string):\n      - Example: '{\"hipchat.room.id\":\"support-123\",\"support.time\":\"1m\"}'\n"
 
 // NewGetProperty1_57562797MCPTool creates the MCP Tool instance for GetProperty1_57562797
 func NewGetProperty1_57562797MCPTool() mcp.Tool {
 	return mcp.NewToolWithRawSchema(
 		"GetProperty1_57562797",
-		"Get a property from a dashboard item - Returns the value of the property with a given key from the dashboard item identified by the id.",
+		"Get a property for a sprint - Returns the value of the property with a given key from the sprint identified by the provided id. The user who retrieves the property is required to have permissions to view the sprint.",
 		[]byte(GetProperty1_57562797InputSchema),
 	)
 }
@@ -35,7 +35,7 @@ func GetProperty1_57562797Handler(ctx context.Context, request mcp.CallToolReque
 	}
 	contentType := ""
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}", args, []string{"dashboardId", "itemId", "propertyKey"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "GET", "/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}", args, []string{"propertyKey", "sprintId"}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}

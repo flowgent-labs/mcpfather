@@ -13,7 +13,7 @@ import (
 const GetAllTerminologyEntriesInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAllTerminologyEntries tool (Status: 200, Content-Type: application/json)
-const GetAllTerminologyEntriesResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of all defined names for the default words 'epic' and 'sprint'\n\n## Response Structure\n\n- Structure (Type: object):\n  - **originalNamePlural** (Type: string):\n  - **isDefault** (Type: boolean):\n  - **newName** (Type: string):\n  - **newNamePlural** (Type: string):\n  - **originalName** (Type: string):\n"
+const GetAllTerminologyEntriesResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of all defined names for the default words 'epic' and 'sprint'\n\n## Response Structure\n\n- Structure (Type: object):\n  - **originalName** (Type: string):\n  - **originalNamePlural** (Type: string):\n  - **isDefault** (Type: boolean):\n  - **newName** (Type: string):\n  - **newNamePlural** (Type: string):\n"
 
 // NewGetAllTerminologyEntriesMCPTool creates the MCP Tool instance for GetAllTerminologyEntries
 func NewGetAllTerminologyEntriesMCPTool() mcp.Tool {

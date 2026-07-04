@@ -13,7 +13,7 @@ import (
 const GetRepositoryContainerInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetRepositoryContainer tool (Status: 200, Content-Type: application/json)
-const GetRepositoryContainerResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the ID and name for the repository container.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: string):\n  - **name** (Type: string):\n  - **relatedOrganizationId** (Type: string):\n"
+const GetRepositoryContainerResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains the ID and name for the repository container.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **relatedOrganizationId** (Type: string):\n  - **id** (Type: string):\n  - **name** (Type: string):\n"
 
 // NewGetRepositoryContainerMCPTool creates the MCP Tool instance for GetRepositoryContainer
 func NewGetRepositoryContainerMCPTool() mcp.Tool {

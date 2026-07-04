@@ -13,7 +13,7 @@ import (
 const GetTerminologyEntryInputSchema = "{\n  \"properties\": {\n    \"originalName\": {\n      \"description\": \"A numeric StatusCategory id or a status category key\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"originalName\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetTerminologyEntry tool (Status: 200, Content-Type: application/json)
-const GetTerminologyEntryResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns epic or sprint name.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **isDefault** (Type: boolean):\n  - **newName** (Type: string):\n  - **newNamePlural** (Type: string):\n  - **originalName** (Type: string):\n  - **originalNamePlural** (Type: string):\n"
+const GetTerminologyEntryResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns epic or sprint name.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **newName** (Type: string):\n  - **newNamePlural** (Type: string):\n  - **originalName** (Type: string):\n  - **originalNamePlural** (Type: string):\n  - **isDefault** (Type: boolean):\n"
 
 // NewGetTerminologyEntryMCPTool creates the MCP Tool instance for GetTerminologyEntry
 func NewGetTerminologyEntryMCPTool() mcp.Tool {
