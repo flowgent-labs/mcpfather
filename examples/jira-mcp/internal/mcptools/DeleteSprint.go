@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the DeleteSprint tool
-const DeleteSprintInputSchema = "{\n  \"properties\": {\n    \"sprintId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
+const DeleteSprintInputSchema = "{\n  \"properties\": {\n    \"sprintId\": {\n      \"description\": \"The Id of the sprint to delete.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewDeleteSprintMCPTool creates the MCP Tool instance for DeleteSprint
 func NewDeleteSprintMCPTool() mcp.Tool {

@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the RankEpics tool
-const RankEpicsInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Bean which contains the information where the given epic should be ranked.\",\n      \"properties\": {\n        \"rankAfterEpic\": {\n          \"example\": \"10001\",\n          \"type\": \"string\"\n        },\n        \"rankBeforeEpic\": {\n          \"example\": \"10000\",\n          \"type\": \"string\"\n        },\n        \"rankCustomFieldId\": {\n          \"example\": 10521,\n          \"format\": \"int64\",\n          \"type\": \"integer\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"epicIdOrKey\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"epicIdOrKey\"\n  ],\n  \"type\": \"object\"\n}"
+const RankEpicsInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"Bean which contains the information where the given epic should be ranked.\",\n      \"properties\": {\n        \"rankAfterEpic\": {\n          \"example\": \"10001\",\n          \"type\": \"string\"\n        },\n        \"rankBeforeEpic\": {\n          \"example\": \"10000\",\n          \"type\": \"string\"\n        },\n        \"rankCustomFieldId\": {\n          \"example\": 10521,\n          \"format\": \"int64\",\n          \"type\": \"integer\"\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"epicIdOrKey\": {\n      \"description\": \"The id or key of the epic to rank.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"epicIdOrKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewRankEpicsMCPTool creates the MCP Tool instance for RankEpics
 func NewRankEpicsMCPTool() mcp.Tool {

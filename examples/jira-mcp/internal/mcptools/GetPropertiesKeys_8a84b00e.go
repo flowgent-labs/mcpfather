@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the GetPropertiesKeys_8a84b00e tool
-const GetPropertiesKeys_8a84b00eInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
+const GetPropertiesKeys_8a84b00eInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"The id of the board from which property keys will be returned.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetPropertiesKeys_8a84b00e tool (Status: 200, Content-Type: application/json)
 const GetPropertiesKeys_8a84b00eResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the requested property keys.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **keys** (Type: array):\n    - **Items** (Type: object):\n      - **key** (Type: string):\n          - Example: 'issue.support'\n      - **self** (Type: string):\n          - Example: 'http://www.example.com/jira/rest/api/2/issue/EX-2/properties/issue.support'\n"

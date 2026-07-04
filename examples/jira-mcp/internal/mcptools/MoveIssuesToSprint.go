@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the MoveIssuesToSprint tool
-const MoveIssuesToSprintInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The issues to move.\",\n      \"properties\": {\n        \"issues\": {\n          \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n          \"items\": {\n            \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"sprintId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
+const MoveIssuesToSprintInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The issues to move.\",\n      \"properties\": {\n        \"issues\": {\n          \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n          \"items\": {\n            \"example\": \"['ISSUE-1', 'ISSUE-2']\",\n            \"type\": \"string\"\n          },\n          \"type\": \"array\",\n          \"uniqueItems\": true\n        }\n      },\n      \"type\": \"object\"\n    },\n    \"sprintId\": {\n      \"description\": \"The Id of the sprint that you want to assign issues to.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"body\",\n    \"sprintId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewMoveIssuesToSprintMCPTool creates the MCP Tool instance for MoveIssuesToSprint
 func NewMoveIssuesToSprintMCPTool() mcp.Tool {

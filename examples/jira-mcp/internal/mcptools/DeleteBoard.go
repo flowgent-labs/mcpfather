@@ -10,7 +10,7 @@ import (
 )
 
 // Input Schema for the DeleteBoard tool
-const DeleteBoardInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
+const DeleteBoardInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"id of the board to be deleted\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    }\n  },\n  \"required\": [\n    \"boardId\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewDeleteBoardMCPTool creates the MCP Tool instance for DeleteBoard
 func NewDeleteBoardMCPTool() mcp.Tool {

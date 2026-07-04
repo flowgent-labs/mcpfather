@@ -14,7 +14,7 @@ import (
 )
 
 // Input Schema for the SetRefinedVelocity tool
-const SetRefinedVelocityInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    },\n    \"body\": {\n      \"description\": \"The request containing value of the board's property. The value has to a valid, non-empty JSON conforming to http://tools.ietf.org/html/rfc4627. The maximum length of the property value is 32768 bytes.\",\n      \"oneOf\": [\n        {\n          \"properties\": {\n            \"value\": {\n              \"example\": true,\n              \"type\": \"boolean\"\n            }\n          },\n          \"title\": \"Schema for application/json\",\n          \"type\": \"object\"\n        },\n        {\n          \"title\": \"Schema for application/x-www-form-urlencoded\"\n        }\n      ]\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"body\"\n  ],\n  \"type\": \"object\"\n}"
+const SetRefinedVelocityInputSchema = "{\n  \"properties\": {\n    \"boardId\": {\n      \"description\": \"The id of the board on which the property will be set.\",\n      \"format\": \"int64\",\n      \"type\": \"integer\"\n    },\n    \"body\": {\n      \"description\": \"The request containing value of the board's property. The value has to a valid, non-empty JSON conforming to http://tools.ietf.org/html/rfc4627. The maximum length of the property value is 32768 bytes.\",\n      \"oneOf\": [\n        {\n          \"properties\": {\n            \"value\": {\n              \"example\": true,\n              \"type\": \"boolean\"\n            }\n          },\n          \"title\": \"Schema for application/json\",\n          \"type\": \"object\"\n        },\n        {\n          \"title\": \"Schema for application/x-www-form-urlencoded\"\n        }\n      ]\n    }\n  },\n  \"required\": [\n    \"boardId\",\n    \"body\"\n  ],\n  \"type\": \"object\"\n}"
 
 // NewSetRefinedVelocityMCPTool creates the MCP Tool instance for SetRefinedVelocity
 func NewSetRefinedVelocityMCPTool() mcp.Tool {
@@ -80,10 +80,12 @@ func SetRefinedVelocityHandler(ctx context.Context, request mcp.CallToolRequest)
 		req.Header.Set("Cookie", cookie)
 	}
 
-	if mcputils.GetUpstreamConfig().EnableMCPSessionInForwarding {
-		if sid := mcputils.GetSessionID(ctx); sid != "" {
-			req.Header.Set("X-MCP-Session-ID", sid)
-		}
+	// Always forward MCP session ID as a standard HTTP header.
+	// The raw "Mcp-Session-Id"/"mcp-session-id" header from the MCP client is
+	// never forwarded as-is because some upstream APIs (e.g. Sonatype IQ)
+	// reject non-standard headers with HTTP 400.
+	if sid := mcputils.GetSessionID(ctx); sid != "" {
+		req.Header.Set("X-MCP-Session-ID", sid)
 	}
 
 	mcputils.LogRequest("PUT", upstreamURL, nil, req.Header, nil)
