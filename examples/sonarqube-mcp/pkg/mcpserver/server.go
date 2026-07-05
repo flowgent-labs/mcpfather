@@ -26,6 +26,17 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 		sessionID := mcputils.GetSessionID(ctx)
 		ts := start.Format(time.RFC3339)
 
+		// Start OpenTelemetry trace span
+		toolType := "virtual"
+		if _, ok := mcptools.Registry[request.Params.Name]; ok {
+			toolType = "native"
+		}
+		spanCtx, span := mcputils.StartToolSpan(ctx, request.Params.Name, toolType)
+		if spanCtx != ctx {
+			ctx = spanCtx
+		}
+		defer span.End()
+
 		if v >= 2 {
 			argsJSON, _ := json.Marshal(request.GetArguments())
 			sid := sessionID
@@ -41,6 +52,14 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 			if sid == "" {
 				sid = "-"
 			}
+
+			// Record OpenTelemetry metrics
+			statusStr := "success"
+			if err != nil || (result != nil && result.IsError) {
+				statusStr = "error"
+			}
+			mcputils.RecordToolCall(request.Params.Name, toolType, statusStr, duration)
+
 			if v >= 1 {
 				status := 200
 				if err != nil {

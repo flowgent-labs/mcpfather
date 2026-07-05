@@ -89,6 +89,74 @@ func (g *Generator) generateRequestLog() error {
 	return nil
 }
 
+// GenerateTrace creates the trace.go file with OpenTelemetry tracing (OTLP export).
+func (g *Generator) GenerateTrace() error {
+	traceTemplate, err := templatesFS.ReadFile("templates/trace.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read trace template file: %w", err)
+	}
+
+	tmpl, err := template.New("trace").Parse(string(traceTemplate))
+	if err != nil {
+		return fmt.Errorf("failed to parse trace template: %w", err)
+	}
+
+	data := struct{}{}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, data); err != nil {
+		return fmt.Errorf("failed to execute trace template: %w", err)
+	}
+
+	formattedCode, err := format.Source(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated trace code: %w", err)
+	}
+
+	err = writeFileContent(g.outputDir+"/pkg/helpers", "trace.go", func() ([]byte, error) {
+		return formattedCode, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write trace.go file: %w", err)
+	}
+
+	return nil
+}
+
+// GenerateMetrics creates the metrics.go file with OpenTelemetry instrumentation for tool calls.
+func (g *Generator) GenerateMetrics() error {
+	metricsTemplate, err := templatesFS.ReadFile("templates/metrics.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read metrics template file: %w", err)
+	}
+
+	tmpl, err := template.New("metrics").Parse(string(metricsTemplate))
+	if err != nil {
+		return fmt.Errorf("failed to parse metrics template: %w", err)
+	}
+
+	data := struct{}{}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, data); err != nil {
+		return fmt.Errorf("failed to execute metrics template: %w", err)
+	}
+
+	formattedCode, err := format.Source(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated metrics code: %w", err)
+	}
+
+	err = writeFileContent(g.outputDir+"/pkg/helpers", "metrics.go", func() ([]byte, error) {
+		return formattedCode, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write metrics.go file: %w", err)
+	}
+
+	return nil
+}
+
 // GenerateCredentials copies credential manager files to the helpers package.
 // These files use Go build tags to support macOS Keychain, Windows Credential
 // Manager, and provide stubs for other platforms.

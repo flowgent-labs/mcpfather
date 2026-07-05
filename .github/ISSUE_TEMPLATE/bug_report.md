@@ -1,25 +1,39 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: Report a bug to help us improve
 title: ''
 labels: bug
 assignees: ''
-
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+**Issue Type**
+Bug / Performance / Compatibility / Other
 
-**To Reproduce**
-Steps to reproduce the behavior:
+**Environment**
+- OS: [e.g. Linux, macOS, Windows]
+- Go version: [e.g. 1.23]
+- App version: [e.g. v1.0.0 or commit SHA]
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+**Parameters**
+- Input OpenAPI spec (name/version):
+- CLI flags used:
+- Config (`config.yaml` excerpt, if applicable):
 
-**Environment (please complete the following information):**
- - OS: [e.g. Windows, Linux, macOS]
- - Go version: [e.g. 1.21]
- - mcpgen version: [e.g. v0.1.1]
+**Time of Occurrence**
+[e.g. 2025-07-01 14:30 UTC]
 
-**Additional context**
-Add any other context about the problem here.
+**Logs**
+```
+<!-- Paste relevant logs, error messages, or stack traces here -->
+```
+
+**Steps to Reproduce**
+1.
+2.
+3.
+
+**Expected Behavior**
+A clear description of what you expected to happen.
+
+**Actual Behavior**
+A clear description of what actually happened.

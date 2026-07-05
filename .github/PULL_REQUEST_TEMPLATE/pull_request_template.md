@@ -1,12 +1,20 @@
-# Pull Request
+## Summary
 
-## Describe your changes
+<!-- Brief description of the change and motivation -->
 
+## Type
 
-Please include a summary of the change and which issue is fixed.
+- [ ] Bug fix
+- [ ] New feature
+- [ ] Refactoring
+- [ ] Documentation
+- [ ] Tests
+- [ ] CI / Tooling
 
-## Checklist
+## Test Plan
 
-- [ ] I have tested my code
-- [ ] I have added/updated documentation if needed
-- [ ] I have formatted my code with `gofmt`
+<!-- How was this change tested? -->
+
+- [ ] `make build` passes
+- [ ] `make test` passes
+- [ ] Manual verification performed

@@ -25,6 +25,32 @@ upstream:
   # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)
   enable_mcp_session_in_forwarding: false
 
+# ---- Management Endpoints (metrics, tracing, pprof) ----
+mgmt:
+  # When true, enables the management HTTP server (/metrics, /health).
+  # Default: true (management server starts unless explicitly disabled).
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc             # grpc | http/protobuf | http/json
+    timeout: 10000             # connection timeout in milliseconds
+    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
+  metrics:
+    # When true, enables Prometheus metrics export (/metrics endpoint).
+    # Default: true (metrics enabled unless explicitly disabled).
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}                 # static labels added to every metric
+
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).

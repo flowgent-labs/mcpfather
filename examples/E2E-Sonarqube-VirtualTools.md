@@ -256,6 +256,73 @@ source .env && examples/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetIssuesSe
   --types="CODE_SMELL,BUG,VULNERABILITY"
 ```
 
+### 4.6 HTTP Mode
+
+The same virtual tools work over the MCP HTTP transport (`StreamableHTTPServer`).
+
+#### 4.6.1 Start the server
+
+In one terminal, start the HTTP server:
+
+```bash
+source .env && examples/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 8080
+```
+
+Wait for the log line `MCP server listening on :8080/mcp`.
+
+#### 4.6.2 Test via mcpclient.sh
+
+In another terminal, call the virtual tool through the MCP HTTP endpoint:
+
+```bash
+source .env && ./examples/sonarqube-mcp/mcpclient.sh call get_overall_issues \
+  '{"projectKey":"'$SONARQUBE_PROJECT_KEY'","branch":"'$SONARQUBE_TEST_BRANCH'","component":"'$SONARQUBE_TEST_COMPONENT'"}'
+```
+
+**Result**: pass — same response shape as CLI mode (section 4.2), delivered over HTTP.
+
+```json
+{
+  "summary": {"total": 1, "returned": 1},
+  "issues": [
+    {
+      "key": "94d52855-...",
+      "rule": "java:S1192",
+      "severity": "CRITICAL",
+      "type": "CODE_SMELL",
+      "message": "Define a constant instead of duplicating this literal ...",
+      "component": "<projectKey>:path/to/ExampleFile.java",
+      "startLine": 66, "endLine": 66,
+      "debt": "8min",
+      "codeSnippet": [
+        {"lineNumber": 61, "code": "..."},
+        {"lineNumber": 66, "code": "...duplicated literal..."},
+        {"lineNumber": 90, "code": "...duplicated literal..."}
+      ]
+    }
+  ]
+}
+```
+
+#### 4.6.3 List tools via HTTP
+
+```bash
+source .env && ./examples/sonarqube-mcp/mcpclient.sh list-tools
+```
+
+#### 4.6.4 Native tool via HTTP
+
+```bash
+source .env && ./examples/sonarqube-mcp/mcpclient.sh call GetComponentsShow \
+  '{"component":"'$SONARQUBE_TEST_COMPONENT'"}'
+```
+
+#### 4.6.5 Obtain MCP server metrics
+
+```bash
+curl -v localhost:9991/metrics
+```
+
 ## 5. Bugs Found and Fixed During Testing
 
 | # | Issue | Root cause | Fix |
