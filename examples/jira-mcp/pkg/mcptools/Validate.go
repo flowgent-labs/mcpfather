@@ -17,7 +17,7 @@ import (
 const ValidateInputSchema = "{\n  \"properties\": {\n    \"body\": {\n      \"description\": \"The license string to validate.\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"body\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the Validate tool (Status: 200, Content-Type: application/json)
-const ValidateResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The validation results of the license.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **errors** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: string):\n  - **licenseString** (Type: string):\n"
+const ValidateResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The validation results of the license.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **licenseString** (Type: string):\n  - **errors** (Type: object):\n    - **Additional Properties**:\n      - **property value** (Type: string):\n"
 
 // NewValidateMCPTool creates the MCP Tool instance for Validate
 func NewValidateMCPTool() mcp.Tool {

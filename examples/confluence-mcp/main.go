@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"strings"
@@ -92,6 +93,7 @@ Options:
   -t, --transport <stdio|http|cli>  Transport mode (default "stdio")
                                      cli mode: invoke a tool directly from the command line
   -p, --port <number>                HTTP server port (default 8080)
+  --metrics-port <number>           Override mgmt.port from config.yaml (0: use config)
   -v, --verbose <0-10>              Request logging verbosity level
                                      0=silent, 1=access log, 2+=method+URL,
                                      3+=query, 5+=headers, 7+=body, 9+=pretty JSON
@@ -136,6 +138,32 @@ func printDefaultConfigYAML() {
 	fmt.Println("  # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)")
 	fmt.Println("  enable_mcp_session_in_forwarding: false")
 	fmt.Println()
+	fmt.Println("# ---- Management Endpoints (metrics, tracing, pprof) ----")
+	fmt.Println("mgmt:")
+	fmt.Println("  # When true, enables the management HTTP server (/metrics, /health).")
+	fmt.Println("  # Default: true (management server starts unless explicitly disabled).")
+	fmt.Println("  enabled: true")
+	fmt.Println("  host: 0.0.0.0")
+	fmt.Println("  port: 9991")
+	fmt.Println("  pprof:")
+	fmt.Println("    enabled: false")
+	fmt.Println("    server_bind: 0.0.0.0:6669")
+	fmt.Println("  otel:")
+	fmt.Println("    enabled: false")
+	fmt.Println("    endpoint: localhost:4317")
+	fmt.Println("    protocol: grpc             # grpc | http/protobuf | http/json")
+	fmt.Println("    timeout: 10000             # connection timeout in milliseconds")
+	fmt.Println("    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio")
+	fmt.Println("  metrics:")
+	fmt.Println("    # When true, enables Prometheus metrics export (/metrics endpoint).")
+	fmt.Println("    # Default: true (metrics enabled unless explicitly disabled).")
+	fmt.Println("    enabled: true")
+	fmt.Println("    prometheus: true")
+	fmt.Println("    export_interval: 30s")
+	fmt.Println("    histogram_boundaries:")
+	fmt.Println("      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]")
+	fmt.Println("    labels: {}                 # static labels added to every metric")
+	fmt.Println()
 	fmt.Println("# ---- Virtual Tools ----")
 	fmt.Println("# Compose multiple native tools into a single virtual tool via a declarative")
 	fmt.Println("# e.g: 5-step pipeline (call → jq → foreach → emit → return).")
@@ -169,6 +197,33 @@ func printDefaultConfigYAML() {
 	fmt.Println("#           from: $appName")
 }
 
+// startMgmtServer starts the management HTTP server (metrics, health, etc.).
+func startMgmtServer(cfg mcputils.MgmtConfig) {
+	mux := http.NewServeMux()
+
+	if h := mcputils.MetricsHandler(); h != nil {
+		mux.Handle("/metrics", h)
+	}
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok"))
+	})
+
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	fmt.Fprintf(os.Stderr, "Management server listening on %s\n", addr)
+	if err := http.ListenAndServe(addr, mux); err != nil {
+		fmt.Fprintf(os.Stderr, "Management server error: %v\n", err)
+	}
+}
+
+// startPprof starts a pprof debug server on the configured bind address.
+func startPprof(cfg mcputils.PprofConfig) {
+	fmt.Fprintf(os.Stderr, "pprof server listening on %s\n", cfg.ServerBind)
+	if err := http.ListenAndServe(cfg.ServerBind, nil); err != nil {
+		fmt.Fprintf(os.Stderr, "pprof server error: %v\n", err)
+	}
+}
+
 func main() {
 	flag.CommandLine.SetOutput(os.Stderr)
 	flag.Usage = usage
@@ -177,6 +232,7 @@ func main() {
 	flag.StringVar(transport, "transport", "stdio", "Transport mode: stdio, http, or cli")
 	port := flag.Int("p", 8080, "HTTP server port (only used when transport=http)")
 	flag.IntVar(port, "port", 8080, "HTTP server port (only used when transport=http)")
+	metricsPort := flag.Int("metrics-port", 0, "Override mgmt.port from config.yaml (0: use config)")
 	verbose := flag.Int("v", 0, "Request logging verbosity level (0-10)")
 	flag.IntVar(verbose, "verbose", 0, "Request logging verbosity level (0-10)")
 	printDefaultConfig := flag.Bool("print-default-config", false, "Print default config.yaml to stdout and exit")
@@ -196,6 +252,23 @@ func main() {
 	}
 
 	mcputils.SetVerbosity(*verbose)
+
+	// Load config and initialize management endpoints (metrics, tracing)
+	cfg, _ := mcputils.LoadConfig("confluence-mcp")
+	if cfg != nil {
+		mcputils.SetUpstreamConfig(cfg.Upstream)
+		mcputils.SetMgmtConfig(cfg.Mgmt)
+	} else {
+		mcputils.SetMgmtConfig(mcputils.DefaultMgmtConfig())
+	}
+	mgmtCfg := mcputils.GetMgmtConfig()
+	mcputils.InitMetrics(mgmtCfg.Metrics)
+	mcputils.InitTracing(mgmtCfg.Otel)
+	defer func() {
+		if err := mcputils.ShutdownTracing(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "tracing shutdown error: %v\n", err)
+		}
+	}()
 
 	switch *transport {
 	case "cli":
@@ -237,14 +310,14 @@ func main() {
 			}),
 		)
 
+		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+		defer cancel()
+
 		mux := http.NewServeMux()
 		mux.Handle("/mcp", mcpServer)
 
 		addr := fmt.Sprintf(":%d", *port)
 		httpServer := &http.Server{Addr: addr, Handler: logHTTP(mux)}
-
-		ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-		defer cancel()
 
 		go func() {
 			fmt.Fprintf(os.Stderr, "MCP server listening on %s/mcp\n", addr)
@@ -254,10 +327,58 @@ func main() {
 			}
 		}()
 
+		// Management server (metrics, health) — driven by config.yaml mgmt block
+		mgmtCfg := mcputils.GetMgmtConfig()
+		var mgmtServer *http.Server
+		if mgmtCfg.IsEnabled() {
+			if *metricsPort > 0 {
+				mgmtCfg.Port = *metricsPort
+			}
+			mgmtMux := http.NewServeMux()
+			if h := mcputils.MetricsHandler(); h != nil {
+				mgmtMux.Handle("/metrics", h)
+			}
+			mgmtMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte("ok"))
+			})
+			mgmtAddr := fmt.Sprintf("%s:%d", mgmtCfg.Host, mgmtCfg.Port)
+			mgmtServer = &http.Server{Addr: mgmtAddr, Handler: mgmtMux}
+
+			go func() {
+				fmt.Fprintf(os.Stderr, "Management server listening on %s\n", mgmtAddr)
+				if err := mgmtServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					fmt.Fprintf(os.Stderr, "Management server error: %v\n", err)
+				}
+			}()
+		}
+
+		// pprof server — driven by config.yaml mgmt.pprof block
+		var pprofServer *http.Server
+		if mgmtCfg.Pprof.Enabled {
+			pprofServer = &http.Server{Addr: mgmtCfg.Pprof.ServerBind, Handler: nil}
+			go func() {
+				fmt.Fprintf(os.Stderr, "pprof server listening on %s\n", mgmtCfg.Pprof.ServerBind)
+				if err := pprofServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					fmt.Fprintf(os.Stderr, "pprof server error: %v\n", err)
+				}
+			}()
+		}
+
 		<-ctx.Done()
 		fmt.Fprintln(os.Stderr, "Shutting down...")
 		if err := httpServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
 			fmt.Fprintf(os.Stderr, "HTTP server shutdown error: %v\n", err)
+		}
+		if mgmtServer != nil {
+			if err := mgmtServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
+				fmt.Fprintf(os.Stderr, "Management server shutdown error: %v\n", err)
+			}
+		}
+		if pprofServer != nil {
+			if err := pprofServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
+				fmt.Fprintf(os.Stderr, "pprof server shutdown error: %v\n", err)
+			}
 		}
 
 	case "stdio":

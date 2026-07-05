@@ -257,6 +257,9 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Log outgoing request with final headers
 	LogRequest(method, upstreamURL, query, req.Header, bodyBytes)
 
+	// Inject W3C trace context for distributed tracing
+	InjectTraceContext(ctx, req.Header)
+
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -284,6 +287,7 @@ func FormatAuthorizationHeader(token string) string {
 type Config struct {
 	Tools    ToolsConfig    `yaml:"tools"`
 	Upstream UpstreamConfig `yaml:"upstream"`
+	Mgmt     MgmtConfig     `yaml:"mgmt"`
 }
 
 // ToolsConfig controls which native tools are exposed to external AI agents at startup.
@@ -318,7 +322,74 @@ type UpstreamToolConfig struct {
 	Name string `yaml:"name"`
 }
 
+// MgmtConfig controls management endpoints (pprof, metrics, tracing).
+type MgmtConfig struct {
+	Enabled *bool         `yaml:"enabled"`
+	Host    string        `yaml:"host"`
+	Port    int           `yaml:"port"`
+	Pprof   PprofConfig   `yaml:"pprof"`
+	Otel    OtelConfig    `yaml:"otel"`
+	Metrics MetricsConfig `yaml:"metrics"`
+}
+
+// PprofConfig enables Go pprof debug endpoints.
+type PprofConfig struct {
+	Enabled    bool   `yaml:"enabled"`
+	ServerBind string `yaml:"server_bind"`
+}
+
+// OtelConfig configures the OpenTelemetry OTLP exporter.
+type OtelConfig struct {
+	Enabled    bool    `yaml:"enabled"`
+	Endpoint   string  `yaml:"endpoint"`
+	Protocol   string  `yaml:"protocol"`
+	Timeout    int     `yaml:"timeout"`
+	SampleRate float64 `yaml:"sample_rate"`
+}
+
+// MetricsConfig configures Prometheus metrics export.
+type MetricsConfig struct {
+	Enabled             *bool                `yaml:"enabled"`
+	Prometheus          bool                 `yaml:"prometheus"`
+	ExportInterval      string               `yaml:"export_interval"`
+	HistogramBoundaries map[string][]float64 `yaml:"histogram_boundaries"`
+	Labels              map[string]string    `yaml:"labels"`
+}
+
+// IsEnabled returns true for mgmt unless explicitly disabled in config.
+func (c MgmtConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
+}
+
+// IsEnabled returns true for metrics unless explicitly disabled in config.
+func (c MetricsConfig) IsEnabled() bool {
+	if c.Enabled == nil {
+		return true
+	}
+	return *c.Enabled
+}
+
+// DefaultMgmtConfig returns a MgmtConfig with sensible defaults applied.
+// Used when no config.yaml file exists.
+func DefaultMgmtConfig() MgmtConfig {
+	return MgmtConfig{
+		Host: "0.0.0.0",
+		Port: 9991,
+		Metrics: MetricsConfig{
+			Prometheus:     true,
+			ExportInterval: "30s",
+			HistogramBoundaries: map[string][]float64{
+				"task": {0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+			},
+		},
+	}
+}
+
 var upstreamCfg UpstreamConfig
+var mgmtCfg MgmtConfig
 
 // SetUpstreamConfig stores the upstream configuration for use during request forwarding.
 func SetUpstreamConfig(cfg UpstreamConfig) {
@@ -328,6 +399,31 @@ func SetUpstreamConfig(cfg UpstreamConfig) {
 // GetUpstreamConfig returns the stored upstream configuration.
 func GetUpstreamConfig() UpstreamConfig {
 	return upstreamCfg
+}
+
+// SetMgmtConfig stores the management configuration and applies defaults
+// for any fields left at their zero value.
+func SetMgmtConfig(cfg MgmtConfig) {
+	if cfg.Host == "" {
+		cfg.Host = "0.0.0.0"
+	}
+	if cfg.Port == 0 {
+		cfg.Port = 9991
+	}
+	if cfg.Metrics.ExportInterval == "" {
+		cfg.Metrics.ExportInterval = "30s"
+	}
+	if cfg.Metrics.HistogramBoundaries == nil {
+		cfg.Metrics.HistogramBoundaries = map[string][]float64{
+			"task": {0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
+		}
+	}
+	mgmtCfg = cfg
+}
+
+// GetMgmtConfig returns the stored management configuration.
+func GetMgmtConfig() MgmtConfig {
+	return mgmtCfg
 }
 
 // LoadConfig reads the optional config.yaml from $HOME/.{binaryName}/config.yaml.
