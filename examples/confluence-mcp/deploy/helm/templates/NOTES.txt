@@ -1,0 +1,30 @@
+Thank you for installing {{ .Chart.Name }}!
+
+The MCP server has been deployed.
+
+**Service:** {{ include "confluence-mcp.fullname" . }} ({{ .Values.service.type }})
+  - MCP HTTP:  http://<service-ip>:{{ .Values.service.port }}/mcp
+  - Mgmt/Health: http://<service-ip>:{{ .Values.service.mgmtPort }}/health
+  - Metrics:   http://<service-ip>:{{ .Values.service.mgmtPort }}/metrics
+
+{{- if .Values.ingress.enabled }}
+**Ingress:**
+{{- range .Values.ingress.hosts }}
+  http://{{ .host }}
+{{- end }}
+{{- end }}
+
+**Get the application URL:**
+{{- if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "confluence-mcp.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT/mcp
+{{- else if contains "LoadBalancer" .Values.service.type }}
+  NOTE: It may take a few minutes for the LoadBalancer IP to be assigned.
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "confluence-mcp.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}/mcp
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "confluence-mcp.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME {{ .Values.service.port }}:{{ .Values.service.port }}
+  echo http://localhost:{{ .Values.service.port }}/mcp
+{{- end }}

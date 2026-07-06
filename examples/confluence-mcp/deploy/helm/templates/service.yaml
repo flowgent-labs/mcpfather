@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "confluence-mcp.fullname" . }}
+  labels:
+    {{- include "confluence-mcp.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+    - port: {{ .Values.service.mgmtPort }}
+      targetPort: mgmt
+      protocol: TCP
+      name: mgmt
+  selector:
+    {{- include "confluence-mcp.selectorLabels" . | nindent 4 }}

@@ -1,0 +1,7 @@
+# Helm ignore patterns
+.git/
+.gitignore
+*.swp
+*.bak
+*.tmp
+.DS_Store

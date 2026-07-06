@@ -2,140 +2,186 @@
 
 # confluence-mcp
 
-## Quick Start
+MCP server generated from OpenAPI — exposes **176 native tools**.
 
-**Build** and **run** in under a minute:
+## Quick Start
 
 ```sh
 make
 
-# Auth (env vars — see Authentication below)
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
+# Or with OpenTelemetry distributed tracing (adds gRPC/OTLP deps)
+make build-with-otel
+
+# Configure your upstream API
+export MCP__UPSTREAM__ENDPOINT=https://api.example.com
+export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 
 # HTTP mode
 ./bin/confluence-mcp --transport http --port 8080 &
-# CLI mode
+
+# CLI mode (list tools, call a tool)
 ./bin/confluence-mcp -t cli list
+./bin/confluence-mcp -t cli <tool-name> [OPTIONS]
 ```
 
 ## Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-t, --transport` | `stdio` | Transport: `stdio` / `http` / `cli` |
+| `-t, --transport` | `stdio` | `stdio` / `http` / `cli` |
 | `-p, --port` | `8080` | HTTP server port |
-| `--metrics-port` | `0` | Override mgmt.port from config.yaml (0 = use config) |
-| `-v, --verbose` | `0` | Log verbosity (0=quiet … 10=trace) |
+| `--metrics-port` | `0` | Override mgmt port (0 = use config) |
+| `-v, --verbose` | `0` | Log verbosity (0–10) |
 | `--print-default-config` | — | Print default config.yaml to stdout |
 
 ## Authentication
 
-**Token** (Authorization header), priority order:
-1. `Authorization` header from MCP client (forwarded)
-2. `MCP_UPSTREAM_TOKEN` env var
-3. `MCP_UPSTREAM_TOKEN_FILE` (e.g. `export MCP_UPSTREAM_TOKEN_FILE=.credentials`)
-4. macOS Keychain / Windows Credential Manager
+Token priority (first available wins):
 
-**Cookie** (session-based auth):
-- `MCP_UPSTREAM_COOKIE` env var
-- `MCP_UPSTREAM_COOKIE_FILE` file
+1. `Authorization` header from MCP client (forwarded as-is)
+2. **OIDC** client_credentials grant (`auth.oidc.*`)
+3. **LDAP** service account bind (`auth.ldap.*`)
+4. **Static** bearer token (`auth.static.bearer_token`)
+5. macOS Keychain / Windows Credential Manager (legacy)
 
-Token and cookie can be set simultaneously (independent headers).
+Cookie-based auth is also available via `auth.static.cookie_token`.
 
 ## Configuration
 
-Create `~/.confluence-mcp/config.yaml` (`--print-default-config` to see a template):
-
-**Tool filtering** — control which native tools AI agents can discover:
+Create `~/.confluence-mcp/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
+upstream:
+  endpoint: https://api.example.com
+
+auth:
+  oidc:
+    enabled: true
+    issuer: https://idp.example.com/realms/myrealm
+    client_id: my-client
+    client_secret: "${MCP__AUTH__OIDC__CLIENT_SECRET}"
+    scopes: openid
+    # token_url: ""   # auto-discovered from issuer /.well-known
+
+  ldap:
+    enabled: false
+    url: ldaps://ldap.example.com
+    base_dn: dc=example,dc=com
+    bind_dn: cn=svc,dc=example,dc=com
+    bind_password: "${MCP__AUTH__LDAP__BIND_PASSWORD}"
+
+  static:
+    bearer_token: "${MCP__AUTH__STATIC__BEARER_TOKEN}"   # or set cookie_token
+
 tools:
   expose:
-    register-all-tools-by-default: false
-    includes: [ListSpaces, SearchContent]
-    # excludes: [DeleteSpace]
+    register_all_tools_by_default: true   # expose all native tools
+    # includes: [Tool1, Tool2]            # or whitelist specific tools
+    # excludes: [Tool3]                   # hide noisy tools
 ```
 
-**Virtual Tools** — compose native tools via a 5-step pipeline DSL:
+All values can be set via `MCP__`-prefixed environment variables (e.g. `MCP__AUTH__OIDC__CLIENT_ID`).
 
-```yaml
-virtualTools:
-  - name: MyVirtualTool
-    description: Application details with remediation suggestions
-    inputSchema:
-      type: object
-      properties: { appId: { type: string } }
-      required: [appId]
-    pipeline:
-      - { id: getApp, kind: call, spec: { tool: GetApplication, args: { applicationId: "$input.appId" } } }
-      - { id: appName, kind: jq, spec: { from: "$getApp", expr: .name } }
-      - { id: done, kind: return, spec: { from: "$appName" } }
-```
-
-Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
-
-## Metrics & Tracing
-
-Configure via `~/.confluence-mcp/config.yaml` `mgmt:` block:
+## Management — Metrics, Tracing, Pprof
 
 ```yaml
 mgmt:
   enabled: true
   host: 0.0.0.0
-  port: 9991            # /metrics + /health endpoints
-  pprof:
-    enabled: false
-    server_bind: 0.0.0.0:6669
+  port: 9991
+
   otel:
     enabled: false
     endpoint: localhost:4317
     protocol: grpc
-    timeout: 10000
     sample_rate: 1.0
+
   metrics:
     enabled: true
     prometheus: true
     export_interval: 30s
-    histogram_boundaries:
-      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
-    labels: {}
-```
 
-Start the server and verify:
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+```
 
 ```sh
-./bin/confluence-mcp --transport http --port 8080                # mgmt port from config.yaml
-./bin/confluence-mcp --transport http --port 8080 --metrics-port 9090  # override mgmt.port
-curl http://localhost:9991/metrics   # Prometheus metrics
-curl http://localhost:9991/health    # health check
+./bin/confluence-mcp --transport http --port 8080
+curl http://localhost:9991/metrics    # Prometheus endpoint
+curl http://localhost:9991/health     # health check
 ```
 
-Metric: `mcp_tool_call_duration_seconds` (histogram)
-Labels: `tool_name`, `tool_type` (native/virtual), `status` (success/error)
+Trace spans are named `mcp.tool.<name>`. W3C `traceparent` is propagated to upstream calls.
 
-**Distributed Tracing:** Enable `mgmt.otel.enabled: true` and set the OTLP gRPC endpoint.
-A trace span `mcp.tool.<name>` is created per invocation. W3C trace context
-(`traceparent`) is propagated to upstream API calls so your AI agent can
-correlate end-to-end in Jaeger / Tempo / Jasper UI.
+## Available Tools (176)
 
-CLI `--metrics-port` overrides `mgmt.port`; env `OTEL_EXPORTER_OTLP_ENDPOINT` falls back
-when `mgmt.otel.endpoint` is empty.
+| Tool | Description |
+|------|-------------|
+| `Add` | Add a category to a space - Adds a category the description of a given {@link Space} identified by spaceKey.  Example request URI to add space category 'testCategory' to space with space key TEST:  `https://example.com/confluence/rest/api/space/TEST/category/testCategory` |
+| `AddContentWatcher` | Add content watcher - Create a new watcher for the given user and content id. User is optional. If not specified, currently logged-in user will be used. Otherwise, it can be specified by either user key or username. When a user is specified and is different from the logged-in user, the logged-in user needs to be a Confluence administrator.    Example request URI(s):  `http://example.com/confluence/rest/api/user/watch/content/131213` `http://example.com/confluence/rest/api/user/watch/content/131213?username=jblogs` `http://example.com/confluence/rest/api/user/watch/content/131213?key=ff8080815a58e24c015a58e263710000` |
+| `AddLabels` | Add Labels - Adds a list of labels to the specified content. The body is the json representation of the list. |
+| `AddSpaceWatch` | Add space watcher - Create a new watcher for the given user and space key. User is optional. If not specified, currently logged-in user will be used. Otherwise, it can be specified by either user key or username. When a user is specified and is different from the logged-in user, the logged-in user needs to be a Confluence administrator.    Example request URI(s):  `http://example.com/confluence/rest/api/user/watch/space/SPACEKEY` `http://example.com/confluence/rest/api/user/watch/space/SPACEKEY?username=jblogs` `http://example.com/confluence/rest/api/user/watch/space/SPACEKEY?key=ff8080815a58e24c015a58e263710000` `http://example.com/confluence/rest/api/user/watch/space/SPACEKEY?contentType=blogpost` |
+| `Archive` | Archive space - Archive the given Space identified by spaceKey. This method is idempotent i.e., if the Space is already archived then no action will be taken. |
+| `ByOperation` | Get all restrictions by Operation - Returns info about all restrictions by operation. |
+| `CancelAllQueuedJobs` | Cancel all queued jobs - Cancels all queued jobs. Does not affect jobs that are being processed at the moment. |
+| `CancelJob` | Cancel job - Cancels the job. If the job is already cancelled or failed, the method will do nothing. |
+| `ChangePassword` | Change password - Change the password for the user identified by the username.   **Validation rules** :   - The new password should not be null or blank.    |
+| `ChangePassword1` | Change password - Change the password for the current user.    Validation Rules:   - New password supplied cannot be null or blank  Example request URI(s):  `http://example.com/confluence/rest/api/user/current/password` |
+| `Children` | Get children of content - Returns a map of the direct children of a piece of Content. Content can have multiple types of children. For example, a Page can have children that are also Pages, but it can also have Comments and Attachments.   The types of the children returned is specified by the `expand` query parameter in the request. This parameter can include expands for multiple child types. If no types are included in the `expand` parameter, the map returned will just list the child types that are available to be expanded for the content referenced by the `id` path parameter. |
+| `ChildrenOfType` | Get children of content by type - Returns the direct children of a piece of Content, limited to a single child type.The types of the children returned is specified by the "type" path parameter in the request. |
+| `CommentsOfContent` | Get comments of content - Returns the comments of a piece of Content. Example request URI(s):   - `http://example.com/confluence/rest/api/content/1234/child/comment` - `http://example.com/confluence/rest/api/content/1234/child/comment?expand=body.view` - `http://example.com/confluence/rest/api/content/1234/child/comment?start=20&limit=10` - `http://example.com/confluence/rest/api/content/1234/child/comment?location=footer&location=inline&location=resolved` - `http://example.com/confluence/rest/api/content/1234/child/comment?expand=extensions.inlineProperties,extensions.resolution` |
+| `Contents` | Get contents in space - Returns the content in this given space.   Example request URI:   `http://example.com/confluence/rest/api/space/TEST/content?expand=history` |
+| `ContentsWithType` | Get trash contents of space - Returns the trash contents in this given space.   Example request URI:   `http://example.com/confluence/rest/api/space/TEST/trash?limit=100&cursor=content:false:612345` |
+| … | *161 more tools not shown* |
+
+## Virtual Tools
+
+Compose native tools via a declarative pipeline DSL:
+
+```yaml
+virtualTools:
+  - name: MyVirtualTool
+    description: Chain multiple native tools together
+    inputSchema:
+      type: object
+      properties:
+        appId: { type: string }
+      required: [appId]
+    pipeline:
+      - id: getApp
+        kind: call
+        spec: { tool: GetApplication, args: { applicationId: "$input.appId" } }
+      - id: appName
+        kind: jq
+        spec: { from: "$getApp", expr: .name }
+      - id: done
+        kind: return
+        spec: { from: "$appName" }
+```
+
+Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 
 ## Agent Integration
 
-All env vars above (auth, OTEL) can be set in each agent's `env` block.
-
-### stdio (Local)
+### stdio (local)
 
 ```json
 // ~/.config/opencode/config.json
-{ "mcp": { "confluence-mcp": { "type": "local", "command": ["./confluence-mcp"], "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." }, "enabled": true } } }
-```
-
-```json
-// ~/.claude/settings.json  (also ~/.config/claude-desktop/claude_desktop_config.json)
-{ "mcpServers": { "confluence-mcp": { "command": "./confluence-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcp": {
+    "confluence-mcp": {
+      "type": "local",
+      "command": ["./confluence-mcp"],
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      },
+      "enabled": true
+    }
+  }
+}
 ```
 
 ```yaml
@@ -145,52 +191,128 @@ mcp:
     confluence-mcp:
       command: ./confluence-mcp
       args: ["--transport", "stdio"]
-      env: { MCP_UPSTREAM_ENDPOINT: "...", MCP_UPSTREAM_TOKEN: "..." }
+      env:
+        MCP__UPSTREAM__ENDPOINT: https://api.example.com
+        MCP__AUTH__STATIC__BEARER_TOKEN: your-token
 ```
 
 ```json
 // ~/.cursor/mcp.json
-{ "mcpServers": { "confluence-mcp": { "command": "./confluence-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "confluence-mcp": {
+      "command": "./confluence-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
 ```json
 // ~/.kiro/mcp.json
-{ "mcpServers": { "confluence-mcp": { "command": "./confluence-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "confluence-mcp": {
+      "command": "./confluence-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
-### HTTP (Remote)
-
-Start the server, then configure the agent to connect via URL:
-
-```sh
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
-./bin/confluence-mcp --transport http --port 8080 --metrics-port 9090
-```
+### HTTP (remote)
 
 ```json
-// OpenCode:  ~/.config/opencode/config.json
-{ "mcp": { "confluence-mcp": { "type": "remote", "url": "http://localhost:8080/mcp" } } }
-```
-
-```json
-// Claude Code / Desktop
-{ "mcpServers": { "confluence-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.config/opencode/config.json
+{
+  "mcp": {
+    "confluence-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```yaml
-# Codex CLI:  ~/.codex/config.yaml
+# ~/.codex/config.yaml
 mcp:
   servers:
-    confluence-mcp: { url: http://localhost:8080/mcp }
+    confluence-mcp:
+      url: http://localhost:8080/mcp
 ```
 
 ```json
-// Cursor:     ~/.cursor/mcp.json
-{ "mcpServers": { "confluence-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.cursor/mcp.json
+{
+  "mcpServers": {
+    "confluence-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```json
-// Kiro:       ~/.kiro/mcp.json
-{ "mcpServers": { "confluence-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.kiro/mcp.json
+{
+  "mcpServers": {
+    "confluence-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
+
+## Deployment — Docker & Kubernetes
+
+```sh
+# Build the Docker image (without OTel)
+make build-image
+
+# Or manually:
+docker build -t confluence-mcp:latest -f deploy/docker/Dockerfile .
+
+# Build the Docker image with OTel tracing
+make build-image-with-otel
+
+# Install/upgrade with Helm (static bearer token)
+helm upgrade -i confluence-mcp deploy/helm \
+  --set image.repository=confluence-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With OIDC authentication
+helm upgrade -i confluence-mcp deploy/helm \
+  --set image.repository=confluence-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
+  --set config.auth.oidc.enabled=true \
+  --set config.auth.oidc.issuer="https://idp.example.com" \
+  --set config.auth.oidc.clientId="my-client" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With LDAP authentication
+helm upgrade -i confluence-mcp deploy/helm \
+  --set image.repository=confluence-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
+  --set config.auth.ldap.enabled=true \
+  --set config.auth.ldap.url="ldaps://ldap.example.com" \
+  --set config.auth.ldap.bindDN="cn=svc,dc=example,dc=com" \
+  --set config.upstream.endpoint="https://api.example.com"
+```
+
+See `deploy/helm/values.yaml` for all configurable parameters.
