@@ -1,0 +1,16 @@
+version: "3.8"
+services:
+  glauth:
+    image: registry.cn-shenzhen.aliyuncs.com/wl4g/glauth:v2.5.0
+    container_name: mcpgen-glauth
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - ./config.toml:/etc/glauth/config.toml:ro
+    command: glauth -c /etc/glauth/config.toml
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 3893 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 3s

@@ -1,0 +1,36 @@
+# Glauth LDAP server configuration for mcpgen-go integration tests.
+# Provides an LDAP server with a service account for bind authentication
+# so that generated MCP servers can authenticate to upstream APIs via LDAP tokens.
+
+#################
+# Server configuration
+[ldap]
+  enabled = true
+  listen = "0.0.0.0:3893"
+
+[ldaps]
+  enabled = false
+
+#################
+# Backend
+[backend]
+  datastore = "config"
+  baseDN = "dc=test,dc=local"
+
+#################
+# Users
+# To create a passsha256: echo -n "mysecret" | openssl dgst -sha256
+[[users]]
+  name = "mcp-svc"
+  givenname = "MCP"
+  sn = "Service"
+  mail = "mcp-svc@test.local"
+  uidnumber = 10001
+  primarygroup = 5501
+  passsha256 = "212635f6cc606cd85ca747e135a6e0d15b2c0bb1edd329cc7d6824c41ba24655" # ldap-secret-123
+
+#################
+# Groups
+[[groups]]
+  name = "svcaccts"
+  gidnumber = 5501
