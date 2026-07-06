@@ -188,6 +188,8 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `MCP_UPSTREAM_ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
 | `MCP_UPSTREAM_TOKEN` | Bearer token for upstream auth (fallback when no Authorization header from client) |
 | `MCP_UPSTREAM_TOKEN_FILE` | Path to a file containing the bearer token (alternative to `MCP_UPSTREAM_TOKEN`) |
+| `MCP_UPSTREAM_COOKIE` | Legacy cookie token for upstream auth (fallback when no Authorization header from client) |
+| `MCP_UPSTREAM_COOKIE_FILE` | Path to a file containing the Legacy cookie token (alternative to `MCP_UPSTREAM_COOKIE`) |
 
 ### Token retrieval priority
 
