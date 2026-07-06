@@ -1,16 +1,25 @@
-# Go MCP server Generator from OpenAPI Specification
+# Enhanced Enterprise-grade MCP server Generator from OpenAPI Schema
 
 Generate production-ready Model Context Protocol (MCP) servers from OpenAPI specs. Each API operation becomes an AI tool that forwards requests to your upstream service.
 
+## Features
+
+- **OAS 2.x / 3.x support** — JSON or YAML, one-command generation. Every OpenAPI operation becomes a typed MCP tool with structured input/output schemas.
+- **Virtual Tools** — Declaratively compose native tools into pipelines (e.g `call → jq → foreach → emit → return`). Drastically reduces LLM token consumption for multi-step API workflows.
+- **Enterprise Auth** — OIDC (client credentials + password grants), LDAP service-account bind, and static bearer/cookie tokens. Auth credentials are decoupled and automatically injected into upstream calls.
+- **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
+- **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
+- **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
+
 ## Quick Start
 
-### Building
+### Build Generator
 
 ```sh
 make
 ```
 
-### Generate the Confluence MCP server examples
+### Generate MCP server (e.g: Confluence)
 
 ```sh
 ./bin/mcpgen -v \
@@ -24,14 +33,14 @@ make
 - The server defaults to httpbin.org which echoes requests — great for quick verification:
 
 ```sh
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
+export MCP__UPSTREAM__ENDPOINT=https://api.example.com
 
 # Optional 1: setup token from env
-export MCP_UPSTREAM_TOKEN=your-token
+export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
-export MCP_UPSTREAM_TOKEN_FILE=/path/to/.credentials
+export MCP__AUTH__STATIC__BEARER_TOKEN_FILE=/path/to/.credentials
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
@@ -48,8 +57,8 @@ Invoke tools directly from the command line — no MCP agent needed. Useful for 
 
 ```sh
 # Set your upstream endpoint (required for real API calls)
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
+export MCP__UPSTREAM__ENDPOINT=https://api.example.com
+export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 
 # First call: list available tools
 examples/confluence-mcp/bin/confluence-mcp -t cli list
@@ -68,53 +77,7 @@ examples/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page
 examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
 ```
 
-## Populars application Swagger
-
-### Atlassian - Jira
-
-- Server edition (more: [developer.atlassian.com/server](https://developer.atlassian.com/server))
-  - [jira_software_dc_10007_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json) (v10.7.4)
-  - [jira_software_dc_11002_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json) (v11.2.1)
-    - Other MCP refer: [context7 OpenAPI](https://context7.com/openapi/dac-static_atlassian_server_jira_platform_jira_software_dc_11002_swagger_v3_json)
-    - Older specs refer: [jira-rest-plugin.wadl](https://docs.atlassian.com/jira/REST/server/jira-rest-plugin.wadl)
-
-- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
-  - [Jira Software REST API intro](https://developer.atlassian.com/cloud/jira/software/rest/intro/#introduction)
-  - [swagger.v3.json](https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json)
-
-### Atlassian - Confluence
-
-- Server edition (More: [developer.atlassian.com/server](https://developer.atlassian.com/server))
-  - [Confluence REST v10.2.14 intro](https://developer.atlassian.com/server/confluence/rest/v10214/intro/#about)
-  - [10.2.14.swagger.v3.json](https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json)
-    - more docs: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud)
-
-- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
-  - [Confluence REST v2 intro](https://developer.atlassian.com/cloud/confluence/rest/v2/intro/)
-  - [openapi-v2.v3.json](https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json)
-
-### Sonatype - IQ
-
-- [IQ API reference](https://help.sonatype.com/en/iq-api-reference.html)
-- [iq-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/iq/latest/iq-api.json)
-- [iq-api.json (1.204.2-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.204.2-01/iq-api.json)
-- [iq-api.json (1.203.0-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.203.0-01/iq-api.json)
-
-### Sonatype - Nexus Repository
-
-- [Nexus Repository API reference](https://help.sonatype.com/en/api-reference.html)
-- [nexus-repository-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json)
-
-### Sonarqube (*Not support swagger*)
-
-- [SonarQube API (Schema) - Recommends](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
-    - It need use tool to convert ([sonarqube-convert-webservice-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-webservice-to-oas.py)) to OAS format from [sonarqube webservices schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
-- [SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)
-- [SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)
-- [sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
-- [go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
-
-## Generator Configuration
+## Generator Self Configuration
 
 ```sh
 ./bin/mcpgen -i spec.yaml -o output-dir [--includes op1,op2] [--excludes op3] [-v]
@@ -185,19 +148,19 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 
 | Variable | Description |
 |---|---|
-| `MCP_UPSTREAM_ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
-| `MCP_UPSTREAM_TOKEN` | Bearer token for upstream auth (fallback when no Authorization header from client) |
-| `MCP_UPSTREAM_TOKEN_FILE` | Path to a file containing the bearer token (alternative to `MCP_UPSTREAM_TOKEN`) |
-| `MCP_UPSTREAM_COOKIE` | Legacy cookie token for upstream auth (fallback when no Authorization header from client) |
-| `MCP_UPSTREAM_COOKIE_FILE` | Path to a file containing the Legacy cookie token (alternative to `MCP_UPSTREAM_COOKIE`) |
+| `MCP__UPSTREAM__ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
+| `MCP__AUTH__STATIC__BEARER_TOKEN` | Bearer token for upstream auth (fallback when no Authorization header from client) |
+| `MCP__AUTH__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token (alternative to `MCP__AUTH__STATIC__BEARER_TOKEN`) |
+| `MCP__AUTH__STATIC__COOKIE_TOKEN` | Legacy cookie token for upstream auth (fallback when no Authorization header from client) |
+| `MCP__AUTH__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the Legacy cookie token (alternative to `MCP__AUTH__STATIC__COOKIE_TOKEN`) |
 
 ### Token retrieval priority
 
 > The server tries to obtain a Bearer token in this order:
 
 1. Authorization header from the client's HTTP request (forwarded)
-2. `MCP_UPSTREAM_TOKEN` environment variable
-3. `MCP_UPSTREAM_TOKEN_FILE` (read from file — ideal for Kubernetes secrets)
+2. `MCP__AUTH__STATIC__BEARER_TOKEN` environment variable
+3. `MCP__AUTH__STATIC__BEARER_TOKEN_FILE` (read from file — ideal for Kubernetes secrets)
 4. macOS Keychain (`security find-generic-password -s mcpgen-upstream -wa ""`)
 5. Windows Credential Manager (`cmdkey /get:mcpgen-upstream`)
 
@@ -258,33 +221,40 @@ tools:
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
-# Schema: https://github.com/wl4g-ai/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+# Schema: https://github.com/flowgent-labs/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtualTools:
-  - name: MyVirtualTool
-    description: Retrieve application details with remediation suggestions
-    inputSchema:
-      type: object
-      properties:
-        appId:
-          type: string
-      required: [appId]
-    pipeline:
-      - id: getApp
-        kind: call
-        spec:
-          tool: GetApplication
-          parse: json
-          args:
-            applicationId: $input.appId
-      - id: appName
-        kind: jq
-        spec:
-          from: $getApp
-          expr: .name
-      - id: done
-        kind: return
-        spec:
-          from: $appName
+  - id: getData
+    kind: call
+    spec:
+      tool: GetData
+      parse: json
+      args:
+        id: $input.dataId
+  - id: enrich
+    kind: foreach
+    spec:
+      in: $getData.items
+      as: item
+      concurrency: 8
+      preserveOrder: true
+      pipeline:
+        - id: getDetail
+          kind: call
+          spec:
+            tool: GetItemDetail
+            args:
+              id: $item.id
+        - id: emitEnriched
+          kind: emit
+          spec:
+            from: $item
+            vars:
+              detail: $getDetail
+            expr: '. + {detail: $detail}'
+  - id: done
+    kind: return
+    spec:
+      from: $enrich
 ```
 
 - Pipeline step kinds: `call` (invoke an MCP tool), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
@@ -303,9 +273,9 @@ virtualTools:
       "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -324,9 +294,9 @@ virtualTools:
       "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -340,7 +310,7 @@ virtualTools:
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
+bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor
@@ -354,9 +324,9 @@ bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
       "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -374,9 +344,9 @@ bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
       "type": "remote",
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -393,9 +363,9 @@ bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
     "confluence-mcp": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -409,7 +379,7 @@ bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
+bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -422,14 +392,60 @@ bearer_token_env_var = "MCP_UPSTREAM_TOKEN"
     "confluence-mcp": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token",
-        "MCP_UPSTREAM_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
 }
 ```
+
+## References swaggers
+
+### Atlassian - Jira
+
+- Server edition (more: [developer.atlassian.com/server](https://developer.atlassian.com/server))
+  - [jira_software_dc_10007_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_10007_swagger.v3.json) (v10.7.4)
+  - [jira_software_dc_11002_swagger.v3.json](https://dac-static.atlassian.com/server/jira/platform/jira_software_dc_11002_swagger.v3.json) (v11.2.1)
+    - Other MCP refer: [context7 OpenAPI](https://context7.com/openapi/dac-static_atlassian_server_jira_platform_jira_software_dc_11002_swagger_v3_json)
+    - Older specs refer: [jira-rest-plugin.wadl](https://docs.atlassian.com/jira/REST/server/jira-rest-plugin.wadl)
+
+- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
+  - [Jira Software REST API intro](https://developer.atlassian.com/cloud/jira/software/rest/intro/#introduction)
+  - [swagger.v3.json](https://dac-static.atlassian.com/cloud/jira/software/swagger.v3.json)
+
+### Atlassian - Confluence
+
+- Server edition (More: [developer.atlassian.com/server](https://developer.atlassian.com/server))
+  - [Confluence REST v10.2.14 intro](https://developer.atlassian.com/server/confluence/rest/v10214/intro/#about)
+  - [10.2.14.swagger.v3.json](https://dac-static.atlassian.com/server/confluence/10.2.14.swagger.v3.json)
+    - more docs: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud)
+
+- Cloud edition (More: [developer.atlassian.com/cloud](https://developer.atlassian.com/cloud))
+  - [Confluence REST v2 intro](https://developer.atlassian.com/cloud/confluence/rest/v2/intro/)
+  - [openapi-v2.v3.json](https://dac-static.atlassian.com/cloud/confluence/openapi-v2.v3.json)
+
+### Sonatype - IQ
+
+- [IQ API reference](https://help.sonatype.com/en/iq-api-reference.html)
+- [iq-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/iq/latest/iq-api.json)
+- [iq-api.json (1.204.2-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.204.2-01/iq-api.json)
+- [iq-api.json (1.203.0-01)](https://sonatype.github.io/sonatype-documentation/api/iq/1.203.0-01/iq-api.json)
+
+### Sonatype - Nexus Repository
+
+- [Nexus Repository API reference](https://help.sonatype.com/en/api-reference.html)
+- [nexus-repository-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json)
+
+### Sonarqube (*Not support swagger*)
+
+- [SonarQube API (Schema) - Recommends](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
+    - It need use tool to convert ([sonarqube-convert-webservice-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-webservice-to-oas.py)) to OAS format from [sonarqube webservices schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
+- [SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)
+- [SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)
+- [sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
+- [go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
 
 ## License
 

@@ -2,140 +2,186 @@
 
 # sonatypeiq-mcp
 
-## Quick Start
+MCP server generated from OpenAPI — exposes **252 native tools**.
 
-**Build** and **run** in under a minute:
+## Quick Start
 
 ```sh
 make
 
-# Auth (env vars — see Authentication below)
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
+# Or with OpenTelemetry distributed tracing (adds gRPC/OTLP deps)
+make build-with-otel
+
+# Configure your upstream API
+export MCP__UPSTREAM__ENDPOINT=https://api.example.com
+export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 
 # HTTP mode
 ./bin/sonatypeiq-mcp --transport http --port 8080 &
-# CLI mode
+
+# CLI mode (list tools, call a tool)
 ./bin/sonatypeiq-mcp -t cli list
+./bin/sonatypeiq-mcp -t cli <tool-name> [OPTIONS]
 ```
 
 ## Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-t, --transport` | `stdio` | Transport: `stdio` / `http` / `cli` |
+| `-t, --transport` | `stdio` | `stdio` / `http` / `cli` |
 | `-p, --port` | `8080` | HTTP server port |
-| `--metrics-port` | `0` | Override mgmt.port from config.yaml (0 = use config) |
-| `-v, --verbose` | `0` | Log verbosity (0=quiet … 10=trace) |
+| `--metrics-port` | `0` | Override mgmt port (0 = use config) |
+| `-v, --verbose` | `0` | Log verbosity (0–10) |
 | `--print-default-config` | — | Print default config.yaml to stdout |
 
 ## Authentication
 
-**Token** (Authorization header), priority order:
-1. `Authorization` header from MCP client (forwarded)
-2. `MCP_UPSTREAM_TOKEN` env var
-3. `MCP_UPSTREAM_TOKEN_FILE` (e.g. `export MCP_UPSTREAM_TOKEN_FILE=.credentials`)
-4. macOS Keychain / Windows Credential Manager
+Token priority (first available wins):
 
-**Cookie** (session-based auth):
-- `MCP_UPSTREAM_COOKIE` env var
-- `MCP_UPSTREAM_COOKIE_FILE` file
+1. `Authorization` header from MCP client (forwarded as-is)
+2. **OIDC** client_credentials grant (`auth.oidc.*`)
+3. **LDAP** service account bind (`auth.ldap.*`)
+4. **Static** bearer token (`auth.static.bearer_token`)
+5. macOS Keychain / Windows Credential Manager (legacy)
 
-Token and cookie can be set simultaneously (independent headers).
+Cookie-based auth is also available via `auth.static.cookie_token`.
 
 ## Configuration
 
-Create `~/.sonatypeiq-mcp/config.yaml` (`--print-default-config` to see a template):
-
-**Tool filtering** — control which native tools AI agents can discover:
+Create `~/.sonatypeiq-mcp/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
+upstream:
+  endpoint: https://api.example.com
+
+auth:
+  oidc:
+    enabled: true
+    issuer: https://idp.example.com/realms/myrealm
+    client_id: my-client
+    client_secret: "${MCP__AUTH__OIDC__CLIENT_SECRET}"
+    scopes: openid
+    # token_url: ""   # auto-discovered from issuer /.well-known
+
+  ldap:
+    enabled: false
+    url: ldaps://ldap.example.com
+    base_dn: dc=example,dc=com
+    bind_dn: cn=svc,dc=example,dc=com
+    bind_password: "${MCP__AUTH__LDAP__BIND_PASSWORD}"
+
+  static:
+    bearer_token: "${MCP__AUTH__STATIC__BEARER_TOKEN}"   # or set cookie_token
+
 tools:
   expose:
-    register-all-tools-by-default: false
-    includes: [ListSpaces, SearchContent]
-    # excludes: [DeleteSpace]
+    register_all_tools_by_default: true   # expose all native tools
+    # includes: [Tool1, Tool2]            # or whitelist specific tools
+    # excludes: [Tool3]                   # hide noisy tools
 ```
 
-**Virtual Tools** — compose native tools via a 5-step pipeline DSL:
+All values can be set via `MCP__`-prefixed environment variables (e.g. `MCP__AUTH__OIDC__CLIENT_ID`).
 
-```yaml
-virtualTools:
-  - name: MyVirtualTool
-    description: Application details with remediation suggestions
-    inputSchema:
-      type: object
-      properties: { appId: { type: string } }
-      required: [appId]
-    pipeline:
-      - { id: getApp, kind: call, spec: { tool: GetApplication, args: { applicationId: "$input.appId" } } }
-      - { id: appName, kind: jq, spec: { from: "$getApp", expr: .name } }
-      - { id: done, kind: return, spec: { from: "$appName" } }
-```
-
-Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
-
-## Metrics & Tracing
-
-Configure via `~/.sonatypeiq-mcp/config.yaml` `mgmt:` block:
+## Management — Metrics, Tracing, Pprof
 
 ```yaml
 mgmt:
   enabled: true
   host: 0.0.0.0
-  port: 9991            # /metrics + /health endpoints
-  pprof:
-    enabled: false
-    server_bind: 0.0.0.0:6669
+  port: 9991
+
   otel:
     enabled: false
     endpoint: localhost:4317
     protocol: grpc
-    timeout: 10000
     sample_rate: 1.0
+
   metrics:
     enabled: true
     prometheus: true
     export_interval: 30s
-    histogram_boundaries:
-      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
-    labels: {}
-```
 
-Start the server and verify:
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+```
 
 ```sh
-./bin/sonatypeiq-mcp --transport http --port 8080                # mgmt port from config.yaml
-./bin/sonatypeiq-mcp --transport http --port 8080 --metrics-port 9090  # override mgmt.port
-curl http://localhost:9991/metrics   # Prometheus metrics
-curl http://localhost:9991/health    # health check
+./bin/sonatypeiq-mcp --transport http --port 8080
+curl http://localhost:9991/metrics    # Prometheus endpoint
+curl http://localhost:9991/health     # health check
 ```
 
-Metric: `mcp_tool_call_duration_seconds` (histogram)
-Labels: `tool_name`, `tool_type` (native/virtual), `status` (success/error)
+Trace spans are named `mcp.tool.<name>`. W3C `traceparent` is propagated to upstream calls.
 
-**Distributed Tracing:** Enable `mgmt.otel.enabled: true` and set the OTLP gRPC endpoint.
-A trace span `mcp.tool.<name>` is created per invocation. W3C trace context
-(`traceparent`) is propagated to upstream API calls so your AI agent can
-correlate end-to-end in Jaeger / Tempo / Jasper UI.
+## Available Tools (252)
 
-CLI `--metrics-port` overrides `mgmt.port`; env `OTEL_EXPORTER_OTLP_ENDPOINT` falls back
-when `mgmt.otel.endpoint` is empty.
+| Tool | Description |
+|------|-------------|
+| `Add` | Use this method to create a new user.  Permissions required: Edit System Configuration and Users |
+| `AddApplication` | Use this method to create an application under an organization. Use the Organization REST API to obtain organizationId.  Permissions required: Add Application (on parent organization) |
+| `AddArtifactoryConnection` | Use this method to add a new Artifactory connection.  Permissions required: Edit IQ Elements |
+| `AddAutoPolicyWaiveExclusion` | Use this method to create an auto policy waiver exclusion for a specified auto policy waiver.  Permissions required: Waive Policy Violations |
+| `AddAutoPolicyWaiver` | Use this method to create an auto policy waiver configuration. Only one configuration can exist at a time for a given application or organization.  Permissions required: Waive Policy Violations |
+| `AddAutoPolicyWaivers` | Use this method to create an auto policy waiver configuration. Only three configurations can  exist at a time for a given application or organization. With different combinations for reachable/pathForward  Permissions required: Waive Policy Violations |
+| `AddBulkPolicyWaivers` | Use this method to create policy waivers for multiple policy violations.  Permissions required: Waive Policy Violations |
+| `AddLabel` | Use this method to create and assign a component label to an application, organization or repository.  Permissions required: Edit IQ Elements |
+| `AddLicenseOverride` | Use this method to add or update a license override to a component for a given owner scope.  Permissions required: Change Licenses |
+| `AddOrganization` | Use this method to add a new organization.  Permissions required: Edit IQ Elements |
+| `AddPolicyWaiverByPolicyViolationId` | Use this method to create a policy waiver.  Permissions required: Waive Policy Violations |
+| `AddPolicyWaiverRequestByPolicyViolationId` | Use this method to create a policy waiver request.  Permissions required: View IQ Elements |
+| `AddProprietaryComponentNames` | Adds a list of proprietary component namespaces for the specified format to prevent namespace confusion attacks.  Permissions required: Evaluate Individual Components |
+| `AddRepositoryManager` | Use this method to add a new repository manager.  Permissions required: Edit IQ Elements |
+| `AddRole` | Use this method to create a new custom role with specified permissions.  Permissions required: Edit Roles |
+| … | *237 more tools not shown* |
+
+## Virtual Tools
+
+Compose native tools via a declarative pipeline DSL:
+
+```yaml
+virtualTools:
+  - name: MyVirtualTool
+    description: Chain multiple native tools together
+    inputSchema:
+      type: object
+      properties:
+        appId: { type: string }
+      required: [appId]
+    pipeline:
+      - id: getApp
+        kind: call
+        spec: { tool: GetApplication, args: { applicationId: "$input.appId" } }
+      - id: appName
+        kind: jq
+        spec: { from: "$getApp", expr: .name }
+      - id: done
+        kind: return
+        spec: { from: "$appName" }
+```
+
+Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 
 ## Agent Integration
 
-All env vars above (auth, OTEL) can be set in each agent's `env` block.
-
-### stdio (Local)
+### stdio (local)
 
 ```json
 // ~/.config/opencode/config.json
-{ "mcp": { "sonatypeiq-mcp": { "type": "local", "command": ["./sonatypeiq-mcp"], "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." }, "enabled": true } } }
-```
-
-```json
-// ~/.claude/settings.json  (also ~/.config/claude-desktop/claude_desktop_config.json)
-{ "mcpServers": { "sonatypeiq-mcp": { "command": "./sonatypeiq-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcp": {
+    "sonatypeiq-mcp": {
+      "type": "local",
+      "command": ["./sonatypeiq-mcp"],
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      },
+      "enabled": true
+    }
+  }
+}
 ```
 
 ```yaml
@@ -145,52 +191,128 @@ mcp:
     sonatypeiq-mcp:
       command: ./sonatypeiq-mcp
       args: ["--transport", "stdio"]
-      env: { MCP_UPSTREAM_ENDPOINT: "...", MCP_UPSTREAM_TOKEN: "..." }
+      env:
+        MCP__UPSTREAM__ENDPOINT: https://api.example.com
+        MCP__AUTH__STATIC__BEARER_TOKEN: your-token
 ```
 
 ```json
 // ~/.cursor/mcp.json
-{ "mcpServers": { "sonatypeiq-mcp": { "command": "./sonatypeiq-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "sonatypeiq-mcp": {
+      "command": "./sonatypeiq-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
 ```json
 // ~/.kiro/mcp.json
-{ "mcpServers": { "sonatypeiq-mcp": { "command": "./sonatypeiq-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "sonatypeiq-mcp": {
+      "command": "./sonatypeiq-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
-### HTTP (Remote)
-
-Start the server, then configure the agent to connect via URL:
-
-```sh
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
-./bin/sonatypeiq-mcp --transport http --port 8080 --metrics-port 9090
-```
+### HTTP (remote)
 
 ```json
-// OpenCode:  ~/.config/opencode/config.json
-{ "mcp": { "sonatypeiq-mcp": { "type": "remote", "url": "http://localhost:8080/mcp" } } }
-```
-
-```json
-// Claude Code / Desktop
-{ "mcpServers": { "sonatypeiq-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.config/opencode/config.json
+{
+  "mcp": {
+    "sonatypeiq-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```yaml
-# Codex CLI:  ~/.codex/config.yaml
+# ~/.codex/config.yaml
 mcp:
   servers:
-    sonatypeiq-mcp: { url: http://localhost:8080/mcp }
+    sonatypeiq-mcp:
+      url: http://localhost:8080/mcp
 ```
 
 ```json
-// Cursor:     ~/.cursor/mcp.json
-{ "mcpServers": { "sonatypeiq-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.cursor/mcp.json
+{
+  "mcpServers": {
+    "sonatypeiq-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```json
-// Kiro:       ~/.kiro/mcp.json
-{ "mcpServers": { "sonatypeiq-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.kiro/mcp.json
+{
+  "mcpServers": {
+    "sonatypeiq-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
+
+## Deployment — Docker & Kubernetes
+
+```sh
+# Build the Docker image (without OTel)
+make build-image
+
+# Or manually:
+docker build -t sonatypeiq-mcp:latest -f deploy/docker/Dockerfile .
+
+# Build the Docker image with OTel tracing
+make build-image-with-otel
+
+# Install/upgrade with Helm (static bearer token)
+helm upgrade -i sonatypeiq-mcp deploy/helm \
+  --set image.repository=sonatypeiq-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With OIDC authentication
+helm upgrade -i sonatypeiq-mcp deploy/helm \
+  --set image.repository=sonatypeiq-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
+  --set config.auth.oidc.enabled=true \
+  --set config.auth.oidc.issuer="https://idp.example.com" \
+  --set config.auth.oidc.clientId="my-client" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With LDAP authentication
+helm upgrade -i sonatypeiq-mcp deploy/helm \
+  --set image.repository=sonatypeiq-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
+  --set config.auth.ldap.enabled=true \
+  --set config.auth.ldap.url="ldaps://ldap.example.com" \
+  --set config.auth.ldap.bindDN="cn=svc,dc=example,dc=com" \
+  --set config.upstream.endpoint="https://api.example.com"
+```
+
+See `deploy/helm/values.yaml` for all configurable parameters.
