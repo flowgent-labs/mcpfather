@@ -1,10 +1,13 @@
-name: PR Build & Test
+name: Build & Test
 
 on:
   pull_request:
     branches: [main]
   push:
     branches: [main]
+  schedule:
+    # Weekly full integration test on main branch (Monday 08:37 UTC)
+    - cron: "37 8 * * 1"
 
 jobs:
   build-and-test:
@@ -23,3 +26,58 @@ jobs:
 
       - name: Test
         run: make test
+
+  integration-oidc:
+    runs-on: ubuntu-latest
+    env:
+      MCP__AUTH__OIDC__ENABLED: "true"
+      MCP__AUTH__OIDC__ISSUER: "http://localhost:5556/dex"
+      MCP__AUTH__OIDC__CLIENT_ID: "mcpgen-client"
+      MCP__AUTH__OIDC__CLIENT_SECRET: "mcpgen-secret"
+      MCP__AUTH__OIDC__SCOPES: "openid"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Start Dex OIDC Provider
+        run: |
+          docker run -d --name mcpgen-dex \
+            --network host \
+            -v ${{ github.workspace }}/it/docker/dex/config.yaml:/etc/dex/config.yaml:ro \
+            docker.io/dexidp/dex:v2.41.1 \
+            dex serve /etc/dex/config.yaml
+
+      - name: Wait for Dex
+        timeout-minutes: 1
+        run: |
+          for i in $(seq 1 30); do
+            if wget -qO- http://localhost:5556/dex/.well-known/openid-configuration 2>/dev/null; then
+              echo "Dex is ready"
+              exit 0
+            fi
+            echo "Waiting for Dex... ($i/30)"
+            sleep 2
+          done
+          echo "Dex failed to start"
+          docker logs mcpgen-dex
+          exit 1
+
+      - name: Verify OIDC Discovery
+        run: |
+          echo "=== OIDC Discovery Document ==="
+          curl -sSf http://localhost:5556/dex/.well-known/openid-configuration | python3 -m json.tool
+
+      - name: Build
+        run: make build
+
+      - name: Run OIDC Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "OIDC" ./it/...
+
+      - name: Collect Dex Logs (on failure)
+        if: failure()
+        run: docker logs mcpgen-dex

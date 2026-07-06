@@ -1035,7 +1035,7 @@ func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, hom
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
-		"MCP_UPSTREAM_ENDPOINT="+mockURL,
+		"MCP__UPSTREAM__ENDPOINT="+mockURL,
 	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
