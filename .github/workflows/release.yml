@@ -1,0 +1,94 @@
+name: Release
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Determine version bump
+        id: bump
+        run: |
+          # Get the PR merge commit message (first line)
+          COMMIT_MSG="${{ github.event.pull_request.title }}"
+
+          # Get latest tag
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Latest tag: ${LATEST_TAG}"
+
+          # Parse semver
+          MAJOR=$(echo "${LATEST_TAG}" | sed 's/v//' | cut -d. -f1)
+          MINOR=$(echo "${LATEST_TAG}" | sed 's/v//' | cut -d. -f2)
+          PATCH=$(echo "${LATEST_TAG}" | sed 's/v//' | cut -d. -f3)
+
+          if echo "${COMMIT_MSG}" | grep -qiE "^refactor:"; then
+            # Major bump for refactor
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+            echo "Bump: major (refactor detected)"
+          elif echo "${COMMIT_MSG}" | grep -qiE "^feat:"; then
+            # Minor bump for feat
+            MINOR=$((MINOR + 1))
+            PATCH=0
+            echo "Bump: minor (feat detected)"
+          elif echo "${COMMIT_MSG}" | grep -qiE "^(fix:|docs:|chore:|test:|ci:|perf:)"; then
+            # Patch bump for fix and others
+            PATCH=$((PATCH + 1))
+            echo "Bump: patch (fix/docs/chore detected)"
+          else
+            # Default patch bump
+            PATCH=$((PATCH + 1))
+            echo "Bump: patch (default)"
+          fi
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New tag: ${NEW_TAG}"
+          echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.bump.outputs.new_tag }}" -m "Release ${{ steps.bump.outputs.new_tag }}"
+          git push origin "${{ steps.bump.outputs.new_tag }}"
+
+      - name: Build Cross-Platform Binaries
+        run: make build-all
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.new_tag }}
+          name: ${{ steps.bump.outputs.new_tag }}
+          body: |
+            ## Release ${{ steps.bump.outputs.new_tag }}
+
+            PR: ${{ github.event.pull_request.html_url }}
+
+            ### Changes
+            ${{ github.event.pull_request.body }}
+
+            ### Binaries
+            Cross-platform binaries built with `make build-all`.
+          files: bin/mcpgen-*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
