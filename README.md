@@ -353,7 +353,6 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
   "mcp": {
     "confluence-mcp": {
       "type": "remote",
-      "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
         "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
@@ -366,7 +365,7 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
 
 ### Claude Code (Remote)
 
-- `~/.claude.json`:
+- `~/.claude.json` (User MCPs):
 
 ```json
 {
