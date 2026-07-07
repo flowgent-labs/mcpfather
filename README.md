@@ -1,4 +1,15 @@
-# Enhanced Enterprise-grade MCP server Generator from OpenAPI Schema
+# MCP Server Generator from OpenAPI Schema
+
+[![Build & Test](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml)
+[![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](https://go.dev/dl/)
+[![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
+[![OpenAPI](https://img.shields.io/badge/spec-OpenAPI%202%20%7C%203-6C8EBF)](https://www.openapis.org/)
+[![MCP](https://img.shields.io/badge/protocol-MCP-blue)](https://modelcontextprotocol.io/)
+[![OIDC](https://img.shields.io/badge/auth-OIDC-CB3837?logo=openid)](https://openid.net/connect/)
+[![LDAP](https://img.shields.io/badge/auth-LDAP-FF8300)](https://ldap.com/)
+[![Prometheus](https://img.shields.io/badge/metrics-Prometheus-E6522C?logo=prometheus)](https://prometheus.io/)
+[![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
+[![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
 
 Generate production-ready Model Context Protocol (MCP) servers from OpenAPI specs. Each API operation becomes an AI tool that forwards requests to your upstream service.
 
