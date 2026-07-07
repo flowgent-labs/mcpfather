@@ -47,6 +47,11 @@ build-with-otel: go.sum
 
 IMAGE_REPO ?= docker.io/library/$(BINARY_NAME)
 IMAGE_TAG  ?= $(VERSION)
+MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
+MCP_UPSTREAM_TOKEN  ?= $(MCP_UPSTREAM_TOKEN)
+MCP_OIDC_ISSUER_URL  ?= $(MCP_OIDC_ISSUER_URL)
+MCP_OIDC_CLIENT_ID  ?= $(MCP_OIDC_CLIENT_ID)
+MCP_OIDC_CLIENT_SECRET  ?= $(MCP_OIDC_CLIENT_SECRET)
 
 build-image: build
 	docker build -t $(IMAGE_REPO):$(IMAGE_TAG) -f deploy/docker/Dockerfile .
@@ -58,6 +63,10 @@ deploy: build-image
 	helm upgrade -i $(BINARY_NAME) deploy/helm \
 		--set image.repository=$(IMAGE_REPO) \
 		--set image.tag=$(IMAGE_TAG) \
+		--set config.upstream.endpoint=$(MCP_UPSTREAM_ENDPOINT) \
 		--set secret.static.create=true \
-		--set secret.static.bearerToken="YOUR_TOKEN" \
-		--set config.upstream.endpoint="https://api.example.com"
+		--set secret.static.bearerToken=$(MCP_UPSTREAM_TOKEN) \
+		--set secret.oidc.enabled=true \
+		--set secret.oidc.issuerUrl=$(MCP_OIDC_ISSUER_URL) \
+		--set secret.oidc.clientId=$(MCP_OIDC_CLIENT_ID) \
+		--set secret.oidc.clientSecret=$(MCP_OIDC_CLIENT_SECRET)

@@ -17,7 +17,7 @@ import (
 const GetFirewallMetricsInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetFirewallMetrics tool (Status: 200, Content-Type: application/json)
-const GetFirewallMetricsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a map of firewall metric name to value including the last updated time.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **Additional Properties**:\n    - **property value** (Type: object):\n      - **firewallMetricsValue** (Type: integer, int32):\n      - **latestUpdatedTime** (Type: string, date-time):\n"
+const GetFirewallMetricsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> The response contains a map of firewall metric name to value including the last updated time.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **Additional Properties**:\n    - **property value** (Type: object):\n      - **latestUpdatedTime** (Type: string, date-time):\n      - **firewallMetricsValue** (Type: integer, int32):\n"
 
 // NewGetFirewallMetricsMCPTool creates the MCP Tool instance for GetFirewallMetrics
 func NewGetFirewallMetricsMCPTool() mcp.Tool {
