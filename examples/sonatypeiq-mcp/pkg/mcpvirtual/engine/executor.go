@@ -5,6 +5,7 @@ package engine
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"sonatypeiq-mcp/pkg/mcpvirtual/node"
 	"sonatypeiq-mcp/pkg/mcpvirtual/pipeline"
@@ -76,6 +77,35 @@ func checkRequire(step *pipeline.StepConfig, result interface{}) error {
 			}
 			return fmt.Errorf("Step %q: result must not be empty", step.ID)
 		}
+	}
+	if step.Require.Field != "" {
+		if err := checkField(result, step.Require.Field); err != nil {
+			if step.Require.Message != "" {
+				return fmt.Errorf("%s", step.Require.Message)
+			}
+			return fmt.Errorf("Step %q: %w", step.ID, err)
+		}
+	}
+	return nil
+}
+
+// checkField validates that a dotted path exists in the result.
+func checkField(v interface{}, path string) error {
+	parts := strings.Split(path, ".")
+	current := v
+	for i, part := range parts {
+		m, ok := current.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("field %q not found (cannot navigate into %T at %s)", part, current, strings.Join(parts[:i], "."))
+		}
+		val, ok := m[part]
+		if !ok {
+			return fmt.Errorf("field %q not found at %s", part, strings.Join(parts[:i+1], "."))
+		}
+		current = val
+	}
+	if current == nil {
+		return fmt.Errorf("field %q is nil", path)
 	}
 	return nil
 }

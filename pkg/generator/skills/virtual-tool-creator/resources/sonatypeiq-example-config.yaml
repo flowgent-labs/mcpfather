@@ -1,15 +1,71 @@
+# ---- Native MCP Tools ----
+tools:
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    register-all-tools-by-default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if register-all-tools-by-default is false.
+    includes: []
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over register-all-tools-by-default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
+
+# ---- Upstream Request Forwarding ----
+upstream:
+  # When true, the MCP session ID from client requests is forwarded
+  # to upstream APIs as the X-MCP-Session-ID HTTP header.
+  # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)
+  enable_mcp_session_in_forwarding: false
+
+# ---- Management Endpoints (metrics, tracing, pprof) ----
+mgmt:
+  # When true, enables the management HTTP server (/metrics, /health).
+  # Default: true (management server starts unless explicitly disabled).
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc             # grpc | http/protobuf | http/json
+    timeout: 10000             # connection timeout in milliseconds
+    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
+  metrics:
+    # When true, enables Prometheus metrics export (/metrics endpoint).
+    # Default: true (metrics enabled unless explicitly disabled).
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}                 # static labels added to every metric
+
+# ---- Virtual Tools ----
+# Compose multiple native tools into a single virtual tool via a declarative
+# e.g: 5-step pipeline (call → jq → foreach → emit → return).
+# Schema: https://github.com/flowgent-labs/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtualTools:
   - name: get_scan_violations_recommends
+    enabled: true
     description: >
       Retrieve policy violations for a scan, keep components at or above a
       threat threshold, enrich each component with remediation suggestions.
-
     annotations:
       readOnlyHint: true
       destructiveHint: false
       idempotentHint: true
       openWorldHint: true
-
     inputSchema:
       type: object
       required:
@@ -57,9 +113,7 @@ virtualTools:
           minimum: 1
           maximum: 16
           description: Maximum remediation lookups to run concurrently.
-
     pipeline:
-
       - id: policy
         kind: call
         spec:
@@ -69,7 +123,6 @@ virtualTools:
             applicationPublicId: $input.applicationPublicId
             scanId: $input.scanId
             includeViolationTimes: $input.includeViolationTimes
-
       - id: appInternal
         kind: jq
         spec:
@@ -78,7 +131,6 @@ virtualTools:
         require:
           nonEmpty: true
           message: Cannot find internal application id in policy response.
-
       - id: history
         kind: call
         spec:
@@ -87,7 +139,6 @@ virtualTools:
           args:
             applicationId: $appInternal
             limit: $input.historyLimit
-
       - id: stage
         kind: jq
         spec:
@@ -101,7 +152,6 @@ virtualTools:
         require:
           nonEmpty: true
           message: Cannot find stage for scanId=$input.scanId.
-
       - id: threatComponents
         kind: jq
         spec:
@@ -170,7 +220,6 @@ virtualTools:
                     }
                 }
             ]
-
       - id: components
         kind: foreach
         spec:
@@ -218,7 +267,6 @@ virtualTools:
                           }
                       ]
                   }
-
       - id: report
         kind: return
         spec:

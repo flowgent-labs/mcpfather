@@ -391,6 +391,85 @@ func TestForeachNode_WithJQInSubPipeline(t *testing.T) {
 	}
 }
 
+func TestForeachNode_OnMissingSkip_UnresolvedField(t *testing.T) {
+	rctx := newMockCtx(nil)
+	rctx.SetOutput("data", map[string]interface{}{"other": "value"})
+
+	step := &pipeline.StepConfig{
+		ID:   "process",
+		Kind: "foreach",
+		Spec: pipeline.StepSpec{
+			In:        "$data.missing",
+			As:        "item",
+			OnMissing: "skip",
+			Pipeline: []pipeline.StepConfig{
+				{ID: "emit", Kind: "emit", Spec: pipeline.StepSpec{From: "$item"}},
+			},
+		},
+	}
+
+	mock := &mockExecutor{callCount: make(map[string]int)}
+	result, err := ForeachNode(context.Background(), step, rctx, mock)
+	if err != nil {
+		t.Fatalf("expected no error with onMissing=skip, got: %v", err)
+	}
+	arr := result.([]interface{})
+	if len(arr) != 0 {
+		t.Errorf("expected empty array, got %d items", len(arr))
+	}
+}
+
+func TestForeachNode_OnMissingSkip_NotArray(t *testing.T) {
+	rctx := newMockCtx(nil)
+	rctx.SetOutput("data", "not-an-array")
+
+	step := &pipeline.StepConfig{
+		ID:   "process",
+		Kind: "foreach",
+		Spec: pipeline.StepSpec{
+			In:        "$data",
+			As:        "item",
+			OnMissing: "skip",
+			Pipeline: []pipeline.StepConfig{
+				{ID: "emit", Kind: "emit", Spec: pipeline.StepSpec{From: "$item"}},
+			},
+		},
+	}
+
+	mock := &mockExecutor{callCount: make(map[string]int)}
+	result, err := ForeachNode(context.Background(), step, rctx, mock)
+	if err != nil {
+		t.Fatalf("expected no error with onMissing=skip for non-array, got: %v", err)
+	}
+	arr := result.([]interface{})
+	if len(arr) != 0 {
+		t.Errorf("expected empty array, got %d items", len(arr))
+	}
+}
+
+func TestForeachNode_OnMissingDefault_Error(t *testing.T) {
+	rctx := newMockCtx(nil)
+	rctx.SetOutput("data", map[string]interface{}{"other": "value"})
+
+	step := &pipeline.StepConfig{
+		ID:   "process",
+		Kind: "foreach",
+		Spec: pipeline.StepSpec{
+			In:   "$data.missing",
+			As:   "item",
+			Pipeline: []pipeline.StepConfig{
+				{ID: "emit", Kind: "emit", Spec: pipeline.StepSpec{From: "$item"}},
+			},
+		},
+	}
+
+	mock := &mockExecutor{callCount: make(map[string]int)}
+	_, err := ForeachNode(context.Background(), step, rctx, mock)
+	if err == nil {
+		t.Fatal("expected error when onMissing is not set and field is unresolved")
+	}
+}
+
 func TestResolveConcurrency(t *testing.T) {
 	tests := []struct {
 		name     string

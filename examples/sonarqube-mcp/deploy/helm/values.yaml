@@ -136,6 +136,7 @@ config:
   runtime:
     downloadDir: ""
     logAuthorization: false
+
   # -- Virtual tools pipeline definitions.
   # Each virtual tool has: name, description, inputSchema, and pipeline.
   virtualTools: []
