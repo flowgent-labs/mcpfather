@@ -39,7 +39,7 @@ func CreateAvatarFromTemporary3Handler(ctx context.Context, request mcp.CallTool
 	}
 	contentType := "application/json"
 	startTime := time.Now()
-	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/rest/api/2/universal_avatar/type/{type}/owner/{owningObjectId}/avatar", args, []string{"owningObjectId", "type"}, contentType)
+	resp, err := mcputils.ForwardRequest(ctx, upstream, "POST", "/rest/api/2/user/avatar", args, []string{}, contentType)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
