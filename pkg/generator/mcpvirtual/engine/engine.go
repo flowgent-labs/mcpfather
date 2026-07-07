@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/config"
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/config"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
 )
 
 // ToolRegistry provides access to native MCP tools for the virtual tool engine.

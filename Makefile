@@ -23,8 +23,13 @@ build-all:
 	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe $(CMD_PATH)
 	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe $(CMD_PATH)
 
-test:
-	go test -v -count=1 -timeout 300s ./...
+test: test-unit
+
+test-unit:
+	go test -v -count=1 -timeout 300s $(shell go list ./... | grep -v '/it$$')
+
+test-integration:
+	go test -v -count=1 -timeout 300s ./it/...
 
 install:
 	go install $(BUILD_FLAGS) $(LDFLAGS) $(CMD_PATH)

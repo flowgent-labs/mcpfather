@@ -1,4 +1,4 @@
-module github.com/wl4g-ai/mcpgen
+module github.com/flowgent-labs/mcpgen-go
 
 go 1.23.4
 

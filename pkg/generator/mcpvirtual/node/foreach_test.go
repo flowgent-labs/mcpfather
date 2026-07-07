@@ -5,7 +5,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
 )
 
 type mockExecutor struct {

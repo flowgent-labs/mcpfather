@@ -9,7 +9,7 @@ import (
 )
 
 // virtualSrcPrefix is the import path used in the embedded virtual engine source files.
-const virtualSrcPrefix = "github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual"
+const virtualSrcPrefix = "github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual"
 
 // GenerateVirtual copies the virtual tool engine source files into the
 // generated project as pkg/mcpvirtual/, rewriting import paths.

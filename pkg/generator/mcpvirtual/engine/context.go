@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
 )
 
 // Context holds all runtime state for pipeline execution.
