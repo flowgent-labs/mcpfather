@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
+	"github.com/flowgent-labs/mcpfather/pkg/converter"
 )
 
 func Test_capitalizeFirstLetter(t *testing.T) {
