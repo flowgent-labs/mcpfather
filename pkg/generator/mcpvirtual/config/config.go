@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
 	"gopkg.in/yaml.v3"
 )
 

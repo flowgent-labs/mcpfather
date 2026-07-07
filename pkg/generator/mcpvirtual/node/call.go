@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
 )
 
 // CallNode executes a call step — invoking a native MCP tool.

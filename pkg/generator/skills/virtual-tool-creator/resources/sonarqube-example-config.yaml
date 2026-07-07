@@ -61,7 +61,7 @@ mgmt:
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
-# Schema: https://github.com/flowgent-labs/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+# Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtualTools:
   # ---- get_newcode_issues --------------------------------------------------
   - name: get_newcode_issues

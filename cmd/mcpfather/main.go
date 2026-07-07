@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator"
+	"github.com/flowgent-labs/mcpfather/pkg/generator"
 )
 
 var (
@@ -39,7 +39,7 @@ func init() {
 }
 
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: mcpgen [OPTIONS]
+	fmt.Fprintf(os.Stderr, `Usage: mcpfather [OPTIONS]
 
 Options:
   -i, --input       Path to the OpenAPI specification file (JSON or YAML)

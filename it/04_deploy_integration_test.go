@@ -35,7 +35,7 @@ import (
 //   - k3s:           imports image via "k3s ctr images import"
 //   - containerd:    imports image via "ctr" or "crictl"
 //   - orbstack:      imports image via "orb" CLI (macOS)
-//   - remote:        requires MCPGEN_TEST_IMAGE_REPO env var; image is
+//   - remote:        requires MCPFATHER_TEST_IMAGE_REPO env var; image is
 //                    pushed after build and helm uses that repo.
 // ---------------------------------------------------------------------------
 
@@ -56,8 +56,8 @@ func detectCluster(t *testing.T) (clusterType, string) {
 	t.Helper()
 
 	// 1 — user explicitly set a remote repo
-	if repo := os.Getenv("MCPGEN_TEST_IMAGE_REPO"); repo != "" {
-		t.Logf("MCPGEN_TEST_IMAGE_REPO=%s → treating cluster as remote", repo)
+	if repo := os.Getenv("MCPFATHER_TEST_IMAGE_REPO"); repo != "" {
+		t.Logf("MCPFATHER_TEST_IMAGE_REPO=%s → treating cluster as remote", repo)
 		return clusterRemote, repo
 	}
 
@@ -90,8 +90,8 @@ func detectCluster(t *testing.T) (clusterType, string) {
 	}
 
 	// 5 — no local tooling => remote
-	t.Fatalf("Cannot determine local cluster type and MCPGEN_TEST_IMAGE_REPO is not set.\n" +
-		"Set MCPGEN_TEST_IMAGE_REPO=<registry>/<repo> for remote clusters, or install k3s/ctr/crictl/orb.")
+	t.Fatalf("Cannot determine local cluster type and MCPFATHER_TEST_IMAGE_REPO is not set.\n" +
+		"Set MCPFATHER_TEST_IMAGE_REPO=<registry>/<repo> for remote clusters, or install k3s/ctr/crictl/orb.")
 	return clusterUnknown, "" // unreachable
 }
 
@@ -125,7 +125,7 @@ func deployPrereqsOK(t *testing.T) (kubectl, helm, docker string) {
 // deployNamespace creates a unique test namespace and returns its name.
 func deployNamespace(t *testing.T, kubectl string) string {
 	t.Helper()
-	ns := fmt.Sprintf("mcpgen-deploy-test-%d", time.Now().UnixNano()%100000)
+	ns := fmt.Sprintf("mcpfather-deploy-test-%d", time.Now().UnixNano()%100000)
 
 	// Clean up any leftover namespace from prior runs (ignore errors).
 	exec.Command(kubectl, "delete", "namespace", ns, "--ignore-not-found", "--timeout=30s").Run()
@@ -229,7 +229,7 @@ func deployMakeImageAvailable(t *testing.T, docker, imageTag string, ct clusterT
 
 	case clusterRemote:
 		if remoteRepo == "" {
-			t.Fatal("remoteRepo is empty for remote cluster — set MCPGEN_TEST_IMAGE_REPO")
+			t.Fatal("remoteRepo is empty for remote cluster — set MCPFATHER_TEST_IMAGE_REPO")
 		}
 		remoteTag := fmt.Sprintf("%s/%s:%s", remoteRepo, name, ver)
 		tagCmd := exec.Command(docker, "tag", imageTag, remoteTag)

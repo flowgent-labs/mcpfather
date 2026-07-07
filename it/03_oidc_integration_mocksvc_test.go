@@ -40,7 +40,7 @@ func startTestOIDCProvider(t *testing.T) *testOIDCProvider {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	cmd := exec.CommandContext(ctx, binPath, "-clients", "mcpgen-client:mcpgen-secret,test-client:test-secret")
+	cmd := exec.CommandContext(ctx, binPath, "-clients", "mcpfather-client:mcpfather-secret,test-client:test-secret")
 	cmd.Stderr = os.Stderr
 
 	stdout, err := cmd.StdoutPipe()
@@ -171,8 +171,8 @@ auth:
   oidc:
     enabled: true
     issuer: %s
-    client_id: mcpgen-client
-    client_secret: mcpgen-secret
+    client_id: mcpfather-client
+    client_secret: mcpfather-secret
     scopes: openid
     
 upstream:

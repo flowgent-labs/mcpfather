@@ -1,4 +1,4 @@
-# Contributing to mcpgen
+# Contributing to mcpfather
 
 Thank you for your interest in contributing!
 

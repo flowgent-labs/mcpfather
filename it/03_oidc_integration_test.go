@@ -42,14 +42,14 @@ func ensureDex(t *testing.T) (cleanup func()) {
 		return func() {}
 	}
 
-	for _, name := range []string{"mcpgen-dex", "dex"} {
+	for _, name := range []string{"mcpfather-dex", "dex"} {
 		exec.Command("docker", "stop", name).Run()
 		exec.Command("docker", "rm", name).Run()
 	}
 
 	dexDir := filepath.Join(repoRoot(t), "it", "docker", "dex")
 	configFile := filepath.Join(dexDir, "config.yaml")
-	cmd := exec.Command("docker", "run", "-d", "--name", "mcpgen-dex",
+	cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-dex",
 		"--network", "host",
 		"-v", configFile+":/etc/dex/config.yaml:ro",
 		"registry.cn-shenzhen.aliyuncs.com/wl4g/dex:v2.41.1", "dex", "serve", "/etc/dex/config.yaml")
@@ -60,8 +60,8 @@ func ensureDex(t *testing.T) (cleanup func()) {
 
 	waitForDex(t)
 	return func() {
-		exec.Command("docker", "stop", "mcpgen-dex").Run()
-		exec.Command("docker", "rm", "mcpgen-dex").Run()
+		exec.Command("docker", "stop", "mcpfather-dex").Run()
+		exec.Command("docker", "rm", "mcpfather-dex").Run()
 	}
 }
 
@@ -90,8 +90,8 @@ func TestOIDCConfigEnvOverrides(t *testing.T) {
 	envVars := []string{
 		"MCP__AUTH__OIDC__ENABLED=true",
 		"MCP__AUTH__OIDC__ISSUER=http://localhost:5556/dex",
-		"MCP__AUTH__OIDC__CLIENT_ID=mcpgen-client",
-		"MCP__AUTH__OIDC__CLIENT_SECRET=mcpgen-secret",
+		"MCP__AUTH__OIDC__CLIENT_ID=mcpfather-client",
+		"MCP__AUTH__OIDC__CLIENT_SECRET=mcpfather-secret",
 		"MCP__AUTH__OIDC__SCOPES=openid",
 		"MCP__UPSTREAM__ENDPOINT=http://localhost:0",
 	}

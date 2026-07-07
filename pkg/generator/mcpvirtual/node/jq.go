@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/itchyny/gojq"
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
 )
 
 // JQNode evaluates a jq expression against pipeline data.

@@ -66,14 +66,14 @@ func ensureGlauth(t *testing.T) (cleanup func()) {
 		return func() {}
 	}
 
-	for _, name := range []string{"mcpgen-glauth", "glauth"} {
+	for _, name := range []string{"mcpfather-glauth", "glauth"} {
 		exec.Command("docker", "stop", name).Run()
 		exec.Command("docker", "rm", name).Run()
 	}
 
 	glauthDir := filepath.Join(repoRoot(t), "it", "docker", "glauth")
 	configFile := filepath.Join(glauthDir, "config.toml")
-	cmd := exec.Command("docker", "run", "-d", "--name", "mcpgen-glauth",
+	cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-glauth",
 		"--network", "host",
 		"-v", configFile+":/app/config/config.cfg:ro",
 		"registry.cn-shenzhen.aliyuncs.com/wl4g/glauth:v2.5.0",
@@ -85,8 +85,8 @@ func ensureGlauth(t *testing.T) (cleanup func()) {
 
 	waitForGlauth(t)
 	return func() {
-		exec.Command("docker", "stop", "mcpgen-glauth").Run()
-		exec.Command("docker", "rm", "mcpgen-glauth").Run()
+		exec.Command("docker", "stop", "mcpfather-glauth").Run()
+		exec.Command("docker", "rm", "mcpfather-glauth").Run()
 		t.Logf("glauth container cleaned up")
 	}
 }

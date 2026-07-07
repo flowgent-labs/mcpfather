@@ -265,9 +265,9 @@
       "type": "object"
     }
   },
-  "$id": "https://mcpgen/schemas/virtual-tool-config",
+  "$id": "https://mcpfather/schemas/virtual-tool-config",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "Schema for mcpgen virtual tool pipeline configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs: config/config.go, pipeline/types.go, pipeline/validator.go",
+  "description": "Schema for mcpfather virtual tool pipeline configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs: config/config.go, pipeline/types.go, pipeline/validator.go",
   "properties": {
     "virtualTools": {
       "items": {

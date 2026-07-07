@@ -23,32 +23,32 @@ import (
 const specFixture = "testdata/minimal_spec.yaml"
 
 // testProxyEnv returns the proxy URL and env vars for build subcommands.
-// It checks MCPGEN_TEST_PROXY first, then HTTPS_PROXY.
+// It checks MCPFATHER_TEST_PROXY first, then HTTPS_PROXY.
 // If neither is set, no proxy is configured — suitable for environments
 // where Go can reach module proxies directly.
 func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 	t.Helper()
-	proxyURL = os.Getenv("MCPGEN_TEST_PROXY")
+	proxyURL = os.Getenv("MCPFATHER_TEST_PROXY")
 	if proxyURL == "" {
 		proxyURL = os.Getenv("HTTPS_PROXY")
 	}
 	if proxyURL == "" {
-		t.Logf("[proxy] MCPGEN_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
+		t.Logf("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
 		return "", nil
 	}
-	t.Logf("[proxy] MCPGEN_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
-		os.Getenv("MCPGEN_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
+	t.Logf("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+		os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
 	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
 }
 
-// mcpgenBin returns the path to the mcpgen binary, building it if needed.
-func mcpgenBin(t *testing.T) string {
+// mcpfatherBin returns the path to the mcpfather binary, building it if needed.
+func mcpfatherBin(t *testing.T) string {
 	t.Helper()
 	root, err := findRepoRoot()
 	if err != nil {
 		t.Fatalf("cannot find repo root: %v", err)
 	}
-	bin := filepath.Join(root, "bin", "mcpgen")
+	bin := filepath.Join(root, "bin", "mcpfather")
 	if _, err := os.Stat(bin); os.IsNotExist(err) {
 		_, proxyEnv := testProxyEnv(t)
 		cmd := exec.Command("make", "-C", root, "build")
@@ -79,16 +79,16 @@ func findRepoRoot() (string, error) {
 	return "", fmt.Errorf("go.mod not found")
 }
 
-// genProject runs mcpgen and returns the output directory path.
+// genProject runs mcpfather and returns the output directory path.
 func genProject(t *testing.T, includes, excludes string) string {
 	t.Helper()
 	return genProjectWithSpec(t, specFixture, includes, excludes)
 }
 
-// genProjectWithSpec runs mcpgen with a custom spec file (relative to its/).
+// genProjectWithSpec runs mcpfather with a custom spec file (relative to its/).
 func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) string {
 	t.Helper()
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	args := []string{"-i", filepath.Join(repoRoot(t), "it", specFile), "-o", dir}
 	if includes != "" {
@@ -100,7 +100,7 @@ func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) strin
 	cmd := exec.Command(bin, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mcpgen failed: %v\n%s", err, out)
+		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
 	return dir
 }
@@ -203,7 +203,7 @@ func runCLI(t *testing.T, binPath string, env []string, args ...string) (string,
 // ---------------------------------------------------------------------------
 
 func TestGenerator_Includes_NonExistentOperationId_Errors(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", specFixture)
 
@@ -221,7 +221,7 @@ func TestGenerator_Includes_NonExistentOperationId_Errors(t *testing.T) {
 }
 
 func TestGenerator_Excludes_NonExistentOperationId_Errors(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", specFixture)
 
@@ -236,7 +236,7 @@ func TestGenerator_Excludes_NonExistentOperationId_Errors(t *testing.T) {
 }
 
 func TestGenerator_ValidOperationId_Succeeds(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", specFixture)
 
@@ -275,12 +275,12 @@ func TestGenerator_VeryLongOperationId_Succeeds(t *testing.T) {
 	}
 
 	// Generate with just this long operationId
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	cmd := exec.Command(bin, "-i", spec, "-o", dir, "--includes", longOpID)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mcpgen failed for very-long operationId: %v\n%s", err, out)
+		t.Fatalf("mcpfather failed for very-long operationId: %v\n%s", err, out)
 	}
 
 	// The tool file should exist (with a truncated, hash-suffixed name).
@@ -1014,19 +1014,19 @@ func TestCLI_ListShowsTools(t *testing.T) {
 
 const cyclicSpecFixture = "testdata/cyclic_spec.yaml"
 
-// TestCyclicRef_GenerationSucceeds verifies that mcpgen does NOT hang when the
+// TestCyclicRef_GenerationSucceeds verifies that mcpfather does NOT hang when the
 // OpenAPI spec contains a self-referencing schema (LinkGroup.groups → LinkGroup).
 // Before the cycle-detection fix, the recursive schema walkers would recurse
 // infinitely and the process would OOM or hang.
 func TestCyclicRef_GenerationSucceeds(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", cyclicSpecFixture)
 
 	cmd := exec.Command(bin, "-i", spec, "-o", dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mcpgen failed for cyclic spec: %v\n%s", err, out)
+		t.Fatalf("mcpfather failed for cyclic spec: %v\n%s", err, out)
 	}
 
 	// Both tools should be generated
@@ -1042,14 +1042,14 @@ func TestCyclicRef_GenerationSucceeds(t *testing.T) {
 // TestCyclicRef_ResponseTemplateHasCyclicMarker verifies that the generated
 // response template for a cyclic schema contains the [cyclic reference] marker.
 func TestCyclicRef_ResponseTemplateHasCyclicMarker(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", cyclicSpecFixture)
 
 	cmd := exec.Command(bin, "-i", spec, "-o", dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mcpgen failed: %v\n%s", err, out)
+		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
 
 	// Read the ListItems tool file which has the cyclic LinkGroup schema
@@ -1069,14 +1069,14 @@ func TestCyclicRef_ResponseTemplateHasCyclicMarker(t *testing.T) {
 // do NOT get a false-positive [cyclic reference] marker. The HealthCheck tool uses
 // a simple HealthStatus schema with no self-references.
 func TestCyclicRef_NonCyclicSchemaNoSpuriousMarker(t *testing.T) {
-	bin := mcpgenBin(t)
+	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	spec := filepath.Join(repoRoot(t), "it", cyclicSpecFixture)
 
 	cmd := exec.Command(bin, "-i", spec, "-o", dir)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("mcpgen failed: %v\n%s", err, out)
+		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
 
 	// Read the HealthCheck tool file which uses a flat HealthStatus schema

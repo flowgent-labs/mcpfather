@@ -1,4 +1,4 @@
-# Dex OIDC provider configuration for mcpgen-go integration tests.
+# Dex OIDC provider configuration for mcpfather integration tests.
 # Provides an OIDC issuer with password grant support (mockPassword connector)
 # so that generated MCP servers can authenticate to upstream APIs via OIDC tokens.
 issuer: http://localhost:5556/dex
@@ -15,9 +15,9 @@ oauth2:
   skipApprovalScreen: true
 
 staticClients:
-- id: mcpgen-client
-  secret: mcpgen-secret
-  name: MCPGen
+- id: mcpfather-client
+  secret: mcpfather-secret
+  name: MCPFather
   redirectURIs:
   - http://localhost:8080/auth/callback/oidc
   - http://127.0.0.1:8080/auth/callback/oidc
@@ -27,5 +27,5 @@ connectors:
   id: mock
   name: Mock
   config:
-    username: "mcpgen-client"
-    password: "mcpgen-secret"
+    username: "mcpfather-client"
+    password: "mcpfather-secret"
