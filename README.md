@@ -1,4 +1,4 @@
-# MCP Server Generator from OpenAPI Schema
+# Enhanced Enterprise-grade MCP Server Generator from OpenAPI Schema
 
 [![Build & Test](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml)
 [![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](https://go.dev/dl/)
