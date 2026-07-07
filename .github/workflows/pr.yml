@@ -29,12 +29,6 @@ jobs:
 
   integration-oidc:
     runs-on: ubuntu-latest
-    env:
-      MCP__AUTH__OIDC__ENABLED: "true"
-      MCP__AUTH__OIDC__ISSUER: "http://localhost:5556/dex"
-      MCP__AUTH__OIDC__CLIENT_ID: "mcpgen-client"
-      MCP__AUTH__OIDC__CLIENT_SECRET: "mcpgen-secret"
-      MCP__AUTH__OIDC__SCOPES: "openid"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
