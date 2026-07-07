@@ -17,7 +17,7 @@ import (
 const GetAvatarsInputSchema = "{\n  \"properties\": {\n    \"owningObjectId\": {\n      \"type\": \"string\"\n    },\n    \"type\": {\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"owningObjectId\",\n    \"type\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAvatars tool (Status: 200, Content-Type: application/json)
-const GetAvatarsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of all Jira avatars in JSON format, that are visible to the user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **owner** (Type: string):\n      - Example: 'fred'\n  - **selected** (Type: boolean):\n  - **id** (Type: string):\n      - Example: '1000'\n"
+const GetAvatarsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns a list of all Jira avatars in JSON format, that are visible to the user.\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: string):\n      - Example: '1000'\n  - **owner** (Type: string):\n      - Example: 'fred'\n  - **selected** (Type: boolean):\n"
 
 // NewGetAvatarsMCPTool creates the MCP Tool instance for GetAvatars
 func NewGetAvatarsMCPTool() mcp.Tool {

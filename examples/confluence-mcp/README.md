@@ -172,19 +172,21 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 
 ## Agent Integration
 
-### stdio (local)
+### OpenCode
+
+- `~/.config/opencode/opencode.json`:
 
 ```json
-// ~/.config/opencode/config.json
 {
   "mcp": {
     "confluence-mcp": {
       "type": "local",
-      "command": ["./confluence-mcp"],
+      "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -192,85 +194,110 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 }
 ```
 
-```yaml
-# ~/.codex/config.yaml
-mcp:
-  servers:
-    confluence-mcp:
-      command: ./confluence-mcp
-      args: ["--transport", "stdio"]
-      env:
-        MCP__UPSTREAM__ENDPOINT: https://api.example.com
-        MCP__AUTH__STATIC__BEARER_TOKEN: your-token
-```
+### Claude Code
+
+- `~/.claude.json`:
 
 ```json
-// ~/.cursor/mcp.json
 {
   "mcpServers": {
     "confluence-mcp": {
-      "command": "./confluence-mcp",
+      "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
 }
 ```
 
+### Codex CLI
+
+- `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.confluence-mcp]
+url = "http://localhost:8080/mcp"
+bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+```
+
+### Cursor
+
+- `~/.cursor/mcp.json`:
+
 ```json
-// ~/.kiro/mcp.json
 {
   "mcpServers": {
     "confluence-mcp": {
-      "command": "./confluence-mcp",
+      "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
 }
 ```
 
-### HTTP (remote)
+### OpenCode (Remote)
+
+- `~/.config/opencode/opencode.json`:
 
 ```json
-// ~/.config/opencode/config.json
 {
   "mcp": {
     "confluence-mcp": {
       "type": "remote",
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+      }
     }
   }
 }
 ```
 
-```yaml
-# ~/.codex/config.yaml
-mcp:
-  servers:
-    confluence-mcp:
-      url: http://localhost:8080/mcp
-```
+### Claude Code (Remote)
+
+- `~/.claude.json` (User MCPs):
 
 ```json
-// ~/.cursor/mcp.json
 {
   "mcpServers": {
     "confluence-mcp": {
-      "url": "http://localhost:8080/mcp"
+      "url": "http://localhost:8080/mcp",
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+      }
     }
   }
 }
 ```
 
+### Codex CLI (Remote)
+
+- `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.confluence-mcp]
+url = "http://localhost:8080/mcp"
+bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+```
+
+### Cursor (Remote)
+
+- `~/.cursor/mcp.json`:
+
 ```json
-// ~/.kiro/mcp.json
 {
   "mcpServers": {
     "confluence-mcp": {

@@ -17,7 +17,7 @@ import (
 const ListIndexSnapshotInputSchema = "{\n  \"type\": \"object\"\n}"
 
 // Response Template for the ListIndexSnapshot tool (Status: 200, Content-Type: application/json)
-const ListIndexSnapshotResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the list consisting of absolute paths to currently available index snapshots\n\n## Response Structure\n\n- Structure (Type: object):\n  - **absolutePath** (Type: string):\n      - Example: '/var/atlassian/application-data/jira/caches/indexesV1/issue'\n  - **timestamp** (Type: integer, int64):\n      - Example: '1612345678900'\n"
+const ListIndexSnapshotResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Returns the list consisting of absolute paths to currently available index snapshots\n\n## Response Structure\n\n- Structure (Type: object):\n  - **timestamp** (Type: integer, int64):\n      - Example: '1612345678900'\n  - **absolutePath** (Type: string):\n      - Example: '/var/atlassian/application-data/jira/caches/indexesV1/issue'\n"
 
 // NewListIndexSnapshotMCPTool creates the MCP Tool instance for ListIndexSnapshot
 func NewListIndexSnapshotMCPTool() mcp.Tool {
