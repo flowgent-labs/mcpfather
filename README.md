@@ -1,6 +1,6 @@
-# Enhanced Enterprise-grade MCP Server Generator from OpenAPI Schema
+# Mcpfather - Enterprise-grade MCP Builder
 
-[![Build & Test](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpgen-go/actions/workflows/pr.yml)
+[![Build & Test](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml)
 [![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![OpenAPI](https://img.shields.io/badge/spec-OpenAPI%202%20%7C%203-6C8EBF)](https://www.openapis.org/)
@@ -11,7 +11,7 @@
 [![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
 [![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
 
-Generate production-ready Model Context Protocol (MCP) servers from OpenAPI specs. Each API operation becomes an AI tool that forwards requests to your upstream service.
+*An Enhanced enterprise-grade MCP builder — generates production-ready MCP servers from OpenAPI specs, Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools, auth forwarding, and observability built-in, and even use as regular CLI.*
 
 ## Features
 
@@ -33,7 +33,7 @@ make
 ### Generate MCP server (e.g: Confluence)
 
 ```sh
-./bin/mcpgen -v \
+./bin/mcpfather -v \
     -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
     -o examples/confluence-mcp \
     --includes "listSpaces,createPage,updatePage,deletePage"
@@ -91,7 +91,7 @@ examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
 ## Generator Self Configuration
 
 ```sh
-./bin/mcpgen -i spec.yaml -o output-dir [--includes op1,op2] [--excludes op3] [-v]
+./bin/mcpfather -i spec.yaml -o output-dir [--includes op1,op2] [--excludes op3] [-v]
 ```
 
 | Flag | Description | Example |
@@ -113,19 +113,19 @@ Use `--includes` and `--excludes` to control which operations generate MCP tools
 
 ```sh
 # Only generate tools for specific operations
-./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
     -o examples/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
 
 # Generate all tools except health checks
-./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
     -o examples/confluence-mcp --excludes "healthCheck,status"
 
 # Generate all tools except a few
-./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
     -o examples/confluence-mcp --excludes "uploadAttachment,removeLabel"
 
 # Preview what gets included/excluded
-./bin/mcpgen -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
     -o examples/confluence-mcp --includes "listSpaces" -v
 ```
 
@@ -172,8 +172,8 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 1. Authorization header from the client's HTTP request (forwarded)
 2. `MCP__AUTH__STATIC__BEARER_TOKEN` environment variable
 3. `MCP__AUTH__STATIC__BEARER_TOKEN_FILE` (read from file — ideal for Kubernetes secrets)
-4. macOS Keychain (`security find-generic-password -s mcpgen-upstream -wa ""`)
-5. Windows Credential Manager (`cmdkey /get:mcpgen-upstream`)
+4. macOS Keychain (`security find-generic-password -s mcpfather-upstream -wa ""`)
+5. Windows Credential Manager (`cmdkey /get:mcpfather-upstream`)
 
 ### Token format
 
@@ -232,7 +232,7 @@ tools:
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
-# Schema: https://github.com/flowgent-labs/mcpgen-go/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+# Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtualTools:
   - id: getData
     kind: call
