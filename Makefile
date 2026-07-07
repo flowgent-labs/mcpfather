@@ -1,4 +1,4 @@
-.PHONY: build build-all test install clean gen-config-dsl-schema
+.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema
 
 BINARY_NAME := mcpgen
 CMD_PATH := ./cmd/mcpgen
@@ -26,7 +26,7 @@ build-all:
 test: test-unit
 
 test-unit:
-	go test -v -count=1 -timeout 300s $(shell go list ./... | grep -v '/it$$')
+	go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
 test-integration:
 	go test -v -count=1 -timeout 300s ./it/...
