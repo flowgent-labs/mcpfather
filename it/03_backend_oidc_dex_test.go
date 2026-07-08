@@ -16,7 +16,7 @@ import (
 // OIDC provider (it/docker/dex).
 //
 // Token exchange and full E2E tests that require the password (ROPC) grant
-// live in 03_oidc_integration_mocksvc_test.go because Dex v2.41+ no longer
+// live in 03_backend_oidc_mock_test.go because Dex v2.41+ no longer
 // supports the password grant type.
 // ---------------------------------------------------------------------------
 
@@ -88,11 +88,11 @@ func TestOIDCConfigEnvOverrides(t *testing.T) {
 	defer cleanupDex()
 
 	envVars := []string{
-		"MCP__AUTH__OIDC__ENABLED=true",
-		"MCP__AUTH__OIDC__ISSUER=http://localhost:5556/dex",
-		"MCP__AUTH__OIDC__CLIENT_ID=mcpfather-client",
-		"MCP__AUTH__OIDC__CLIENT_SECRET=mcpfather-secret",
-		"MCP__AUTH__OIDC__SCOPES=openid",
+		"MCP__AUTH__BACKEND__OIDC__ENABLED=true",
+		"MCP__AUTH__BACKEND__OIDC__ISSUER=http://localhost:5556/dex",
+		"MCP__AUTH__BACKEND__OIDC__CLIENT_ID=mcpfather-client",
+		"MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET=mcpfather-secret",
+		"MCP__AUTH__BACKEND__OIDC__SCOPES=openid",
 		"MCP__UPSTREAM__ENDPOINT=http://localhost:0",
 	}
 
