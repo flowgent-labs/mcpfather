@@ -4,10 +4,14 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
+  push:
+    branches: [main]
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
+    if: |
+      github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request #') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -26,8 +30,14 @@ jobs:
       - name: Determine version bump
         id: bump
         run: |
-          # Get the PR merge commit message (first line)
-          COMMIT_MSG="${{ github.event.pull_request.title }}"
+          # Get the commit message (PR title or push commit message)
+          if [ "${{ github.event_name }}" = "push" ]; then
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+            # Use first line only
+            COMMIT_MSG=$(echo "${COMMIT_MSG}" | head -1)
+          else
+            COMMIT_MSG="${{ github.event.pull_request.title }}"
+          fi
 
           # Get latest tag
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
@@ -81,10 +91,10 @@ jobs:
           body: |
             ## Release ${{ steps.bump.outputs.new_tag }}
 
-            PR: ${{ github.event.pull_request.html_url }}
+            ${{ github.event_name == 'pull_request' && format('PR: {0}', github.event.pull_request.html_url) || format('Commit: {0}', github.event.head_commit.url) }}
 
             ### Changes
-            ${{ github.event.pull_request.body }}
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.body || github.event.head_commit.message }}
 
             ### Binaries
             Cross-platform binaries built with `make build-all`.

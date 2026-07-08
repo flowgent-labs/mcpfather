@@ -722,7 +722,7 @@ func argValueFromSchema(name string, s *converter.Schema) string {
 func (g *Generator) RunGoModTidy() error {
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = g.outputDir
-	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off")
+	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -765,7 +765,7 @@ func (g *Generator) RunGoBuild() error {
 	binPath := filepath.Join(g.outputDir, binName)
 	cmd := exec.Command("go", "build", "-o", binPath, ".")
 	cmd.Dir = g.outputDir
-	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off")
+	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
