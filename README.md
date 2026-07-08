@@ -62,7 +62,23 @@ examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ./mcpclient.sh call GetPage '{"id": "123456"}'
 ```
 
-### Usage in `CLI` Mode (example)
+- Inspection MCP frontend authentication (OAuth2.1).
+
+```bash
+# Start the MCP server with HTTP mode.
+export MCP__AUTH__FRONTEND__OIDC__ENABLED=true
+export MCP__AUTH__FRONTEND__OIDC__ISSUER="https://keycloak.example.com/realms/master"
+export MCP__AUTH__FRONTEND__OIDC__AUDIENCE="confluence-mcp"
+./bin/confluence-mcp -v 10 --transport http --port 8080
+
+# Obtain the OAuth2.1 metadata.
+curl -s https://iam.example.com/realms/master/.well-known/openid-configuration
+
+curl -s localhost:8080/.well-known/oauth-protected-resource
+#{"resource":"confluence-mcp","authorization_servers":["https://keycloak.example.com/realms/master"],"bearer_methods_supported":["header"]}
+```
+
+### Run in `CLI` Mode (example)
 
 Invoke tools directly from the command line — no MCP agent needed. Useful for debugging, scripting, and manual API exploration. The CLI reuses the same `mcptools` handlers as the MCP server, so every call makes a real HTTP request upstream.
 
@@ -194,6 +210,7 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token |
 | `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
 | `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the cookie token |
+| ... | ... |
 
 ### Token retrieval priority (backend / outbound)
 
@@ -224,7 +241,7 @@ examples/confluence-mcp/bin/confluence-mcp --print-default-config
 
 ```yaml
 # ---- Native MCP Tools ----
-tools:
+nativeTools:
   expose:
     # When true, all native tools are registered by default
     # (individual tools can be hidden via excludes).
