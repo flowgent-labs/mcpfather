@@ -111,37 +111,50 @@ func printDefaultConfigYAML() {
 	fmt.Println("# {{ .BinaryName }} MCP server configuration")
 	fmt.Println("# Place this file at: $HOME/." + "{{ .BinaryName }}" + "/config.yaml")
 	fmt.Println("# Environment variables with MCP__ prefix override these values.")
-	fmt.Println("# e.g. MCP__AUTH__OIDC__CLIENT_ID overrides auth.oidc.clientId")
+	fmt.Println("# e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID overrides auth.backend.oidc.client_id")
 	fmt.Println()
-	fmt.Println("# ---- Authentication for upstream API calls ----")
-	fmt.Println("# The MCP server itself does NOT require auth (JSON-RPC 2 is open).")
-	fmt.Println("# Credentials below are carried when forwarding requests to upstream APIs.")
+	fmt.Println("# ---- Authentication ----")
+	fmt.Println("# frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).")
+	fmt.Println("# backend  = outbound: credentials the server uses to call upstream APIs.")
+	fmt.Println("# The two are independent — the inbound token is never reused outbound")
+	fmt.Println("# (see MCP Authorization spec: Token Passthrough Prohibition).")
 	fmt.Println("auth:")
-	fmt.Println("  # OIDC client credentials flow (machine-to-machine)")
-	fmt.Println("  oidc:")
-	fmt.Println("    enabled: false")
-	fmt.Println("    issuer: \"\"            # e.g. https://keycloak.example.com/realms/myrealm")
-	fmt.Println("    client_id: \"\"")
-	fmt.Println("    client_secret: \"\"")
-	fmt.Println("    scopes: \"openid\"       # space-separated scope list")
-	fmt.Println("    token_url: \"\"          # optional override (auto-discovered from issuer if empty)")
+	fmt.Println("  frontend:")
+	fmt.Println("    # Standard OAuth 2.1 / OIDC JWT bearer validation (Resource Server role, RFC 9728).")
+	fmt.Println("    # Only enforced on the http transport; stdio has no network boundary.")
+	fmt.Println("    oidc:")
+	fmt.Println("      enabled: false")
+	fmt.Println("      issuer: \"\"            # e.g. https://idp.example.com/realms/myrealm")
+	fmt.Println("      jwks_uri: \"\"          # optional override (auto-discovered from issuer if empty)")
+	fmt.Println("      audience: \"\"          # expected JWT \"aud\" claim; also published as the")
+	fmt.Println("                             # RFC 9728 protected-resource identifier")
 	fmt.Println()
-	fmt.Println("  # LDAP service account bind (machine-to-machine)")
-	fmt.Println("  ldap:")
-	fmt.Println("    enabled: false")
-	fmt.Println("    url: \"\"               # ldap:// or ldaps:// server URL")
-	fmt.Println("    base_dn: \"\"")
-	fmt.Println("    bind_dn: \"\"")
-	fmt.Println("    bind_password: \"\"")
-	fmt.Println("    insecure_skip_verify: false")
-	fmt.Println("    timeout: 10            # connection timeout in seconds")
+	fmt.Println("  backend:")
+	fmt.Println("    # OIDC client credentials flow (machine-to-machine)")
+	fmt.Println("    oidc:")
+	fmt.Println("      enabled: false")
+	fmt.Println("      issuer: \"\"            # e.g. https://keycloak.example.com/realms/myrealm")
+	fmt.Println("      client_id: \"\"")
+	fmt.Println("      client_secret: \"\"")
+	fmt.Println("      scopes: \"openid\"       # space-separated scope list")
+	fmt.Println("      token_url: \"\"          # optional override (auto-discovered from issuer if empty)")
 	fmt.Println()
-	fmt.Println("  # Static credentials for legacy / simple APIs")
-	fmt.Println("  static:")
-	fmt.Println("    bearer_token: \"\"       # static Bearer token")
-	fmt.Println("    bearer_token_file: \"\"   # path to file containing bearer token (K8s secrets)")
-	fmt.Println("    cookie_token: \"\"        # static cookie (e.g. JSESSIONID for legacy systems)")
-	fmt.Println("    cookie_token_file: \"\"   # path to file containing cookie token (K8s secrets)")
+	fmt.Println("    # LDAP service account bind (machine-to-machine)")
+	fmt.Println("    ldap:")
+	fmt.Println("      enabled: false")
+	fmt.Println("      url: \"\"               # ldap:// or ldaps:// server URL")
+	fmt.Println("      base_dn: \"\"")
+	fmt.Println("      bind_dn: \"\"")
+	fmt.Println("      bind_password: \"\"")
+	fmt.Println("      insecure_skip_verify: false")
+	fmt.Println("      timeout: 10            # connection timeout in seconds")
+	fmt.Println()
+	fmt.Println("    # Static credentials for legacy / simple APIs")
+	fmt.Println("    static:")
+	fmt.Println("      bearer_token: \"\"       # static Bearer token")
+	fmt.Println("      bearer_token_file: \"\"   # path to file containing bearer token (K8s secrets)")
+	fmt.Println("      cookie_token: \"\"        # static cookie (e.g. JSESSIONID for legacy systems)")
+	fmt.Println("      cookie_token_file: \"\"   # path to file containing cookie token (K8s secrets)")
 	fmt.Println()
 	fmt.Println("# ---- Upstream API endpoint ----")
 	fmt.Println("upstream:")
@@ -225,11 +238,11 @@ func main() {
 	}
 	mcputils.SetConfig(cfg)
 
-	// Initialize OIDC token manager (no-op if disabled)
-	mcputils.InitOIDC(cfg.Auth.OIDC)
-		mcputils.InitLDAP(cfg.Auth.LDAP)
+	// Initialize backend (outbound) credential managers (no-op if disabled)
+	mcputils.InitOIDC(cfg.Auth.Backend.OIDC)
+	mcputils.InitLDAP(cfg.Auth.Backend.LDAP)
 	defer mcputils.ShutdownOIDC()
-		mcputils.ShutdownLDAP()
+	defer mcputils.ShutdownLDAP()
 
 	mcputils.SetVerbosity(*verbose)
 
@@ -294,7 +307,27 @@ func main() {
 		defer cancel()
 
 		mux := http.NewServeMux()
-		mux.Handle("/mcp", mcpServer)
+
+		// Frontend (inbound) auth: validate MCP client bearer tokens per the
+		// MCP Authorization spec (2025-06-18) and RFC 9728. Only wired up for
+		// the http transport — stdio has no network boundary to protect.
+		var mcpHandler http.Handler = mcpServer
+		if cfg.Auth.Frontend.OIDC.Enabled {
+			if err := mcputils.InitFrontendAuth(ctx, cfg.Auth.Frontend.OIDC); err != nil {
+				fmt.Fprintf(os.Stderr, "Error: frontend auth init failed: %v\n", err)
+				os.Exit(1)
+			}
+			resource := mcputils.FrontendResource()
+			metadataPath := server.ProtectedResourceMetadataPath(resource)
+			mux.Handle(metadataPath, server.NewProtectedResourceMetadataHandler(server.ProtectedResourceMetadataConfig{
+				Resource:               resource,
+				AuthorizationServers:   []string{mcputils.FrontendIssuer()},
+				BearerMethodsSupported: []string{"header"},
+			}))
+			mcpHandler = mcputils.RequireBearerToken(mcputils.ResourceMetadataURL(resource, metadataPath), mcpServer)
+			fmt.Fprintf(os.Stderr, "Frontend auth enabled: issuer=%s resource=%s metadata=%s\n", mcputils.FrontendIssuer(), resource, metadataPath)
+		}
+		mux.Handle("/mcp", mcpHandler)
 
 		addr := fmt.Sprintf(":%d", *port)
 		httpServer := &http.Server{Addr: addr, Handler: logHTTP(mux)}
@@ -368,6 +401,10 @@ func main() {
 		}
 
 	case "stdio":
+		if cfg.Auth.Frontend.OIDC.Enabled {
+			fmt.Fprintln(os.Stderr, "Warning: auth.frontend.oidc is enabled but ignored under stdio transport (no network boundary to protect; the parent process already controls access to stdin/stdout).")
+		}
+
 		s, err := mcpserver.NewMCPServer()
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)

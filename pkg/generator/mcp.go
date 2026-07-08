@@ -317,30 +317,39 @@ test:
 	@go test ./...
 
 # ---- Optional: OpenTelemetry distributed tracing ----
-# Build with -tags otel to include OTLP gRPC tracing support
-# (Prometheus metrics are always compiled in by default).
-
-build-with-otel: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel $(BUILD_FLAGS) -o $(BIN) .
-	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
-
-# ---- Container & Kubernetes ----
-
-IMAGE_REPO ?= docker.io/library/$(BINARY_NAME)
-IMAGE_TAG  ?= $(VERSION)
-MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
-MCP_UPSTREAM_TOKEN  ?= $(MCP_UPSTREAM_TOKEN)
-MCP_OIDC_ISSUER_URL  ?= $(MCP_OIDC_ISSUER_URL)
-MCP_OIDC_CLIENT_ID  ?= $(MCP_OIDC_CLIENT_ID)
-MCP_OIDC_CLIENT_SECRET  ?= $(MCP_OIDC_CLIENT_SECRET)
-
-build-image: build
-	docker build -t $(IMAGE_REPO):$(IMAGE_TAG) -f deploy/docker/Dockerfile .
-
-build-image-with-otel: build-with-otel
-	docker build --build-arg BUILD_TAGS=otel -t $(IMAGE_REPO):$(IMAGE_TAG)-otel -f deploy/docker/Dockerfile .
-
-deploy: build-image
+	# Use -tags otel_grpc for OTLP gRPC or -tags otel_http for OTLP HTTP/protobuf.
+	# build-with-otel is an alias for build-with-otel-grpc (backward compat).
+	
+	build-with-otel: build-with-otel-grpc
+	
+	build-with-otel-grpc: go.sum
+		GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
+		@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
+	
+	build-with-otel-http: go.sum
+		GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
+		@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
+	
+	# ---- Container & Kubernetes ----
+	
+	IMAGE_REPO ?= docker.io/library/$(BINARY_NAME)
+	IMAGE_TAG  ?= $(VERSION)
+	MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
+	MCP_UPSTREAM_TOKEN  ?= $(MCP_UPSTREAM_TOKEN)
+	MCP_OIDC_ISSUER_URL  ?= $(MCP_OIDC_ISSUER_URL)
+	MCP_OIDC_CLIENT_ID  ?= $(MCP_OIDC_CLIENT_ID)
+	MCP_OIDC_CLIENT_SECRET  ?= $(MCP_OIDC_CLIENT_SECRET)
+	
+	build-image: build
+		docker build -t $(IMAGE_REPO):$(IMAGE_TAG) -f deploy/docker/Dockerfile .
+	
+	build-image-with-otel-grpc: build-with-otel-grpc
+		docker build --build-arg BUILD_TAGS=otel_grpc -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-grpc -f deploy/docker/Dockerfile .
+	
+	build-image-with-otel-http: build-with-otel-http
+		docker build --build-arg BUILD_TAGS=otel_http -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-http -f deploy/docker/Dockerfile .
+	
+	build-image-with-otel: build-image-with-otel-grpcdeploy: build-image
 	helm upgrade -i $(BINARY_NAME) deploy/helm \
 		--set image.repository=$(IMAGE_REPO) \
 		--set image.tag=$(IMAGE_TAG) \

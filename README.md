@@ -17,7 +17,7 @@
 
 - **OAS 2.x / 3.x support** — JSON or YAML, one-command generation. Every OpenAPI operation becomes a typed MCP tool with structured input/output schemas.
 - **Virtual Tools** — Declaratively compose native tools into pipelines (e.g `call → jq → foreach → emit → return`). Drastically reduces LLM token consumption for multi-step API workflows.
-- **Enterprise Auth** — OIDC (client credentials + password grants), LDAP service-account bind, and static bearer/cookie tokens. Auth credentials are decoupled and automatically injected into upstream calls.
+- **Enterprise Auth** — Frontend OIDC JWT bearer validation (RFC 9728 Resource Server), plus backend OIDC (client credentials + password grants), LDAP service-account bind, and static bearer/cookie tokens for upstream APIs. Frontend and backend credentials are fully decoupled per the MCP Token Passthrough Prohibition.
 - **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
 - **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
 - **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
@@ -47,11 +47,11 @@ make
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
 
 # Optional 1: setup token from env
-export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
-export MCP__AUTH__STATIC__BEARER_TOKEN_FILE=/path/to/.credentials
+export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE=/path/to/.credentials
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
@@ -69,7 +69,7 @@ Invoke tools directly from the command line — no MCP agent needed. Useful for 
 ```sh
 # Set your upstream endpoint (required for real API calls)
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
-export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
 
 # First call: list available tools
 examples/confluence-mcp/bin/confluence-mcp -t cli list
@@ -157,23 +157,53 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 
 ### Environment variables
 
+**Auth Layers at a Glance — frontend validates inbound, backend authenticates outbound:**
+
+| Layer | Config YAML path | Env var prefix | Role |
+|---|---|---|---|
+| **Frontend** | `auth.frontend.oidc` | `MCP__AUTH__FRONTEND__OIDC__*` | Validates AI agent bearer tokens (inbound) |
+| **Backend OIDC** | `auth.backend.oidc` | `MCP__AUTH__BACKEND__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
+| **Backend LDAP** | `auth.backend.ldap` | `MCP__AUTH__BACKEND__LDAP__*` | Server's own LDAP service-account bind for upstream APIs |
+| **Backend Static** | `auth.backend.static` | `MCP__AUTH__BACKEND__STATIC__*` | Server's own static token/cookie for upstream APIs |
+
+> The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
+
+**Frontend (inbound) env vars:**
+
+| Variable | Description |
+|---|---|
+| `MCP__AUTH__FRONTEND__OIDC__ENABLED` | Enable JWT bearer validation for inbound requests |
+| `MCP__AUTH__FRONTEND__OIDC__ISSUER` | OIDC issuer for agent tokens (used for JWKS discovery) |
+| `MCP__AUTH__FRONTEND__OIDC__JWKS_URI` | JWKS endpoint (auto-discovered from issuer if empty) |
+| `MCP__AUTH__FRONTEND__OIDC__AUDIENCE` | Expected `aud` claim; also the RFC 9728 resource identifier |
+
+**Backend (outbound) env vars:**
+
 | Variable | Description |
 |---|---|
 | `MCP__UPSTREAM__ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
-| `MCP__AUTH__STATIC__BEARER_TOKEN` | Bearer token for upstream auth (fallback when no Authorization header from client) |
-| `MCP__AUTH__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token (alternative to `MCP__AUTH__STATIC__BEARER_TOKEN`) |
-| `MCP__AUTH__STATIC__COOKIE_TOKEN` | Legacy cookie token for upstream auth (fallback when no Authorization header from client) |
-| `MCP__AUTH__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the Legacy cookie token (alternative to `MCP__AUTH__STATIC__COOKIE_TOKEN`) |
+| `MCP__AUTH__BACKEND__OIDC__CLIENT_ID` | OIDC client ID for upstream authentication |
+| `MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET` | OIDC client secret for upstream authentication |
+| `MCP__AUTH__BACKEND__OIDC__ISSUER` | OIDC issuer for upstream token acquisition |
+| `MCP__AUTH__BACKEND__OIDC__SCOPES` | OIDC scopes (default: `openid`) |
+| `MCP__AUTH__BACKEND__LDAP__URL` | LDAP server URL for upstream bind |
+| `MCP__AUTH__BACKEND__LDAP__BASE_DN` | LDAP base DN |
+| `MCP__AUTH__BACKEND__LDAP__BIND_DN` | LDAP bind DN for service account |
+| `MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD` | LDAP bind password for service account |
+| `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN` | Static bearer token for upstream auth |
+| `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token |
+| `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
+| `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the cookie token |
 
-### Token retrieval priority
+### Token retrieval priority (backend / outbound)
 
-> The server tries to obtain a Bearer token in this order:
+> The server tries to obtain an upstream Bearer token in this order:
 
-1. Authorization header from the client's HTTP request (forwarded)
-2. `MCP__AUTH__STATIC__BEARER_TOKEN` environment variable
-3. `MCP__AUTH__STATIC__BEARER_TOKEN_FILE` (read from file — ideal for Kubernetes secrets)
-4. macOS Keychain (`security find-generic-password -s mcpfather-upstream -wa ""`)
-5. Windows Credential Manager (`cmdkey /get:mcpfather-upstream`)
+1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
+2. **LDAP** service account bind — `Basic` header (`auth.backend.ldap.*`)
+3. **Static** bearer token (`auth.backend.static.bearer_token` or `bearer_token_file`)
+
+The AI agent's own Authorization header is deliberately excluded from upstream forwarding (MCP spec: Token Passthrough Prohibition).
 
 ### Token format
 
@@ -285,8 +315,8 @@ virtualTools:
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -306,8 +336,8 @@ virtualTools:
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -321,7 +351,7 @@ virtualTools:
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor
@@ -336,8 +366,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -355,8 +385,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "type": "remote",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -374,8 +404,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -389,7 +419,7 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -403,8 +433,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
