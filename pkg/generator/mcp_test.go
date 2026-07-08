@@ -146,6 +146,7 @@ Example:
 			"GOPROXY=https://proxy.golang.org,direct",
 			"GONOSUMCHECK=*",
 			"GOSUMDB=off",
+			"GOTOOLCHAIN=local",
 		)
 		if proxyURL != "" {
 			buildEnv = append(buildEnv, "HTTPS_PROXY="+proxyURL)
