@@ -1,4 +1,4 @@
-.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema
+.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema help
 
 BINARY_NAME := mcpfather
 CMD_PATH := ./cmd/mcpfather
@@ -10,6 +10,18 @@ GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
 BIN := bin/$(BINARY_NAME)-$(GOOS)-$(GOARCH)-$(VERSION)$(if $(filter windows,$(GOOS)),.exe,)
+
+help:
+	@echo "Usage:"
+	@echo "  make build                  Build $(BINARY_NAME) for current platform"
+	@echo "  make build-all              Cross-compile for all platforms"
+	@echo "  make test                   Run unit tests"
+	@echo "  make test-unit              Run unit tests"
+	@echo "  make test-integration       Run integration tests"
+	@echo "  make install                Install $(BINARY_NAME) to GOPATH/bin"
+	@echo "  make clean                  Remove build artifacts"
+	@echo "  make gen-config-dsl-schema  Regenerate JSON Schema for virtual tool DSL"
+	@echo ""
 
 build:
 	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) $(CMD_PATH)

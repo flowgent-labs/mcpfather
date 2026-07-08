@@ -19,18 +19,57 @@ import (
 // Config is the root configuration for the MCP server.
 type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
-	Upstream UpstreamConfig `yaml:"upstream"`
 	Tools    ToolsConfig    `yaml:"tools"`
 	Mgmt     MgmtConfig     `yaml:"mgmt"`
 	Runtime  RuntimeConfig  `yaml:"runtime"`
+	Upstream UpstreamConfig `yaml:"upstream"`
 }
 
 // ---- auth ----
-
-// AuthConfig holds authentication settings for upstream API calls.
-// The MCP server itself does not require authentication (JSON-RPC 2 is open);
-// these credentials are carried when forwarding requests to upstream APIs.
+//
+// Naming mirrors reverse-proxy terminology (HAProxy/Envoy): "frontend" is the
+// inbound side facing MCP clients (AI agents), "backend" is the outbound side
+// facing upstream APIs. The two are fully decoupled — an inbound bearer token
+// is verified but never reused as the outbound credential (see the Token
+// Passthrough Prohibition in the MCP authorization spec, and helpers.go/
+// tool.go where forwarding explicitly skips the client Authorization header).
 type AuthConfig struct {
+	// Frontend validates inbound requests from MCP clients (Resource Server
+	// role per RFC 9728 / MCP Authorization spec 2025-06-18). Only applies to
+	// the http transport; stdio has no network boundary to protect.
+	Frontend FrontendAuthConfig `yaml:"frontend"`
+	// Backend authenticates outbound requests to upstream APIs (OAuth Client
+	// role). Kept separate because upstream enterprise systems use a much
+	// wider variety of legacy auth mechanisms than MCP clients do.
+	Backend BackendAuthConfig `yaml:"backend"`
+}
+
+// FrontendAuthConfig configures inbound OAuth 2.1 bearer token validation for
+// MCP clients (AI agents). MCP clients are always modern systems, so only
+// standard JWT/OIDC validation is supported here (no introspection, no
+// static shared secrets, no legacy Basic/LDAP auth).
+type FrontendAuthConfig struct {
+	OIDC FrontendOIDCConfig `yaml:"oidc"`
+}
+
+// FrontendOIDCConfig configures JWT bearer token validation against an OIDC
+// issuer. JWKSURI is auto-discovered from Issuer's
+// /.well-known/openid-configuration when left empty. Audience doubles as the
+// RFC 9728 "resource" identifier returned from
+// /.well-known/oauth-protected-resource (Resource Indicators, RFC 8707,
+// recommend the two match).
+type FrontendOIDCConfig struct {
+	Enabled  bool   `yaml:"enabled"`
+	Issuer   string `yaml:"issuer"`
+	JWKSURI  string `yaml:"jwks_uri"`
+	Audience string `yaml:"audience"`
+}
+
+// BackendAuthConfig holds authentication settings for upstream API calls.
+// The MCP server acts as an OAuth client here: it authenticates itself to
+// upstream APIs using its own credentials, independent of whatever token
+// the calling MCP client presented.
+type BackendAuthConfig struct {
 	OIDC   OIDCConfig       `yaml:"oidc"`
 	LDAP   LDAPConfig       `yaml:"ldap"`
 	Static StaticAuthConfig `yaml:"static"`
@@ -69,23 +108,6 @@ type StaticAuthConfig struct {
 	BearerTokenFile string `yaml:"bearer_token_file"`
 	CookieToken     string `yaml:"cookie_token"`
 	CookieTokenFile string `yaml:"cookie_token_file"`
-}
-
-// ---- upstream ----
-
-// UpstreamConfig controls how requests are forwarded to upstream APIs.
-type UpstreamConfig struct {
-	// Endpoint is the upstream API base URL (e.g. https://your-api.example.com).
-	// Defaults to https://httpbin.org/anything for debugging when empty.
-	Endpoint string `yaml:"endpoint"`
-
-	EnableMCPSessionInForwarding bool                 `yaml:"enable_mcp_session_in_forwarding"`
-	Tools                        []UpstreamToolConfig `yaml:"tools,omitempty"`
-}
-
-// UpstreamToolConfig holds per-tool upstream settings.
-type UpstreamToolConfig struct {
-	Name string `yaml:"name"`
 }
 
 // ---- tools ----
@@ -154,6 +176,23 @@ func (c MetricsConfig) IsEnabled() bool {
 	return *c.Enabled
 }
 
+// ---- upstream ----
+
+// UpstreamConfig controls how requests are forwarded to upstream APIs.
+type UpstreamConfig struct {
+	// Endpoint is the upstream API base URL (e.g. https://your-api.example.com).
+	// Defaults to https://httpbin.org/anything for debugging when empty.
+	Endpoint string `yaml:"endpoint"`
+
+	EnableMCPSessionInForwarding bool                 `yaml:"enable_mcp_session_in_forwarding"`
+	Tools                        []UpstreamToolConfig `yaml:"tools,omitempty"`
+}
+
+// UpstreamToolConfig holds per-tool upstream settings.
+type UpstreamToolConfig struct {
+	Name string `yaml:"name"`
+}
+
 // ---- runtime ----
 
 // RuntimeConfig holds operational runtime settings.
@@ -213,8 +252,8 @@ func defaultConfig() *Config {
 }
 
 // LoadConfig reads config.yaml from $HOME/.{binaryName}/config.yaml using viper.
-// MCP__ environment variables override config file values (e.g. MCP__AUTH__OIDC__CLIENT_ID
-// overrides auth.oidc.client_id). Returns defaults when the file is missing.
+// MCP__ environment variables override config file values (e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID
+// overrides auth.backend.oidc.client_id). Returns defaults when the file is missing.
 func LoadConfig(binaryName string) (*Config, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -390,25 +429,27 @@ func IsDefaultUpstreamEndpoint() bool {
 	return cfg == nil || cfg.Upstream.Endpoint == "" || cfg.Upstream.Endpoint == defaultUpstreamEndpoint
 }
 
-// GetUpstreamToken returns the appropriate bearer token:
-//  1. OIDC access token (if OIDC is enabled)
-//  2. LDAP bind auth (if LDAP is enabled) — Basic header from bind identity
+// GetUpstreamToken returns the appropriate backend (outbound) bearer token:
+//  1. OIDC access token (if auth.backend.oidc is enabled)
+//  2. LDAP bind auth (if auth.backend.ldap is enabled) — Basic header from bind identity
 //  3. Static bearer token from config (or bearer_token_file)
-//  4. OS keychain / credential manager (legacy fallback)
+//
+// This is always the MCP server's own credential — it is never derived from
+// the inbound client token (see the frontend token passthrough prohibition).
 func GetUpstreamToken() string {
 	cfg := GetConfig()
 	if cfg != nil {
-		if cfg.Auth.OIDC.Enabled {
+		if cfg.Auth.Backend.OIDC.Enabled {
 			return GetOIDCToken()
 		}
-		if cfg.Auth.LDAP.Enabled {
+		if cfg.Auth.Backend.LDAP.Enabled {
 			return GetLDAPToken()
 		}
-		if cfg.Auth.Static.BearerToken != "" {
-			return cfg.Auth.Static.BearerToken
+		if cfg.Auth.Backend.Static.BearerToken != "" {
+			return cfg.Auth.Backend.Static.BearerToken
 		}
-		if cfg.Auth.Static.BearerTokenFile != "" {
-			if data, err := os.ReadFile(cfg.Auth.Static.BearerTokenFile); err == nil {
+		if cfg.Auth.Backend.Static.BearerTokenFile != "" {
+			if data, err := os.ReadFile(cfg.Auth.Backend.Static.BearerTokenFile); err == nil {
 				return strings.TrimSpace(string(data))
 			}
 		}
@@ -420,11 +461,11 @@ func GetUpstreamToken() string {
 func GetUpstreamCookie() string {
 	cfg := GetConfig()
 	if cfg != nil {
-		if cfg.Auth.Static.CookieToken != "" {
-			return cfg.Auth.Static.CookieToken
+		if cfg.Auth.Backend.Static.CookieToken != "" {
+			return cfg.Auth.Backend.Static.CookieToken
 		}
-		if cfg.Auth.Static.CookieTokenFile != "" {
-			if data, err := os.ReadFile(cfg.Auth.Static.CookieTokenFile); err == nil {
+		if cfg.Auth.Backend.Static.CookieTokenFile != "" {
+			if data, err := os.ReadFile(cfg.Auth.Backend.Static.CookieTokenFile); err == nil {
 				return strings.TrimSpace(string(data))
 			}
 		}
