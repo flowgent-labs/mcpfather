@@ -1,7 +1,7 @@
 # Mcpfather - Enterprise-grade MCP Builder
 
 [![Build & Test](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml)
-[![Go Version](https://img.shields.io/badge/go-1.24.0-00ADD8?logo=go)](https://go.dev/dl/)
+[![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go)](https://go.dev/dl/)
 [![License](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![OpenAPI](https://img.shields.io/badge/spec-OpenAPI%202%20%7C%203-6C8EBF)](https://www.openapis.org/)
 [![MCP](https://img.shields.io/badge/protocol-MCP-blue)](https://modelcontextprotocol.io/)
