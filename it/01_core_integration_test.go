@@ -1602,7 +1602,7 @@ func TestConfig_RegisterAllToolsByDefault_True_WithExcludes(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: true
     excludes:
@@ -1668,7 +1668,7 @@ func TestConfig_RegisterAllToolsByDefault_False_WithIncludes(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes:
@@ -1715,7 +1715,7 @@ func TestConfig_RegisterAllToolsByDefault_False_Default_EmptyIncludes_NoTools(t 
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes: []
@@ -1754,7 +1754,7 @@ func TestConfig_IncludesAndExcludes_Conflict_ServerFailsToStart(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: true
     includes:
@@ -1820,7 +1820,7 @@ func TestConfig_IncludesAndExcludes_NoConflict_Success(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: true
     includes:
@@ -1873,7 +1873,7 @@ func TestConfig_ExposeIncludes_WithAllDefaultFalse_AddsTools(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes:
@@ -1929,7 +1929,7 @@ func TestConfig_CLI_ListRespectsConfig(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes:
@@ -1971,7 +1971,7 @@ func TestConfig_CLI_CallRespectsConfig(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes:
@@ -2048,7 +2048,7 @@ func TestConfig_IncludesNotFoundInRegistry_NoError(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	cfg := `
-tools:
+nativeTools:
   expose:
     register-all-tools-by-default: false
     includes:
