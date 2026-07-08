@@ -17,7 +17,7 @@ import (
 const GetAllAvatarsInputSchema = "{\n  \"properties\": {\n    \"projectIdOrKey\": {\n      \"description\": \"Project id or project key\",\n      \"type\": \"string\"\n    }\n  },\n  \"required\": [\n    \"projectIdOrKey\"\n  ],\n  \"type\": \"object\"\n}"
 
 // Response Template for the GetAllAvatars tool (Status: 200, Content-Type: application/json)
-const GetAllAvatarsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Avatars\n\n## Response Structure\n\n- Structure (Type: object):\n  - **selected** (Type: boolean):\n  - **id** (Type: string):\n      - Example: '1000'\n  - **owner** (Type: string):\n      - Example: 'fred'\n"
+const GetAllAvatarsResponseTemplate_A = "# API Response Information\n\nBelow is the response template for this API endpoint.\n\nThe template shows a possible response, including its status code and content type, to help you understand and generate correct outputs.\n\n**Status Code:** 200\n\n**Content-Type:** application/json\n\n> Avatars\n\n## Response Structure\n\n- Structure (Type: object):\n  - **id** (Type: string):\n      - Example: '1000'\n  - **owner** (Type: string):\n      - Example: 'fred'\n  - **selected** (Type: boolean):\n"
 
 // NewGetAllAvatarsMCPTool creates the MCP Tool instance for GetAllAvatars
 func NewGetAllAvatarsMCPTool() mcp.Tool {

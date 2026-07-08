@@ -1,14 +1,39 @@
-# ---- Runtime settings ----
-runtime:
-  # When true, the MCP session ID from client requests is forwarded
-  # to upstream APIs as the X-MCP-Session-ID HTTP header.
-  # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)
-  enable_mcp_session_in_forwarding: false
-  download_dir: ""            # override download directory for binary responses
-  log_authorization: false     # set true to print Authorization header values in logs
-
 # Environment variables with MCP__ prefix override these values.
 # e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID overrides auth.backend.oidc.client_id
+
+# ---- Upstream API endpoint ----
+upstream:
+  endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
+  # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
+  enable_mcp_session_in_forwarding: false
+
+# ---- Runtime settings ----
+runtime:
+  download_dir: ""             # override download directory for binary responses
+  log_authorization: false     # set true to print Authorization header values in logs
+
+# ---- Management Endpoints (metrics, tracing, pprof) ----
+mgmt:
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc             # grpc | http/protobuf | http/json
+    timeout: 10000             # connection timeout in milliseconds
+    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}                 # static labels added to every metric
+
 # ---- Authentication ----
 # frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).
 # backend  = outbound: credentials the server uses to call upstream APIs.
@@ -50,33 +75,6 @@ auth:
       bearer_token_file: ""   # path to file containing bearer token (K8s secrets)
       cookie_token: ""        # static cookie (e.g. JSESSIONID for legacy systems)
       cookie_token_file: ""   # path to file containing cookie token (K8s secrets)
-
-# ---- Management Endpoints (metrics, tracing, pprof) ----
-mgmt:
-  # When true, enables the management HTTP server (/metrics, /health).
-  # Default: true (management server starts unless explicitly disabled).
-  enabled: true
-  host: 0.0.0.0
-  port: 9991
-  pprof:
-    enabled: false
-    server_bind: 0.0.0.0:6669
-  otel:
-    enabled: false
-    endpoint: localhost:4317
-    protocol: grpc             # grpc | http/protobuf | http/json
-    timeout: 10000             # connection timeout in milliseconds
-    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
-  metrics:
-    # When true, enables Prometheus metrics export (/metrics endpoint).
-    # Default: true (metrics enabled unless explicitly disabled).
-    enabled: true
-    prometheus: true
-    export_interval: 30s
-    histogram_boundaries:
-      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
-    labels: {}                 # static labels added to every metric
-
 # ---- Native MCP Tools ----
 nativeTools:
   expose:
