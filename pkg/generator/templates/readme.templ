@@ -73,8 +73,11 @@ Cookie-based auth is also available via `auth.backend.static.cookie_token`.
 Create `~/.{{ .BinaryName }}/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
-upstream:
-  endpoint: https://api.example.com
+runtime:
+  upstream:
+    endpoint: https://api.example.com
+  download_dir: ""
+  log_authorization: false
 
 auth:
   # Inbound: validate AI agent bearer tokens (http transport only).
