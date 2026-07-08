@@ -2,17 +2,20 @@
 
 module jira-mcp
 
-go 1.26.4
+go 1.26.0
 
 require (
+	github.com/MicahParks/keyfunc/v3 v3.8.0
 	github.com/go-ldap/ldap/v3 v3.4.13
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/itchyny/gojq v0.12.19
-	github.com/mark3labs/mcp-go v0.48.0
+	github.com/mark3labs/mcp-go v0.55.1
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/prometheus/client_golang v1.20.5
 	github.com/spf13/viper v1.20.1
 	go.opentelemetry.io/otel v1.28.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.28.0
+	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.28.0
 	go.opentelemetry.io/otel/exporters/prometheus v0.50.0
 	go.opentelemetry.io/otel/sdk v1.28.0
 	go.opentelemetry.io/otel/sdk/metric v1.28.0

@@ -47,46 +47,58 @@ spec:
           env:
             - name: MCP__UPSTREAM__ENDPOINT
               value: {{ .Values.config.upstream.endpoint | quote }}
-            {{- if .Values.config.auth.oidc.enabled }}
-            - name: MCP__AUTH__OIDC__ENABLED
+            {{- if .Values.config.auth.frontend.oidc.enabled }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ENABLED
               value: "true"
-            - name: MCP__AUTH__OIDC__ISSUER
-              value: {{ .Values.config.auth.oidc.issuer | quote }}
-            - name: MCP__AUTH__OIDC__CLIENT_ID
-              value: {{ .Values.config.auth.oidc.clientId | quote }}
-            - name: MCP__AUTH__OIDC__SCOPES
-              value: {{ .Values.config.auth.oidc.scopes | quote }}
-            {{- if .Values.config.auth.oidc.tokenUrl }}
-            - name: MCP__AUTH__OIDC__TOKEN_URL
-              value: {{ .Values.config.auth.oidc.tokenUrl | quote }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ISSUER
+              value: {{ .Values.config.auth.frontend.oidc.issuer | quote }}
+            {{- if .Values.config.auth.frontend.oidc.jwksUri }}
+            - name: MCP__AUTH__FRONTEND__OIDC__JWKS_URI
+              value: {{ .Values.config.auth.frontend.oidc.jwksUri | quote }}
+            {{- end }}
+            - name: MCP__AUTH__FRONTEND__OIDC__AUDIENCE
+              value: {{ .Values.config.auth.frontend.oidc.audience | quote }}
+            {{- end }}
+            {{- if .Values.config.auth.backend.oidc.enabled }}
+            - name: MCP__AUTH__BACKEND__OIDC__ENABLED
+              value: "true"
+            - name: MCP__AUTH__BACKEND__OIDC__ISSUER
+              value: {{ .Values.config.auth.backend.oidc.issuer | quote }}
+            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_ID
+              value: {{ .Values.config.auth.backend.oidc.clientId | quote }}
+            - name: MCP__AUTH__BACKEND__OIDC__SCOPES
+              value: {{ .Values.config.auth.backend.oidc.scopes | quote }}
+            {{- if .Values.config.auth.backend.oidc.tokenUrl }}
+            - name: MCP__AUTH__BACKEND__OIDC__TOKEN_URL
+              value: {{ .Values.config.auth.backend.oidc.tokenUrl | quote }}
             {{- end }}
             {{- if .Values.secret.static.create }}
-            - name: MCP__AUTH__OIDC__CLIENT_SECRET
+            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
                   key: oidc_client_secret
             {{- end }}
             {{- end }}
-            {{- if .Values.config.auth.ldap.enabled }}
-            - name: MCP__AUTH__LDAP__ENABLED
+            {{- if .Values.config.auth.backend.ldap.enabled }}
+            - name: MCP__AUTH__BACKEND__LDAP__ENABLED
               value: "true"
-            - name: MCP__AUTH__LDAP__URL
-              value: {{ .Values.config.auth.ldap.url | quote }}
-            - name: MCP__AUTH__LDAP__BASE_DN
-              value: {{ .Values.config.auth.ldap.baseDN | quote }}
-            - name: MCP__AUTH__LDAP__BIND_DN
-              value: {{ .Values.config.auth.ldap.bindDN | quote }}
-            {{- if .Values.config.auth.ldap.insecureSkipVerify }}
-            - name: MCP__AUTH__LDAP__INSECURE_SKIP_VERIFY
+            - name: MCP__AUTH__BACKEND__LDAP__URL
+              value: {{ .Values.config.auth.backend.ldap.url | quote }}
+            - name: MCP__AUTH__BACKEND__LDAP__BASE_DN
+              value: {{ .Values.config.auth.backend.ldap.baseDN | quote }}
+            - name: MCP__AUTH__BACKEND__LDAP__BIND_DN
+              value: {{ .Values.config.auth.backend.ldap.bindDN | quote }}
+            {{- if .Values.config.auth.backend.ldap.insecureSkipVerify }}
+            - name: MCP__AUTH__BACKEND__LDAP__INSECURE_SKIP_VERIFY
               value: "true"
             {{- end }}
-            {{- if .Values.config.auth.ldap.timeout }}
-            - name: MCP__AUTH__LDAP__TIMEOUT
-              value: {{ .Values.config.auth.ldap.timeout | quote }}
+            {{- if .Values.config.auth.backend.ldap.timeout }}
+            - name: MCP__AUTH__BACKEND__LDAP__TIMEOUT
+              value: {{ .Values.config.auth.backend.ldap.timeout | quote }}
             {{- end }}
             {{- if .Values.secret.static.create }}
-            - name: MCP__AUTH__LDAP__BIND_PASSWORD
+            - name: MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
@@ -95,14 +107,14 @@ spec:
             {{- end }}
             {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
             {{- if .Values.secret.static.bearerToken }}
-            - name: MCP__AUTH__STATIC__BEARER_TOKEN
+            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
                   key: bearer_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
-            - name: MCP__AUTH__STATIC__COOKIE_TOKEN
+            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
@@ -110,14 +122,14 @@ spec:
             {{- end }}
             {{- else if and (eq .Values.secret.provider "gcp") }}
             {{- if .Values.secret.static.bearerToken }}
-            - name: MCP__AUTH__STATIC__BEARER_TOKEN
+            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
                   key: bearer_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
-            - name: MCP__AUTH__STATIC__COOKIE_TOKEN
+            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "jira-mcp.secretName" . }}
