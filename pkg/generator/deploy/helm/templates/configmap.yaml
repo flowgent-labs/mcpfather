@@ -43,7 +43,7 @@ data:
           bearer_token: ""    # set via MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN env (from Secret)
           cookie_token: ""    # set via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN env (from Secret)
 
-    tools:
+    nativeTools:
       expose:
         register_all_tools_by_default: {{ .Values.config.tools.registerAllByDefault }}
         includes:
