@@ -1,4 +1,5 @@
-.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema help
+.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema \
+	build-image push-image help
 
 BINARY_NAME := mcpfather
 CMD_PATH := ./cmd/mcpfather
@@ -9,12 +10,17 @@ BUILD_FLAGS := -v -trimpath
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
+IMAGE_REPO ?= ghcr.io/flowgent-labs/$(BINARY_NAME)
+IMAGE_TAG  ?= $(VERSION)
+
 BIN := bin/$(BINARY_NAME)-$(GOOS)-$(GOARCH)-$(VERSION)$(if $(filter windows,$(GOOS)),.exe,)
 
 help:
 	@echo "Usage:"
 	@echo "  make build                  Build $(BINARY_NAME) for current platform"
 	@echo "  make build-all              Cross-compile for all platforms"
+	@echo "  make build-image            Build Docker image"
+	@echo "  make push-image             Build and push Docker image to ghcr.io"
 	@echo "  make test                   Run unit tests"
 	@echo "  make test-unit              Run unit tests"
 	@echo "  make test-integration       Run integration tests"
@@ -57,3 +63,9 @@ gen-config-dsl-schema:
 	@go build -o bin/gen-config-dsl-schema ./cmd/gen-config-dsl-schema/
 	@./bin/gen-config-dsl-schema --output .agents/skills/virtual-tool-creator/resources/dsl-schema.json
 	@echo "==> Schema updated: .agents/skills/virtual-tool-creator/resources/dsl-schema.json"
+
+build-image: build
+	docker build -t $(IMAGE_REPO):$(IMAGE_TAG) .
+
+push-image: build-image
+	docker push $(IMAGE_REPO):$(IMAGE_TAG)
