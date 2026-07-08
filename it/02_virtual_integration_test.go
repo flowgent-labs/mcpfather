@@ -14,6 +14,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/santhosh-tekuri/jsonschema/v6"
+	"gopkg.in/yaml.v3"
+
+	"github.com/flowgent-labs/mcpfather/pkg/dslschema"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/config"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/engine"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
@@ -2071,7 +2075,8 @@ func TestE2E_MCP_HeaderForwarding_DisabledByDefault(t *testing.T) {
 	// and a simple virtual tool so the server registers virtual tools path.
 	cfg := `
 upstream:
-  enable_mcp_session_in_forwarding: false
+    enable_mcp_session_in_forwarding: false
+runtime:
 virtualTools:
   - name: simple_passthrough
     description: Simple passthrough
@@ -2128,7 +2133,8 @@ func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 
 	cfg := `
 upstream:
-  enable_mcp_session_in_forwarding: true
+    enable_mcp_session_in_forwarding: true
+runtime:
 virtualTools:
   - name: simple_passthrough
     description: Simple passthrough
@@ -3137,3 +3143,492 @@ virtualTools:
 		t.Fatalf("with threshold 10: expected 0 components, got %d", len(arr))
 	}
 }
+
+// ===========================================================================
+// DSL JSON Schema validation tests
+// ===========================================================================
+
+// TestDSLSchema_ValidMinimalConfig verifies a minimal valid config passes
+// schema validation.
+func TestDSLSchema_ValidMinimalConfig(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    description: A simple virtual tool
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: return
+        spec:
+          from: $step1
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_EnabledField validates the 'enabled' field on virtual tools.
+func TestDSLSchema_EnabledField(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    enabled: false
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: return
+        spec:
+          from: $step1
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_RequireFieldField validates the 'field' property on require.
+func TestDSLSchema_RequireFieldField(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: jq
+        require:
+          nonEmpty: true
+          field: issues
+          message: "issues field must exist"
+        spec:
+          from: $step1
+          expr: ".issues"
+      - id: step3
+        kind: return
+        spec:
+          from: $step2
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_OnMissingField validates the 'onMissing' field on foreach spec.
+func TestDSLSchema_OnMissingField(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    inputSchema:
+      type: object
+      properties:
+        items:
+          type: array
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: foreach
+        spec:
+          in: $step1.items
+          as: item
+          onMissing: skip
+          pipeline:
+            - id: inner
+              kind: return
+              spec:
+                from: "$item"
+      - id: step3
+        kind: return
+        spec:
+          from: $step2
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_AnnotationsField validates the 'annotations' field on virtual tools.
+func TestDSLSchema_AnnotationsField(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    annotations:
+      title: My Tool
+      readOnly: true
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: return
+        spec:
+          from: $step1
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_InvalidConfig_MissingRequiredPipeline validates a config
+// with missing required fields fails schema validation.
+func TestDSLSchema_InvalidConfig_MissingRequiredPipeline(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    inputSchema:
+      type: object
+`
+	validateDSLConfig(t, configYAML, false)
+}
+
+// TestDSLSchema_InvalidConfig_UnknownStepKind validates a config
+// with an unknown step kind fails schema validation.
+func TestDSLSchema_InvalidConfig_UnknownStepKind(t *testing.T) {
+	configYAML := `
+virtualTools:
+  - name: my_tool
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: unknown_kind
+        spec:
+          tool: SomeNativeTool
+          args: {}
+      - id: step2
+        kind: return
+        spec:
+          from: $step1
+`
+	validateDSLConfig(t, configYAML, false)
+}
+
+// TestDSLSchema_SchemaFileIsCurrent verifies the checked-in schema file
+// matches the output of Generate().
+func TestDSLSchema_SchemaFileIsCurrent(t *testing.T) {
+	genBytes, err := ExecuteDSLSchema()
+	if err != nil {
+		t.Fatalf("failed to generate schema: %v", err)
+	}
+
+	repoRoot := repoRoot(t)
+	schemaPath := filepath.Join(repoRoot, ".agents", "skills", "virtual-tool-creator", "resources", "dsl-schema.json")
+	fileBytes, err := os.ReadFile(schemaPath)
+	if err != nil {
+		t.Fatalf("failed to read schema file: %v", err)
+	}
+
+	// Normalize JSON (re-marshal both to handle whitespace diffs)
+	var genData, fileData interface{}
+	if err := json.Unmarshal(genBytes, &genData); err != nil {
+		t.Fatalf("failed to parse generated schema: %v", err)
+	}
+	if err := json.Unmarshal(fileBytes, &fileData); err != nil {
+		t.Fatalf("failed to parse schema file: %v", err)
+	}
+
+	genJSON, _ := json.Marshal(genData)
+	fileJSON, _ := json.Marshal(fileData)
+
+	if string(genJSON) != string(fileJSON) {
+		t.Error("dsl-schema.json is out of date. Run: make gen-config-dsl-schema")
+	}
+}
+
+// ===========================================================================
+// Full config schema validation tests (covers runtime, mgmt, auth, tools)
+// ===========================================================================
+
+// TestDSLSchema_FullConfig_Valid validates a complete config with all sections.
+func TestDSLSchema_FullConfig_Valid(t *testing.T) {
+	configYAML := `
+upstream:
+  endpoint: https://api.example.com
+  enable_mcp_session_in_forwarding: true
+runtime:
+  download_dir: /tmp/downloads
+  log_authorization: false
+mgmt:
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc
+    timeout: 10000
+    sample_rate: 1.0
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+auth:
+  frontend:
+    oidc:
+      enabled: false
+      issuer: ""
+      jwks_uri: ""
+      audience: ""
+  backend:
+    oidc:
+      enabled: false
+    ldap:
+      enabled: false
+    static:
+      bearer_token: ""
+tools:
+  expose:
+    register_all_tools_by_default: true
+virtualTools:
+  - name: my_tool
+    inputSchema:
+      type: object
+    pipeline:
+      - id: step1
+        kind: call
+        spec:
+          tool: SomeTool
+          args: {}
+      - id: step2
+        kind: return
+        spec:
+          from: $step1
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_RuntimeConfig validates the runtime section.
+func TestDSLSchema_RuntimeConfig(t *testing.T) {
+	configYAML := `
+upstream:
+  endpoint: https://api.example.com
+  enable_mcp_session_in_forwarding: false
+runtime:
+  download_dir: ""
+  log_authorization: true
+virtualTools:
+  - name: t1
+    inputSchema: {type: object}
+    pipeline:
+      - id: s1
+        kind: call
+        spec: {tool: T, args: {}}
+      - id: s2
+        kind: return
+        spec: {from: $s1}
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_RuntimeWithoutUpstream validates runtime is valid without upstream
+// (upstream is a separate top-level key).
+func TestDSLSchema_RuntimeWithoutUpstream(t *testing.T) {
+	configYAML := `
+runtime:
+  download_dir: /tmp
+virtualTools:
+  - name: t1
+    inputSchema: {type: object}
+    pipeline:
+      - id: s1
+        kind: call
+        spec: {tool: T, args: {}}
+      - id: s2
+        kind: return
+        spec: {from: $s1}
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_MgmtConfig validates the mgmt section.
+func TestDSLSchema_MgmtConfig(t *testing.T) {
+	configYAML := `
+mgmt:
+  enabled: true
+  host: 127.0.0.1
+  port: 9090
+  pprof:
+    enabled: true
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: true
+    endpoint: otel-collector:4317
+    protocol: grpc
+    timeout: 5000
+    sample_rate: 0.5
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 15s
+virtualTools:
+  - name: t1
+    inputSchema: {type: object}
+    pipeline:
+      - id: s1
+        kind: call
+        spec: {tool: T, args: {}}
+      - id: s2
+        kind: return
+        spec: {from: $s1}
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_AuthConfig validates the auth section with all backends.
+func TestDSLSchema_AuthConfig(t *testing.T) {
+	configYAML := `
+auth:
+  frontend:
+    oidc:
+      enabled: true
+      issuer: https://idp.example.com
+      jwks_uri: https://idp.example.com/keys
+      audience: mcp-server
+  backend:
+    oidc:
+      enabled: true
+      issuer: https://idp.example.com
+      client_id: my-client
+      client_secret: my-secret
+      scopes: openid profile
+      grant_type: client_credentials
+    ldap:
+      enabled: true
+      url: ldaps://ldap.example.com
+      base_dn: dc=example,dc=com
+      bind_dn: cn=svc,dc=example,dc=com
+      bind_password: secret
+      insecure_skip_verify: false
+      timeout: 10
+    static:
+      bearer_token: my-token
+      bearer_token_file: /path/to/token
+      cookie_token: JSESSIONID=abc
+      cookie_token_file: /path/to/cookie
+virtualTools:
+  - name: t1
+    inputSchema: {type: object}
+    pipeline:
+      - id: s1
+        kind: call
+        spec: {tool: T, args: {}}
+      - id: s2
+        kind: return
+        spec: {from: $s1}
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// TestDSLSchema_ToolsConfig validates the tools.expose section.
+func TestDSLSchema_ToolsConfig(t *testing.T) {
+	configYAML := `
+tools:
+  expose:
+    register_all_tools_by_default: true
+    includes:
+      - ToolA
+      - ToolB
+    excludes:
+      - ToolC
+virtualTools:
+  - name: t1
+    inputSchema: {type: object}
+    pipeline:
+      - id: s1
+        kind: call
+        spec: {tool: T, args: {}}
+      - id: s2
+        kind: return
+        spec: {from: $s1}
+`
+	validateDSLConfig(t, configYAML, true)
+}
+
+// ===========================================================================
+// DSL schema validation helpers
+// ===========================================================================
+
+// ExecuteDSLSchema generates the DSL JSON Schema using the dslschema package.
+func ExecuteDSLSchema() ([]byte, error) {
+	return dslschema.Encode()
+}
+
+// validateDSLConfig validates a YAML config string against the DSL JSON Schema.
+func validateDSLConfig(t *testing.T, configYAML string, expectValid bool) {
+	t.Helper()
+
+	// Generate schema
+	schemaBytes, err := ExecuteDSLSchema()
+	if err != nil {
+		t.Fatalf("failed to generate schema: %v", err)
+	}
+
+	// Convert YAML config to JSON
+	configJSON, err := yamlToJSON([]byte(configYAML))
+	if err != nil {
+		t.Fatalf("failed to parse config YAML: %v", err)
+	}
+
+	// Validate using jsonschema library
+	err = validateAgainstSchema(schemaBytes, configJSON)
+	if expectValid {
+		if err != nil {
+			t.Errorf("unexpected validation error: %v", err)
+		}
+	} else {
+		if err == nil {
+			t.Error("expected validation to fail, but it passed")
+		}
+	}
+}
+
+// yamlToJSON converts YAML bytes to JSON bytes.
+func yamlToJSON(yamlBytes []byte) ([]byte, error) {
+	var data interface{}
+	if err := yaml.Unmarshal(yamlBytes, &data); err != nil {
+		return nil, err
+	}
+	return json.Marshal(data)
+}
+
+// validateAgainstSchema validates JSON data against a JSON Schema.
+func validateAgainstSchema(schemaBytes []byte, instanceBytes []byte) error {
+	c := jsonschema.NewCompiler()
+
+	var schemaObj interface{}
+	if err := json.Unmarshal(schemaBytes, &schemaObj); err != nil {
+		return fmt.Errorf("invalid schema JSON: %w", err)
+	}
+	if err := c.AddResource("schema.json", schemaObj); err != nil {
+		return fmt.Errorf("failed to add schema resource: %w", err)
+	}
+
+	sch, err := c.Compile("schema.json")
+	if err != nil {
+		return fmt.Errorf("invalid schema: %w", err)
+	}
+
+	var instance interface{}
+	if err := json.Unmarshal(instanceBytes, &instance); err != nil {
+		return fmt.Errorf("invalid instance JSON: %w", err)
+	}
+
+	return sch.Validate(instance)
+}
+

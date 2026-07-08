@@ -12,26 +12,36 @@ data:
       enable_mcp_session_in_forwarding: {{ .Values.config.upstream.enableMCPSessionInForwarding }}
 
     auth:
-      oidc:
-        enabled: {{ .Values.config.auth.oidc.enabled }}
-        issuer: {{ .Values.config.auth.oidc.issuer | quote }}
-        client_id: {{ .Values.config.auth.oidc.clientId | quote }}
-        scopes: {{ .Values.config.auth.oidc.scopes | quote }}
-        token_url: {{ .Values.config.auth.oidc.tokenUrl | quote }}
-        client_secret: ""   # set via MCP__AUTH__OIDC__CLIENT_SECRET env (from Secret)
+      # Frontend (inbound): validates bearer tokens presented by MCP clients.
+      frontend:
+        oidc:
+          enabled: {{ .Values.config.auth.frontend.oidc.enabled }}
+          issuer: {{ .Values.config.auth.frontend.oidc.issuer | quote }}
+          jwks_uri: {{ .Values.config.auth.frontend.oidc.jwksUri | quote }}
+          audience: {{ .Values.config.auth.frontend.oidc.audience | quote }}
 
-      ldap:
-        enabled: {{ .Values.config.auth.ldap.enabled }}
-        url: {{ .Values.config.auth.ldap.url | quote }}
-        base_dn: {{ .Values.config.auth.ldap.baseDN | quote }}
-        bind_dn: {{ .Values.config.auth.ldap.bindDN | quote }}
-        bind_password: ""   # set via MCP__AUTH__LDAP__BIND_PASSWORD env (from Secret)
-        insecure_skip_verify: {{ .Values.config.auth.ldap.insecureSkipVerify }}
-        timeout: {{ .Values.config.auth.ldap.timeout }}
+      # Backend (outbound): credentials used to call upstream APIs.
+      backend:
+        oidc:
+          enabled: {{ .Values.config.auth.backend.oidc.enabled }}
+          issuer: {{ .Values.config.auth.backend.oidc.issuer | quote }}
+          client_id: {{ .Values.config.auth.backend.oidc.clientId | quote }}
+          scopes: {{ .Values.config.auth.backend.oidc.scopes | quote }}
+          token_url: {{ .Values.config.auth.backend.oidc.tokenUrl | quote }}
+          client_secret: ""   # set via MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET env (from Secret)
 
-      static:
-        bearer_token: ""    # set via MCP__AUTH__STATIC__BEARER_TOKEN env (from Secret)
-        cookie_token: ""    # set via MCP__AUTH__STATIC__COOKIE_TOKEN env (from Secret)
+        ldap:
+          enabled: {{ .Values.config.auth.backend.ldap.enabled }}
+          url: {{ .Values.config.auth.backend.ldap.url | quote }}
+          base_dn: {{ .Values.config.auth.backend.ldap.baseDN | quote }}
+          bind_dn: {{ .Values.config.auth.backend.ldap.bindDN | quote }}
+          bind_password: ""   # set via MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD env (from Secret)
+          insecure_skip_verify: {{ .Values.config.auth.backend.ldap.insecureSkipVerify }}
+          timeout: {{ .Values.config.auth.backend.ldap.timeout }}
+
+        static:
+          bearer_token: ""    # set via MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN env (from Secret)
+          cookie_token: ""    # set via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN env (from Secret)
 
     tools:
       expose:

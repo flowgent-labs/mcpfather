@@ -94,9 +94,6 @@ secret:
 
 # -- MCP server configuration (mounted as ConfigMap)
 config:
-  upstream:
-    endpoint: ""
-    enableMCPSessionInForwarding: false
   auth:
     # -- Frontend (inbound): validates bearer tokens presented by MCP clients
     # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
@@ -147,6 +144,9 @@ config:
     metrics:
       enabled: true
       prometheus: true
+  upstream:
+    endpoint: ""
+    enableMCPSessionInForwarding: false
   runtime:
     downloadDir: ""
     logAuthorization: false

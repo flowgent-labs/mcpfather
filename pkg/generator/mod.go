@@ -14,7 +14,8 @@ const (
 	maxSearchDepth = 50
 	goModFile      = "go.mod"
 	minGoMajor     = 1
-	minGoMinor     = 24
+	minGoMinor     = 26
+	minGoPatch     = 4
 )
 
 // BuildModuleName computes the module name from the output directory basename.
@@ -47,14 +48,14 @@ func GenerateGoMod(outputDir string) error {
 	if idx := strings.IndexByte(goVersion, '-'); idx != -1 {
 		goVersion = goVersion[:idx]
 	}
-	// Keep only major.minor (e.g. "1.23")
-	if parts := strings.Split(goVersion, "."); len(parts) >= 2 {
-		goVersion = strings.Join(parts[:2], ".")
+	// Keep only major.minor.patch (e.g. "1.23.4")
+	if parts := strings.Split(goVersion, "."); len(parts) >= 3 {
+		goVersion = strings.Join(parts[:3], ".")
 		// Cap at minimum supported version — generated code doesn't need newer Go.
 		if major, err := strconv.Atoi(parts[0]); err == nil {
 			if minor, err := strconv.Atoi(parts[1]); err == nil {
 				if major > minGoMajor || (major == minGoMajor && minor > minGoMinor) {
-					goVersion = fmt.Sprintf("%d.%d", minGoMajor, minGoMinor)
+					goVersion = fmt.Sprintf("%d.%d.%d", minGoMajor, minGoMinor, minGoPatch)
 				}
 			}
 		}
