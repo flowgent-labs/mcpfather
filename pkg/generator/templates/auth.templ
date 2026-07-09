@@ -29,7 +29,7 @@ type oidcToken struct {
 
 // oidcManager handles OIDC client credentials flow with auto-refresh.
 type oidcManager struct {
-	cfg        OIDCConfig
+	cfg        BackendOIDCConfig
 	httpClient *http.Client
 	token      *oidcToken
 	mu         sync.Mutex
@@ -44,7 +44,7 @@ var (
 
 // InitOIDC starts the OIDC token manager. Safe to call multiple times; only the
 // first call has effect. When OIDC is disabled in config, this is a no-op.
-func InitOIDC(cfg OIDCConfig) {
+func InitOIDC(cfg BackendOIDCConfig) {
 	oidcOnce.Do(func() {
 		if !cfg.Enabled {
 			return

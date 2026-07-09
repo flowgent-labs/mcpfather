@@ -2056,11 +2056,10 @@ virtualTools:
 // SECTION 11: MCP Header Forwarding to Upstream Tests
 // ===========================================================================
 
-// TestE2E_MCP_HeaderForwarding_DisabledByDefault verifies that
-// X-MCP-Session-ID is always forwarded to upstream even when
-// enable_mcp_session_in_forwarding is explicitly set to false
-// (backward-compatible — the config key is deprecated and always-on).
-func TestE2E_MCP_HeaderForwarding_DisabledByDefault(t *testing.T) {
+// TestE2E_MCP_HeaderForwarding_ExplicitlyDisabled verifies that
+// X-MCP-Session-ID is NOT forwarded to upstream when
+// enable_mcp_session_forwarding is explicitly set to false.
+func TestE2E_MCP_HeaderForwarding_ExplicitlyDisabled(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
@@ -2075,7 +2074,7 @@ func TestE2E_MCP_HeaderForwarding_DisabledByDefault(t *testing.T) {
 	// and a simple virtual tool so the server registers virtual tools path.
 	cfg := `
 upstream:
-    enable_mcp_session_in_forwarding: false
+    enable_mcp_session_forwarding: false
 runtime:
 virtualTools:
   - name: simple_passthrough
@@ -2112,14 +2111,14 @@ virtualTools:
 	if req.Headers.Get("Mcp-Session-Id") != "" {
 		t.Error("Mcp-Session-Id should NOT be forwarded to upstream")
 	}
-	if req.Headers.Get("X-MCP-Session-ID") == "" {
-		t.Error("X-MCP-Session-ID should always be forwarded (deprecated gate is ignored)")
+	if req.Headers.Get("X-MCP-Session-ID") != "" {
+		t.Error("X-MCP-Session-ID should NOT be forwarded when enable_mcp_session_forwarding is false")
 	}
 }
 
 // TestE2E_MCP_HeaderForwarding_Enabled verifies that X-MCP-Session-ID
-// is always forwarded to upstream (enable_mcp_session_in_forwarding is
-// deprecated and always-on). The original Mcp-Session-Id is never forwarded.
+// is forwarded to upstream when enable_mcp_session_forwarding is true.
+// The original Mcp-Session-Id is never forwarded.
 func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -2133,7 +2132,7 @@ func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 
 	cfg := `
 upstream:
-    enable_mcp_session_in_forwarding: true
+    enable_mcp_session_forwarding: true
 runtime:
 virtualTools:
   - name: simple_passthrough
@@ -2170,14 +2169,14 @@ virtualTools:
 		t.Error("Mcp-Session-Id should never be forwarded directly to upstream")
 	}
 	if req.Headers.Get("X-MCP-Session-ID") == "" {
-		t.Error("X-MCP-Session-ID should always be forwarded")
+		t.Error("X-MCP-Session-ID should be forwarded when enable_mcp_session_forwarding is true")
 	}
 }
 
-// TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled verifies that
-// X-MCP-Session-ID is always forwarded to upstream even when no config
-// is present (always-on behavior).
-func TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled(t *testing.T) {
+// TestE2E_MCP_HeaderForwarding_DefaultsToEnabled verifies that
+// X-MCP-Session-ID IS forwarded to upstream when no config
+// is present (defaults to true).
+func TestE2E_MCP_HeaderForwarding_DefaultsToEnabled(t *testing.T) {
 	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"status":"ok"}`))
@@ -2188,7 +2187,7 @@ func TestE2E_MCP_HeaderForwarding_NoConfigDefaultsToDisabled(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	// Config without any upstream section — session ID is always forwarded
+	// Config without any upstream section — session ID IS forwarded (defaults to true)
 	cfg := `
 virtualTools:
   - name: simple_passthrough
@@ -2225,7 +2224,7 @@ virtualTools:
 		t.Error("Mcp-Session-Id should NOT be forwarded by default")
 	}
 	if req.Headers.Get("X-MCP-Session-ID") == "" {
-		t.Error("X-MCP-Session-ID should always be forwarded")
+		t.Error("X-MCP-Session-ID should be forwarded by default (enable_mcp_session_forwarding defaults to true)")
 	}
 }
 
@@ -3357,7 +3356,7 @@ func TestDSLSchema_FullConfig_Valid(t *testing.T) {
 	configYAML := `
 upstream:
   endpoint: https://api.example.com
-  enable_mcp_session_in_forwarding: true
+  enable_mcp_session_forwarding: true
 runtime:
   download_dir: /tmp/downloads
   log_authorization: false
@@ -3418,7 +3417,7 @@ func TestDSLSchema_RuntimeConfig(t *testing.T) {
 	configYAML := `
 upstream:
   endpoint: https://api.example.com
-  enable_mcp_session_in_forwarding: false
+  enable_mcp_session_forwarding: false
 runtime:
   download_dir: ""
   log_authorization: true
