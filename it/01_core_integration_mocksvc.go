@@ -239,6 +239,36 @@ func (m *CoreMockService) RegisterGreetingScenario() {
 	})
 }
 
+// RegisterUploadScenario registers a POST /upload handler that echoes back
+// the uploaded file metadata (content type, size, file content).
+func (m *CoreMockService) RegisterUploadScenario() {
+	m.Handle("/upload", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		bodyBytes, _ := io.ReadAll(r.Body)
+		contentType := r.Header.Get("Content-Type")
+		var fileContent string
+		// Extract file content: try multipart form first, fall back to raw body
+		if strings.Contains(contentType, "multipart/form-data") {
+			_ = r.ParseMultipartForm(32 << 20)
+			if file, _, err := r.FormFile("file"); err == nil {
+				data, _ := io.ReadAll(file)
+				fileContent = string(data)
+				file.Close()
+			}
+		}
+		if fileContent == "" && len(bodyBytes) > 0 {
+			fileContent = string(bodyBytes)
+		}
+		writeCoreJSON(w, map[string]interface{}{
+			"method":         r.Method,
+			"contentType":    contentType,
+			"bodySize":       len(bodyBytes),
+			"fileContent":    fileContent,
+			"fileContentSize": len(fileContent),
+		})
+	})
+}
+
 func writeCoreJSON(w http.ResponseWriter, v interface{}) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

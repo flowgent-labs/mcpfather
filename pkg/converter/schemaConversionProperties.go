@@ -1,6 +1,9 @@
 package converter
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+)
 
 // buildPropertySchema builds the JSON Schema property for a given Arg.
 // Returns nil if the property should be skipped.
@@ -46,9 +49,16 @@ func buildBodySchema(arg Arg) (map[string]interface{}, error) {
 		}
 	}
 
-	// Multiple content types: use oneOf
+	// Multiple content types: use oneOf (sorted for deterministic output)
+	sortedCTs := make([]string, 0, len(arg.ContentTypes))
+	for ct := range arg.ContentTypes {
+		sortedCTs = append(sortedCTs, ct)
+	}
+	sort.Strings(sortedCTs)
+
 	oneOfSchemas := []map[string]interface{}{}
-	for contentType, schema := range arg.ContentTypes {
+	for _, contentType := range sortedCTs {
+		schema := arg.ContentTypes[contentType]
 		branchSchema, err := schemaToDraft7Map(schema, visited)
 		if err != nil {
 			return nil, fmt.Errorf(

@@ -16,40 +16,13 @@
       "additionalProperties": false,
       "properties": {
         "ldap": {
-          "$ref": "#/$defs/BackendLDAPConfig"
+          "$ref": "#/$defs/LDAPConfig"
         },
         "oidc": {
           "$ref": "#/$defs/BackendOIDCConfig"
         },
         "static": {
-          "$ref": "#/$defs/BackendStaticConfig"
-        }
-      },
-      "type": "object"
-    },
-    "BackendLDAPConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "base_dn": {
-          "type": "string"
-        },
-        "bind_dn": {
-          "type": "string"
-        },
-        "bind_password": {
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "insecure_skip_verify": {
-          "type": "boolean"
-        },
-        "timeout": {
-          "type": "integer"
-        },
-        "url": {
-          "type": "string"
+          "$ref": "#/$defs/StaticAuthConfig"
         }
       },
       "type": "object"
@@ -87,35 +60,14 @@
       },
       "type": "object"
     },
-    "BackendStaticConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "bearer_token": {
-          "type": "string"
-        },
-        "bearer_token_file": {
-          "type": "string"
-        },
-        "cookie_token": {
-          "type": "string"
-        },
-        "cookie_token_file": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "CallSpec": {
       "additionalProperties": false,
       "properties": {
         "args": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         },
         "parse": {
-          "enum": [
-            "json"
-          ],
           "type": "string"
         },
         "tool": {
@@ -128,6 +80,27 @@
       ],
       "type": "object"
     },
+    "Config": {
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "$ref": "#/$defs/AuthConfig"
+        },
+        "mgmt": {
+          "$ref": "#/$defs/MgmtConfig"
+        },
+        "nativeTools": {
+          "$ref": "#/$defs/ToolsConfig"
+        },
+        "runtime": {
+          "$ref": "#/$defs/RuntimeConfig"
+        },
+        "upstream": {
+          "$ref": "#/$defs/UpstreamConfig"
+        }
+      },
+      "type": "object"
+    },
     "EmitSpec": {
       "additionalProperties": false,
       "properties": {
@@ -138,7 +111,7 @@
           "type": "string"
         },
         "vars": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         }
       },
@@ -155,10 +128,6 @@
           "type": "string"
         },
         "onMissing": {
-          "enum": [
-            "skip",
-            "error"
-          ],
           "type": "string"
         },
         "pipeline": {
@@ -216,13 +185,40 @@
           "type": "string"
         },
         "vars": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         }
       },
       "required": [
         "expr"
       ],
+      "type": "object"
+    },
+    "LDAPConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_dn": {
+          "type": "string"
+        },
+        "bind_dn": {
+          "type": "string"
+        },
+        "bind_password": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "insecure_skip_verify": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
       "type": "object"
     },
     "MetricsConfig": {
@@ -325,9 +321,6 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "nonEmpty"
-      ],
       "type": "object"
     },
     "ReturnSpec": {
@@ -340,7 +333,7 @@
           "type": "string"
         },
         "vars": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         }
       },
@@ -354,6 +347,24 @@
         },
         "log_authorization": {
           "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "StaticAuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "bearer_token": {
+          "type": "string"
+        },
+        "bearer_token_file": {
+          "type": "string"
+        },
+        "cookie_token": {
+          "type": "string"
+        },
+        "cookie_token_file": {
+          "type": "string"
         }
       },
       "type": "object"
@@ -501,7 +512,7 @@
     "UpstreamConfig": {
       "additionalProperties": false,
       "properties": {
-        "enable_mcp_session_in_forwarding": {
+        "enable_mcp_session_forwarding": {
           "type": "boolean"
         },
         "endpoint": {
@@ -514,9 +525,6 @@
           "type": "array"
         }
       },
-      "required": [
-        "endpoint"
-      ],
       "type": "object"
     },
     "UpstreamToolConfig": {
@@ -526,16 +534,13 @@
           "type": "string"
         }
       },
-      "required": [
-        "name"
-      ],
       "type": "object"
     },
     "VirtualTool": {
       "additionalProperties": false,
       "properties": {
         "annotations": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         },
         "description": {
@@ -545,7 +550,7 @@
           "type": "boolean"
         },
         "inputSchema": {
-          "additionalProperties": true,
+          "additionalProperties": {},
           "type": "object"
         },
         "name": {
@@ -555,21 +560,16 @@
           "items": {
             "$ref": "#/$defs/Step"
           },
-          "minItems": 1,
           "type": "array"
         }
       },
-      "required": [
-        "name",
-        "pipeline"
-      ],
       "type": "object"
     }
   },
   "$id": "https://mcpfather/schemas/mcp-server-config",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": true,
-  "description": "Schema for mcpfather MCP server configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs: config.templ, config/config.go, pipeline/types.go, pipeline/validator.go",
+  "description": "Schema for mcpfather MCP server configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs in mcpconfig + mcpvirtual/config + mcpvirtual/pipeline.",
   "properties": {
     "auth": {
       "$ref": "#/$defs/AuthConfig"
@@ -577,11 +577,11 @@
     "mgmt": {
       "$ref": "#/$defs/MgmtConfig"
     },
+    "nativeTools": {
+      "$ref": "#/$defs/ToolsConfig"
+    },
     "runtime": {
       "$ref": "#/$defs/RuntimeConfig"
-    },
-    "tools": {
-      "$ref": "#/$defs/ToolsConfig"
     },
     "upstream": {
       "$ref": "#/$defs/UpstreamConfig"

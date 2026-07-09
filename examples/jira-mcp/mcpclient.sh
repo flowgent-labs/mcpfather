@@ -67,7 +67,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddComment (POST)
-  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"updateAuthor": {}, "updated": "2012-07-06T18:30:00.000+0000", "properties": [], "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "visibility": {}, "author": "value", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "created": "2012-07-06T18:30:00.000+0000", "id": "10000", "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper."}}'
+  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "visibility": {}, "properties": [], "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "created": "2012-07-06T18:30:00.000+0000", "updateAuthor": {}, "id": "10000", "author": "value", "updated": "2012-07-06T18:30:00.000+0000", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper."}}'
 EOEX
   cat <<'EOEX'
   # AddField (POST)
@@ -87,11 +87,11 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddSharePermission (POST)
-  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value", "userKey": "userKey_value"}}'
+  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"userKey": "userKey_value", "view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value"}}'
 EOEX
   cat <<'EOEX'
   # AddTab (POST)
-  ./mcpclient.sh call AddTab '{"screenId": 0, "body": {"name": "Fields Tab", "id": 10000}}'
+  ./mcpclient.sh call AddTab '{"screenId": 0, "body": {"id": 10000, "name": "Fields Tab"}}'
 EOEX
   cat <<'EOEX'
   # AddUserToApplication1 (POST)
@@ -111,7 +111,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddWorklog (POST)
-  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"issueId": "10002", "visibility": {}, "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "timeSpentSeconds": 12000, "started": "2010-07-14T18:23:23.733+0000", "comment": "I did some work here.", "updated": "2010-07-14T18:23:23.733+0000", "created": "2010-07-14T18:23:23.733+0000", "author": "value", "timeSpent": "3h 20m", "updateAuthor": {}, "id": "100028"}}'
+  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"started": "2010-07-14T18:23:23.733+0000", "timeSpentSeconds": 12000, "updateAuthor": "value", "created": "2010-07-14T18:23:23.733+0000", "comment": "I did some work here.", "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "updated": "2010-07-14T18:23:23.733+0000", "timeSpent": "3h 20m", "author": {}, "issueId": "10002", "id": "100028", "visibility": {}}}'
 EOEX
   cat <<'EOEX'
   # ApplyEmailTemplates (POST)
@@ -258,27 +258,31 @@ call_tool() {
   echo "[*] Calling tool: $tool_name" >&2
   echo "[*] Args: $args" >&2
 
-  # If --file is provided, add local_file_path to the args
+  # If --file is provided, send the file content as base64 via file_content,
+  # using the basename as file_name. For stdio mode the server reads from
+  # ~/.{project}/uploads/; for HTTP mode the server decodes the base64 inline.
   if [ -n "$file_path" ]; then
     if [ ! -f "$file_path" ]; then
       echo "[!] File not found: $file_path" >&2
       return 1
     fi
-    local file_size
+    local file_size file_name file_b64
     file_size=$(wc -c < "$file_path" | tr -d ' ')
-    echo "[*] Uploading file: $file_path ($file_size bytes)" >&2
+    file_name=$(basename "$file_path")
+    echo "[*] Uploading file: $file_path ($file_size bytes) as $file_name" >&2
 
-    # Add local_file_path to args JSON
     if command -v python3 >/dev/null 2>&1; then
+      file_b64=$(python3 -c "import base64,sys; print(base64.b64encode(open(sys.argv[1],'rb').read()).decode())" "$file_path" 2>/dev/null)
       args=$(python3 -c "
 import json, sys
 args = json.loads('$args')
-args['local_file_path'] = '$file_path'
+args['file_name'] = '$file_name'
+args['file_content'] = '$file_b64'
 print(json.dumps(args))
 " 2>/dev/null || echo "$args")
     else
-      # Simple jq-based approach or fallback
-      args=$(echo "$args" | sed 's/}$/}/' | sed "s/}\"$/,\"local_file_path\":\"$file_path\"}/" | sed "s/{}/{\"local_file_path\":\"$file_path\"}/")
+      # Fallback: set file_name only, user must place file in uploads dir
+      args=$(echo "$args" | sed 's/}$/}/' | sed "s/}\"$/,\"file_name\":\"$file_name\"}/" | sed "s/{}/{\"file_name\":\"$file_name\"}/")
     fi
   fi
 
