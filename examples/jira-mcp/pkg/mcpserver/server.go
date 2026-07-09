@@ -162,7 +162,7 @@ func resolveEnabledTools(cfg *mcputils.Config) (map[string]bool, error) {
 		}
 	}
 
-	// Start with all tools if register-all-tools-by-default is true
+	// Start with all tools if register_all_tools_by_default is true
 	if expose.RegisterAllToolsByDefault {
 		for name := range mcptools.Registry {
 			enabled[name] = true

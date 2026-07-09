@@ -247,17 +247,17 @@ nativeTools:
     # (individual tools can be hidden via excludes).
     # When false (the default), only tools listed in includes
     # are exposed.
-    register-all-tools-by-default: false
+    register_all_tools_by_default: false
 
     # Explicitly expose these tools (operationId values).
     # Takes precedence: tools listed here are always exposed,
-    # even if register-all-tools-by-default is false.
+    # even if register_all_tools_by_default is false.
     includes:
       - ListSpaces
       - SearchContent
 
     # Explicitly hide these tools from external agents (operationId values).
-    # Takes precedence over register-all-tools-by-default.
+    # Takes precedence over register_all_tools_by_default.
     # A tool listed in BOTH includes and excludes will cause
     # the server to fail at startup.
     excludes: []

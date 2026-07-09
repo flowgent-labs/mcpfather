@@ -12,200 +12,36 @@ import (
 
 	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
+
+	"jira-mcp/pkg/mcpconfig"
 )
 
-// ---- top-level config ----
+// ---- type aliases (canonical definitions in serverconfig package) ----
 
-// Config is the root configuration for the MCP server.
-type Config struct {
-	Auth     AuthConfig     `yaml:"auth"`
-	Tools    ToolsConfig    `yaml:"nativeTools"`
-	Mgmt     MgmtConfig     `yaml:"mgmt"`
-	Runtime  RuntimeConfig  `yaml:"runtime"`
-	Upstream UpstreamConfig `yaml:"upstream"`
-}
-
-// ---- auth ----
-//
-// Naming mirrors reverse-proxy terminology (HAProxy/Envoy): "frontend" is the
-// inbound side facing MCP clients (AI agents), "backend" is the outbound side
-// facing upstream APIs. The two are fully decoupled — an inbound bearer token
-// is verified but never reused as the outbound credential (see the Token
-// Passthrough Prohibition in the MCP authorization spec, and helpers.go/
-// tool.go where forwarding explicitly skips the client Authorization header).
-type AuthConfig struct {
-	// Frontend validates inbound requests from MCP clients (Resource Server
-	// role per RFC 9728 / MCP Authorization spec 2025-06-18). Only applies to
-	// the http transport; stdio has no network boundary to protect.
-	Frontend FrontendAuthConfig `yaml:"frontend"`
-	// Backend authenticates outbound requests to upstream APIs (OAuth Client
-	// role). Kept separate because upstream enterprise systems use a much
-	// wider variety of legacy auth mechanisms than MCP clients do.
-	Backend BackendAuthConfig `yaml:"backend"`
-}
-
-// FrontendAuthConfig configures inbound OAuth 2.1 bearer token validation for
-// MCP clients (AI agents). MCP clients are always modern systems, so only
-// standard JWT/OIDC validation is supported here (no introspection, no
-// static shared secrets, no legacy Basic/LDAP auth).
-type FrontendAuthConfig struct {
-	OIDC FrontendOIDCConfig `yaml:"oidc"`
-}
-
-// FrontendOIDCConfig configures JWT bearer token validation against an OIDC
-// issuer. JWKSURI is auto-discovered from Issuer's
-// /.well-known/openid-configuration when left empty. Audience doubles as the
-// RFC 9728 "resource" identifier returned from
-// /.well-known/oauth-protected-resource (Resource Indicators, RFC 8707,
-// recommend the two match).
-type FrontendOIDCConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Issuer   string `yaml:"issuer"`
-	JWKSURI  string `yaml:"jwks_uri"`
-	Audience string `yaml:"audience"`
-}
-
-// BackendAuthConfig holds authentication settings for upstream API calls.
-// The MCP server acts as an OAuth client here: it authenticates itself to
-// upstream APIs using its own credentials, independent of whatever token
-// the calling MCP client presented.
-type BackendAuthConfig struct {
-	OIDC   OIDCConfig       `yaml:"oidc"`
-	LDAP   LDAPConfig       `yaml:"ldap"`
-	Static StaticAuthConfig `yaml:"static"`
-}
-
-// OIDCConfig configures machine-to-machine OIDC token exchange.
-// Supported grant types: client_credentials (default), password.
-type OIDCConfig struct {
-	Enabled      bool   `yaml:"enabled"`
-	Issuer       string `yaml:"issuer"`
-	ClientID     string `yaml:"client_id"`
-	ClientSecret string `yaml:"client_secret"`
-	Scopes       string `yaml:"scopes"`
-	GrantType    string `yaml:"grant_type"`
-	TokenURL     string `yaml:"token_url"`
-	Username     string `yaml:"username"`
-	Password     string `yaml:"password"`
-}
-
-// LDAPConfig configures machine-to-machine LDAP service account bind auth.
-// On successful bind, a Basic auth header (base64(bindDN:bindPassword)) is
-// produced and used as the upstream Bearer token.
-type LDAPConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	URL                string `yaml:"url"`
-	BaseDN             string `yaml:"base_dn"`
-	BindDN             string `yaml:"bind_dn"`
-	BindPassword       string `yaml:"bind_password"`
-	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
-	Timeout            int    `yaml:"timeout"`
-}
-
-// StaticAuthConfig holds static credentials for legacy / simple upstream APIs.
-type StaticAuthConfig struct {
-	BearerToken     string `yaml:"bearer_token"`
-	BearerTokenFile string `yaml:"bearer_token_file"`
-	CookieToken     string `yaml:"cookie_token"`
-	CookieTokenFile string `yaml:"cookie_token_file"`
-}
-
-// ---- tools ----
-
-// ToolsConfig controls which native tools are exposed to external AI agents at startup.
-type ToolsConfig struct {
-	Expose *ToolsExposeConfig `yaml:"expose"`
-}
-
-// ToolsExposeConfig defines which native tools are exposed to external AI agents.
-type ToolsExposeConfig struct {
-	RegisterAllToolsByDefault bool     `yaml:"register_all_tools_by_default"`
-	Includes                  []string `yaml:"includes"`
-	Excludes                  []string `yaml:"excludes"`
-}
-
-// ---- mgmt ----
-
-// MgmtConfig controls management endpoints (pprof, metrics, tracing).
-type MgmtConfig struct {
-	Enabled *bool         `yaml:"enabled"`
-	Host    string        `yaml:"host"`
-	Port    int           `yaml:"port"`
-	Pprof   PprofConfig   `yaml:"pprof"`
-	Otel    OtelConfig    `yaml:"otel"`
-	Metrics MetricsConfig `yaml:"metrics"`
-}
-
-// PprofConfig enables Go pprof debug endpoints.
-type PprofConfig struct {
-	Enabled    bool   `yaml:"enabled"`
-	ServerBind string `yaml:"server_bind"`
-}
-
-// OtelConfig configures the OpenTelemetry OTLP exporter.
-type OtelConfig struct {
-	Enabled    bool    `yaml:"enabled"`
-	Endpoint   string  `yaml:"endpoint"`
-	Protocol   string  `yaml:"protocol"`
-	Timeout    int     `yaml:"timeout"`
-	SampleRate float64 `yaml:"sample_rate"`
-}
-
-// MetricsConfig configures Prometheus metrics export.
-type MetricsConfig struct {
-	Enabled             *bool                `yaml:"enabled"`
-	Prometheus          bool                 `yaml:"prometheus"`
-	ExportInterval      string               `yaml:"export_interval"`
-	HistogramBoundaries map[string][]float64 `yaml:"histogram_boundaries"`
-	Labels              map[string]string    `yaml:"labels"`
-}
-
-// IsEnabled returns true for mgmt unless explicitly disabled in config.
-func (c MgmtConfig) IsEnabled() bool {
-	if c.Enabled == nil {
-		return true
-	}
-	return *c.Enabled
-}
-
-// IsEnabled returns true for metrics unless explicitly disabled in config.
-func (c MetricsConfig) IsEnabled() bool {
-	if c.Enabled == nil {
-		return true
-	}
-	return *c.Enabled
-}
-
-// ---- upstream ----
-
-// UpstreamConfig controls how requests are forwarded to upstream APIs.
-type UpstreamConfig struct {
-	// Endpoint is the upstream API base URL (e.g. https://your-api.example.com).
-	// Defaults to https://httpbin.org/anything for debugging when empty.
-	Endpoint string `yaml:"endpoint"`
-
-	EnableMCPSessionInForwarding bool                 `yaml:"enable_mcp_session_in_forwarding"`
-	Tools                        []UpstreamToolConfig `yaml:"tools,omitempty"`
-}
-
-// UpstreamToolConfig holds per-tool upstream settings.
-type UpstreamToolConfig struct {
-	Name string `yaml:"name"`
-}
-
-// ---- runtime ----
-
-// RuntimeConfig holds operational runtime settings.
-type RuntimeConfig struct {
-	DownloadDir      string `yaml:"download_dir"`
-	LogAuthorization bool   `yaml:"log_authorization"`
-}
+type Config = mcpconfig.Config
+type AuthConfig = mcpconfig.AuthConfig
+type FrontendAuthConfig = mcpconfig.FrontendAuthConfig
+type FrontendOIDCConfig = mcpconfig.FrontendOIDCConfig
+type BackendAuthConfig = mcpconfig.BackendAuthConfig
+type BackendOIDCConfig = mcpconfig.BackendOIDCConfig
+type LDAPConfig = mcpconfig.LDAPConfig
+type StaticAuthConfig = mcpconfig.StaticAuthConfig
+type ToolsConfig = mcpconfig.ToolsConfig
+type ToolsExposeConfig = mcpconfig.ToolsExposeConfig
+type MgmtConfig = mcpconfig.MgmtConfig
+type PprofConfig = mcpconfig.PprofConfig
+type OtelConfig = mcpconfig.OtelConfig
+type MetricsConfig = mcpconfig.MetricsConfig
+type UpstreamConfig = mcpconfig.UpstreamConfig
+type UpstreamToolConfig = mcpconfig.UpstreamToolConfig
+type RuntimeConfig = mcpconfig.RuntimeConfig
 
 // ---- singleton config access ----
 
 var (
 	globalCfg   *Config
 	globalCfgMu sync.RWMutex
+	binaryName  string
 )
 
 // SetConfig stores the global config for use by all packages.
@@ -228,33 +64,11 @@ const envPrefix = "MCP__"
 
 // ---- config loading ----
 
-// defaultConfig returns sensible defaults used when no config file exists.
-func defaultConfig() *Config {
-	t := true
-	return &Config{
-		Upstream: UpstreamConfig{
-			Endpoint: "https://httpbin.org/anything",
-		},
-		Mgmt: MgmtConfig{
-			Enabled: &t,
-			Host:    "0.0.0.0",
-			Port:    9991,
-			Metrics: MetricsConfig{
-				Enabled:        &t,
-				Prometheus:     true,
-				ExportInterval: "30s",
-				HistogramBoundaries: map[string][]float64{
-					"task": {0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
-				},
-			},
-		},
-	}
-}
-
 // LoadConfig reads config.yaml from $HOME/.{binaryName}/config.yaml using viper.
 // MCP__ environment variables override config file values (e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID
 // overrides auth.backend.oidc.client_id). Returns defaults when the file is missing.
-func LoadConfig(binaryName string) (*Config, error) {
+func LoadConfig(name string) (*Config, error) {
+	binaryName = name
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("home dir: %w", err)
@@ -267,7 +81,7 @@ func LoadConfig(binaryName string) (*Config, error) {
 
 	if err := v.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
-			cfg := defaultConfig()
+			cfg := mcpconfig.DefaultConfig()
 			applyEnvOverrides(v, cfg)
 			if err := v.Unmarshal(cfg, viperDecoderOpts()); err != nil {
 				return nil, fmt.Errorf("parse config after env override: %w", err)
@@ -277,9 +91,7 @@ func LoadConfig(binaryName string) (*Config, error) {
 		return nil, fmt.Errorf("read config %s: %w", configPath, err)
 	}
 
-	// Unmarshal into a temporary instance so we can use the struct schema
-	// to derive env var mappings, then re-apply on top of viper.
-	cfg := defaultConfig()
+	cfg := mcpconfig.DefaultConfig()
 	if err := v.Unmarshal(cfg, viperDecoderOpts()); err != nil {
 		return nil, fmt.Errorf("parse config %s: %w", configPath, err)
 	}
@@ -479,20 +291,26 @@ func logPrintAuth() bool {
 	return cfg != nil && cfg.Runtime.LogAuthorization
 }
 
+// resolveUploadDir returns the directory where uploaded files are staged.
+// Defaults to ~/.{binaryName}/uploads.
+func resolveUploadDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err == nil {
+		return filepath.Join(home, "."+binaryName, "uploads"), nil
+	}
+	return "." + binaryName + "/uploads", nil
+}
+
 // resolveDownloadDir returns the directory for downloaded files.
+// Uses the configured download_dir or defaults to ~/.{binaryName}/downloads.
 func resolveDownloadDir() (string, error) {
 	cfg := GetConfig()
 	if cfg != nil && cfg.Runtime.DownloadDir != "" {
 		return cfg.Runtime.DownloadDir, nil
 	}
-	exe, err := os.Executable()
-	binName := "mcpfather-server"
-	if err == nil {
-		binName = filepath.Base(exe)
-	}
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+binName, "downloads"), nil
+		return filepath.Join(home, "."+binaryName, "downloads"), nil
 	}
-	return "." + binName + "/downloads", nil
+	return "." + binaryName + "/downloads", nil
 }

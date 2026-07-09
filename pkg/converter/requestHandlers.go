@@ -157,15 +157,27 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 
 		// Detect upload-type API (request body expects file: multipart/form-data,
 	// application/octet-stream, image/*)
-	if ct := detectUploadContentType(operation); ct != "" {
+		if ct := detectUploadContentType(operation); ct != "" {
 		tool.UploadContentType = ct
-		// Add a local_file_path argument for upload tools
-		tool.Args = append(tool.Args, Arg{
-			Name:        "local_file_path",
-			Description: "Local file path to upload",
-			Source:      "body",
-			Required:    true,
-		})
+		// Upload tools accept file_name (required) and file_content (optional, base64).
+		// - file_name: looked up in ~/.{project}/uploads/ (stdio mode) or used when
+		//   staging file_content (HTTP mode).
+		// - file_content: base64-encoded file data (HTTP mode). When provided,
+		//   the server decodes and stages it in ~/.{project}/uploads/ before uploading.
+		tool.Args = append(tool.Args,
+			Arg{
+				Name:        "file_name",
+				Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged)",
+				Source:      "body",
+				Required:    true,
+			},
+			Arg{
+				Name:        "file_content",
+				Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
+				Source:      "body",
+				Required:    false,
+			},
+		)
 	}
 
 	// Sort arguments by name for consistent output

@@ -43,7 +43,7 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 			if sid == "" {
 				sid = "-"
 			}
-			fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s request tool=%s args=%s\n", ts, sid, request.Params.Name, string(argsJSON))
+			fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s req tool=%s args=%s\n", ts, sid, request.Params.Name, string(argsJSON))
 		}
 
 		defer func() {
@@ -81,7 +81,7 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 						break
 					}
 				}
-				fmt.Fprintf(os.Stderr, "%s [mcp] response body=%s\n", time.Now().Format(time.RFC3339), truncate(resultText, 200))
+				fmt.Fprintf(os.Stderr, "%s [mcp] resp body=%s\n", time.Now().Format(time.RFC3339), truncate(resultText, 2048))
 			}
 		}()
 
@@ -162,7 +162,7 @@ func resolveEnabledTools(cfg *mcputils.Config) (map[string]bool, error) {
 		}
 	}
 
-	// Start with all tools if register-all-tools-by-default is true
+	// Start with all tools if register_all_tools_by_default is true
 	if expose.RegisterAllToolsByDefault {
 		for name := range mcptools.Registry {
 			enabled[name] = true
