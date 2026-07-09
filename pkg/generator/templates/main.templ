@@ -21,7 +21,13 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// logHTTP wraps any handler and logs every incoming HTTP request + response
+// logHTTP wraps any handler and logs incoming HTTP requests + responses
+// with kubectl-style progressive verbosity:
+//
+//	v >= 1:  access log — method, URI, status, duration
+//	v >= 4:  + request header names
+//	v >= 8:  + full request header values (Authorization/Cookie redacted) + body length
+//	v >= 10: + request body content (first 2048 bytes)
 func logHTTP(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -32,29 +38,44 @@ func logHTTP(next http.Handler) http.Handler {
 		ctx := mcputils.WithSessionID(r.Context(), sessionID)
 		r = r.WithContext(ctx)
 
-		if v >= 2 {
-			var bodyLog string
-			if r.Body != nil {
-				body, _ := io.ReadAll(r.Body)
-				r.Body = io.NopCloser(strings.NewReader(string(body)))
-				bodyLog = string(body)
+		sid := sessionID
+		if sid == "" {
+			sid = "-"
+		}
+
+		// Log request progressively
+		if v >= 4 {
+			reqLog := fmt.Sprintf("%s [http] sid=%s --> %s %s", start.Format(time.RFC3339), sid, r.Method, r.URL.RequestURI())
+			reqLog += fmt.Sprintf(" headers=%s", mcputils.HTTPHeaderNames(r.Header))
+			fmt.Fprintln(os.Stderr, reqLog)
+		}
+		if v >= 8 {
+			for key, values := range r.Header {
+				for _, val := range values {
+					display := val
+					if mcputils.IsSensitiveHeader(key) {
+						display = "***"
+					}
+					fmt.Fprintf(os.Stderr, "%s [http] sid=%s    req %s: %s\n", start.Format(time.RFC3339), sid, key, display)
+				}
 			}
-			sid := sessionID
-			if sid == "" {
-				sid = "-"
-			}
-			fmt.Fprintf(os.Stderr, "%s [http] sid=%s %s %s body=%s\n", start.Format(time.RFC3339), sid, r.Method, r.URL.RequestURI(), truncate(bodyLog, 300))
+		}
+		// v>=8: body length; v>=10: body content
+		if v >= 8 && r.Body != nil && r.ContentLength > 0 {
+			fmt.Fprintf(os.Stderr, "%s [http] sid=%s    req body: %d bytes\n", start.Format(time.RFC3339), sid, r.ContentLength)
+		}
+		if v >= 10 && r.Body != nil {
+			bodyBytes, _ := io.ReadAll(r.Body)
+			r.Body = io.NopCloser(strings.NewReader(string(bodyBytes)))
+			fmt.Fprintf(os.Stderr, "%s [http] sid=%s    req body (%d bytes): %s\n", start.Format(time.RFC3339), sid, len(bodyBytes), truncate(string(bodyBytes), 2048))
 		}
 
 		lw := &loggingWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(lw, r)
 
+		// Log response
 		if v >= 1 {
-			sid := sessionID
-			if sid == "" {
-				sid = "-"
-			}
-			fmt.Fprintf(os.Stderr, "%s [http] sid=%s %d %s %s (%s)\n", time.Now().Format(time.RFC3339), sid, lw.status, r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
+			fmt.Fprintf(os.Stderr, "%s [http] sid=%s <-- %d %s %s (%s)\n", time.Now().Format(time.RFC3339), sid, lw.status, r.Method, r.URL.RequestURI(), time.Since(start).Round(time.Millisecond))
 		}
 	})
 }
@@ -94,9 +115,9 @@ Options:
                                      cli mode: invoke a tool directly from the command line
   -p, --port <number>                HTTP server port (default 8080)
   --metrics-port <number>           Override mgmt.port from config.yaml (0: use config)
-  -v, --verbose <0-10>              Request logging verbosity level
-                                     0=silent, 1=access log, 2+=method+URL,
-                                     3+=query, 5+=headers, 7+=body, 9+=pretty JSON
+  -v, --verbose <0-10>              Request logging verbosity (kubectl-style progressive)
+                                      0=silent, 1-3=status+duration, 4-7=+headers(names),
+                                      8-9=+headers(values)+body(len), 10=+body(content)
   --print-default-config             Print default config.yaml to stdout and exit
   -h, --help                        Show this help message
 
