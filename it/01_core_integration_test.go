@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -975,7 +976,78 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// 6. CLI argument passing
+// 6. Upload
+// ---------------------------------------------------------------------------
+
+// TestUpload_CLI_FromUploadsDir verifies that an upload tool reads a file from
+// the uploads directory (~/.{binaryName}/uploads/) and sends it to the upstream.
+func TestUpload_CLI_FromUploadsDir(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterUploadScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
+	binPath := buildServer(t, dir)
+	binaryName := filepath.Base(dir)
+	homeDir := t.TempDir()
+
+	// Stage the file in the uploads directory
+	uploadsDir := filepath.Join(homeDir, "."+binaryName, "uploads")
+	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
+		t.Fatalf("failed to create uploads dir: %v", err)
+	}
+	testContent := []byte("hello world upload test content")
+	if err := os.WriteFile(filepath.Join(uploadsDir, "test-upload.bin"), testContent, 0644); err != nil {
+		t.Fatalf("failed to stage upload file: %v", err)
+	}
+
+	stdout, _ := runCLI(t, binPath,
+		[]string{
+			"HOME=" + homeDir,
+			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+		},
+		"-t", "cli", "UploadFile", "--file_name=test-upload.bin",
+	)
+
+	data := mustJSON(t, stdout)
+	if fc, _ := data["fileContent"].(string); fc != string(testContent) {
+		t.Errorf("uploaded content = %q, want %q", fc, string(testContent))
+	}
+	if method, _ := data["method"].(string); method != "POST" {
+		t.Errorf("upload method = %q, want POST", method)
+	}
+}
+
+// TestUpload_HTTP_Base64Content verifies HTTP mode upload with base64 file_content.
+func TestUpload_HTTP_Base64Content(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterUploadScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
+	homeDir := t.TempDir()
+
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
+	defer cleanup()
+
+	testContent := "http-mode-upload-content"
+	b64Content := base64.StdEncoding.EncodeToString([]byte(testContent))
+
+	result := callNativeTool(t, baseURL, "UploadFile", map[string]interface{}{
+		"file_name":    "http-upload.bin",
+		"file_content": b64Content,
+	})
+
+	data := mustJSON(t, result)
+	if fc, _ := data["fileContent"].(string); fc != testContent {
+		t.Errorf("uploaded content = %q, want %q", fc, testContent)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 7. CLI argument passing
 // ---------------------------------------------------------------------------
 
 func TestCLI_QueryParamsPassedToUpstream(t *testing.T) {
@@ -1281,10 +1353,10 @@ func TestE2E_Core_CookieForwarding(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Core Test 4: MCP session ID forwarding is always-on
+// Core Test 4: MCP session ID forwarding is enabled by default
 // ---------------------------------------------------------------------------
 
-func TestE2E_Core_SessionForwardingDisabledByDefault(t *testing.T) {
+func TestE2E_Core_SessionForwardingEnabledByDefault(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoHeadersScenario()
 	_ = mock.Start()
@@ -1293,8 +1365,8 @@ func TestE2E_Core_SessionForwardingDisabledByDefault(t *testing.T) {
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
 
-	// enable_mcp_session_in_forwarding is deprecated and always-on;
-	// X-MCP-Session-ID is always forwarded regardless of config.
+	// enable_mcp_session_forwarding defaults to true;
+	// X-MCP-Session-ID should be forwarded by default.
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
 
@@ -1303,7 +1375,7 @@ func TestE2E_Core_SessionForwardingDisabledByDefault(t *testing.T) {
 	headers, _ := data["headers"].(map[string]interface{})
 
 	if _, ok := headers["X-Mcp-Session-Id"]; !ok {
-		t.Error("X-Mcp-Session-Id should always be forwarded (behavior is always-on)")
+		t.Error("X-Mcp-Session-Id should be forwarded when enable_mcp_session_forwarding defaults to true")
 	}
 }
 
@@ -2015,7 +2087,7 @@ func TestConfig_EmptyExpose_AllToolsAvailable(t *testing.T) {
 	// Config file with upstream section only, no tools.expose
 	cfg := `
 upstream:
-    enable_mcp_session_in_forwarding: false
+    enable_mcp_session_forwarding: false
 runtime:
 `
 	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)

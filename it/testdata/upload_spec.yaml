@@ -1,0 +1,26 @@
+openapi: "3.0.3"
+info:
+  title: Upload Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /upload:
+    post:
+      operationId: uploadFile
+      summary: Upload a file
+      description: Upload a binary file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

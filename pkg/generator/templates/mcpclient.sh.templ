@@ -189,27 +189,31 @@ call_tool() {
   echo "[*] Calling tool: $tool_name" >&2
   echo "[*] Args: $args" >&2
 
-  # If --file is provided, add local_file_path to the args
+  # If --file is provided, send the file content as base64 via file_content,
+  # using the basename as file_name. For stdio mode the server reads from
+  # ~/.{project}/uploads/; for HTTP mode the server decodes the base64 inline.
   if [ -n "$file_path" ]; then
     if [ ! -f "$file_path" ]; then
       echo "[!] File not found: $file_path" >&2
       return 1
     fi
-    local file_size
+    local file_size file_name file_b64
     file_size=$(wc -c < "$file_path" | tr -d ' ')
-    echo "[*] Uploading file: $file_path ($file_size bytes)" >&2
+    file_name=$(basename "$file_path")
+    echo "[*] Uploading file: $file_path ($file_size bytes) as $file_name" >&2
 
-    # Add local_file_path to args JSON
     if command -v python3 >/dev/null 2>&1; then
+      file_b64=$(python3 -c "import base64,sys; print(base64.b64encode(open(sys.argv[1],'rb').read()).decode())" "$file_path" 2>/dev/null)
       args=$(python3 -c "
 import json, sys
 args = json.loads('$args')
-args['local_file_path'] = '$file_path'
+args['file_name'] = '$file_name'
+args['file_content'] = '$file_b64'
 print(json.dumps(args))
 " 2>/dev/null || echo "$args")
     else
-      # Simple jq-based approach or fallback
-      args=$(echo "$args" | sed 's/}$/}/' | sed "s/}\"$/,\"local_file_path\":\"$file_path\"}/" | sed "s/{}/{\"local_file_path\":\"$file_path\"}/")
+      # Fallback: set file_name only, user must place file in uploads dir
+      args=$(echo "$args" | sed 's/}$/}/' | sed "s/}\"$/,\"file_name\":\"$file_name\"}/" | sed "s/{}/{\"file_name\":\"$file_name\"}/")
     fi
   fi
 

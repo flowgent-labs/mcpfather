@@ -38,8 +38,9 @@ func (g *Generator) generateConfigGo() error {
 		return fmt.Errorf("failed to parse config template: %w", err)
 	}
 
+	data := struct{ ModuleName string }{ModuleName: BuildModuleName(g.outputDir)}
 	var buffer bytes.Buffer
-	if err := tmpl.Execute(&buffer, nil); err != nil {
+	if err := tmpl.Execute(&buffer, data); err != nil {
 		return fmt.Errorf("failed to execute config template: %w", err)
 	}
 
