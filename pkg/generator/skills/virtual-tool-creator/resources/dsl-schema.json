@@ -572,6 +572,11 @@
           "type": "array"
         }
       },
+      "required": [
+        "name",
+        "inputSchema",
+        "pipeline"
+      ],
       "type": "object"
     }
   },
