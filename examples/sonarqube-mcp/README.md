@@ -4,316 +4,193 @@
 
 ## Quick Start
 
-### Build from source
+**Build** and **run** in under a minute:
 
 ```sh
 make
-```
 
-### Usage example
-
-```sh
-# Set your upstream endpoint and authentication
+# Auth (env vars — see Authentication below)
 export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-# Token-based authentication
-export MCP_UPSTREAM_TOKEN='your-token'
-# Cookie-based authentication (for legacy app compatibility)
-#export MCP_UPSTREAM_COOKIE='JSESSIONID=your-session-id'
+export MCP_UPSTREAM_TOKEN=your-token
 
-# Run the HTTP mode
+# HTTP mode
 ./bin/sonarqube-mcp --transport http --port 8080 &
-
-# Run the CLI mode
+# CLI mode
 ./bin/sonarqube-mcp -t cli list
-
 ```
+
+## Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `-t, --transport` | `stdio` | Transport: `stdio` / `http` / `cli` |
+| `-p, --port` | `8080` | HTTP server port |
+| `--metrics-port` | `0` | Override mgmt.port from config.yaml (0 = use config) |
+| `-v, --verbose` | `0` | Log verbosity (0=quiet … 10=trace) |
+| `--print-default-config` | — | Print default config.yaml to stdout |
 
 ## Authentication
 
-### Bearer / Basic Token (Authorization header)
-
-The server attaches an Authorization header to upstream requests using this priority:
-
-1. Authorization header from the client request (forwarded)
-2. `MCP_UPSTREAM_TOKEN` environment variable
-3. `MCP_UPSTREAM_TOKEN_FILE` file (set `MCP_UPSTREAM_TOKEN_FILE=.credentials`)
+**Token** (Authorization header), priority order:
+1. `Authorization` header from MCP client (forwarded)
+2. `MCP_UPSTREAM_TOKEN` env var
+3. `MCP_UPSTREAM_TOKEN_FILE` (e.g. `export MCP_UPSTREAM_TOKEN_FILE=.credentials`)
 4. macOS Keychain / Windows Credential Manager
 
-### Cookie / Session (Cookie header)
+**Cookie** (session-based auth):
+- `MCP_UPSTREAM_COOKIE` env var
+- `MCP_UPSTREAM_COOKIE_FILE` file
 
-For session-based auth (e.g. JSESSIONID), set a Cookie header on upstream requests:
+Token and cookie can be set simultaneously (independent headers).
 
-- `MCP_UPSTREAM_COOKIE` environment variable
-- `MCP_UPSTREAM_COOKIE_FILE` file (read cookie value from file)
+## Configuration
 
-Both token and cookie can be set simultaneously — they are independent headers.
+Create `~/.sonarqube-mcp/config.yaml` (`--print-default-config` to see a template):
 
-To use a credentials file for your token:
-
-```sh
-echo -n "your-token" > .credentials
-export MCP_UPSTREAM_TOKEN_FILE=.credentials
-```
-
-### Tool filtering
-
-For APIs with many operations, limit which tools AI agents discover:
-
-```sh
-# Print the default config template
-./bin/sonarqube-mcp --print-default-config
-
-# Create and edit your config
-mkdir -p ~/.sonarqube-mcp
-./bin/sonarqube-mcp --print-default-config > ~/.sonarqube-mcp/config.yaml
-```
-
-Edit `~/.sonarqube-mcp/config.yaml` and configure `tools.expose` to control which tools are available:
+**Tool filtering** — control which native tools AI agents can discover:
 
 ```yaml
 tools:
   expose:
-    # register-all-tools-by-default: false  # default — only tools in includes are exposed
-    includes:
-      - ListSpaces
-      - SearchContent
-    # excludes:
-    #   - DeleteSpace  # explicitly hide a tool
+    register-all-tools-by-default: false
+    includes: [ListSpaces, SearchContent]
+    # excludes: [DeleteSpace]
 ```
 
-Tools listed in both `includes` and `excludes` cause the server to fail at startup.
-
-### Virtual Tools (Composition)
-
-Compose multiple native tools into a single AI-callable tool via a declarative 5-step pipeline DSL. Add a `virtualTools` list to your config file:
+**Virtual Tools** — compose native tools via a 5-step pipeline DSL:
 
 ```yaml
 virtualTools:
   - name: MyVirtualTool
-    description: Retrieve application details with remediation suggestions
+    description: Application details with remediation suggestions
     inputSchema:
       type: object
-      properties:
-        appId:
-          type: string
+      properties: { appId: { type: string } }
       required: [appId]
     pipeline:
-      - id: getApp
-        kind: call
-        spec:
-          tool: GetApplication
-          parse: json
-          args:
-            applicationId: $input.appId
-      - id: appName
-        kind: jq
-        spec:
-          from: $getApp
-          expr: .name
-      - id: done
-        kind: return
-        spec:
-          from: $appName
+      - { id: getApp, kind: call, spec: { tool: GetApplication, args: { applicationId: "$input.appId" } } }
+      - { id: appName, kind: jq, spec: { from: "$getApp", expr: .name } }
+      - { id: done, kind: return, spec: { from: "$appName" } }
 ```
 
-Pipeline step kinds: `call`, `jq`, `foreach`, `emit`, `return`. See the virtual-tool-creator skill for details.
+Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
+
+## Metrics & Tracing
+
+Configure via `~/.sonarqube-mcp/config.yaml` `mgmt:` block:
+
+```yaml
+mgmt:
+  enabled: true
+  host: 0.0.0.0
+  port: 9991            # /metrics + /health endpoints
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc
+    timeout: 10000
+    sample_rate: 1.0
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}
+```
+
+Start the server and verify:
+
+```sh
+./bin/sonarqube-mcp --transport http --port 8080                # mgmt port from config.yaml
+./bin/sonarqube-mcp --transport http --port 8080 --metrics-port 9090  # override mgmt.port
+curl http://localhost:9991/metrics   # Prometheus metrics
+curl http://localhost:9991/health    # health check
+```
+
+Metric: `mcp_tool_call_duration_seconds` (histogram)
+Labels: `tool_name`, `tool_type` (native/virtual), `status` (success/error)
+
+**Distributed Tracing:** Enable `mgmt.otel.enabled: true` and set the OTLP gRPC endpoint.
+A trace span `mcp.tool.<name>` is created per invocation. W3C trace context
+(`traceparent`) is propagated to upstream API calls so your AI agent can
+correlate end-to-end in Jaeger / Tempo / Jasper UI.
+
+CLI `--metrics-port` overrides `mgmt.port`; env `OTEL_EXPORTER_OTLP_ENDPOINT` falls back
+when `mgmt.otel.endpoint` is empty.
 
 ## Agent Integration
 
-All env vars from [Authentication](#authentication) above (including `MCP_UPSTREAM_COOKIE` / `MCP_UPSTREAM_COOKIE_FILE`) can be set in the `env` block of any agent config below.
+All env vars above (auth, OTEL) can be set in each agent's `env` block.
 
-### Local Mode (stdio)
-
-Run the MCP server as a child process — recommended for local development.
-
-### OpenCode
-
-`~/.config/opencode/config.json`:
+### stdio (Local)
 
 ```json
-{
-  "mcp": {
-    "sonarqube-mcp": {
-      "type": "local",
-      "command": ["./sonarqube-mcp"],
-      "args": ["--transport", "stdio"],
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      },
-      "enabled": true
-    }
-  }
-}
+// ~/.config/opencode/config.json
+{ "mcp": { "sonarqube-mcp": { "type": "local", "command": ["./sonarqube-mcp"], "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." }, "enabled": true } } }
 ```
-
-### Claude Code
-
-`~/.claude/settings.json`:
 
 ```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "command": "./sonarqube-mcp",
-      "args": ["--transport", "stdio"],
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
+// ~/.claude/settings.json  (also ~/.config/claude-desktop/claude_desktop_config.json)
+{ "mcpServers": { "sonarqube-mcp": { "command": "./sonarqube-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
 ```
-
-### Claude Desktop
-
-`~/.config/claude-desktop/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "command": ["./sonarqube-mcp"],
-      "args": ["--transport", "stdio"],
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
-```
-
-### Codex CLI
-
-`~/.codex/config.yaml`:
 
 ```yaml
+# ~/.codex/config.yaml
 mcp:
   servers:
     sonarqube-mcp:
       command: ./sonarqube-mcp
       args: ["--transport", "stdio"]
-      env:
-        MCP_UPSTREAM_ENDPOINT: https://api.example.com
-        MCP_UPSTREAM_TOKEN: your-token
+      env: { MCP_UPSTREAM_ENDPOINT: "...", MCP_UPSTREAM_TOKEN: "..." }
 ```
-
-### Cursor
-
-`~/.cursor/mcp.json`:
 
 ```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "command": "./sonarqube-mcp",
-      "args": ["--transport", "stdio"],
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
+// ~/.cursor/mcp.json
+{ "mcpServers": { "sonarqube-mcp": { "command": "./sonarqube-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
 ```
 
-### Remote Mode (HTTP)
+```json
+// ~/.kiro/mcp.json
+{ "mcpServers": { "sonarqube-mcp": { "command": "./sonarqube-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+```
 
-Run the server separately and connect agents via HTTP transport.
+### HTTP (Remote)
 
-Start the server:
+Start the server, then configure the agent to connect via URL:
 
 ```sh
 export MCP_UPSTREAM_ENDPOINT=https://api.example.com
 export MCP_UPSTREAM_TOKEN=your-token
-./sonarqube-mcp --transport http --port 8080
+./bin/sonarqube-mcp --transport http --port 8080 --metrics-port 9090
 ```
-
-### OpenCode (remote)
-
-`~/.config/opencode/config.json`:
 
 ```json
-{
-  "mcp": {
-    "sonarqube-mcp": {
-      "type": "remote",
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
+// OpenCode:  ~/.config/opencode/config.json
+{ "mcp": { "sonarqube-mcp": { "type": "remote", "url": "http://localhost:8080/mcp" } } }
 ```
-
-### Claude Code (remote)
-
-`~/.claude/settings.json`:
 
 ```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
+// Claude Code / Desktop
+{ "mcpServers": { "sonarqube-mcp": { "url": "http://localhost:8080/mcp" } } }
 ```
-
-### Claude Desktop (remote)
-
-`~/.config/claude-desktop/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
-```
-
-### Codex CLI (remote)
-
-`~/.codex/config.yaml`:
 
 ```yaml
+# Codex CLI:  ~/.codex/config.yaml
 mcp:
   servers:
-    sonarqube-mcp:
-      url: http://localhost:8080/mcp
-      env:
-        MCP_UPSTREAM_ENDPOINT: https://api.example.com
-        MCP_UPSTREAM_TOKEN: your-token
+    sonarqube-mcp: { url: http://localhost:8080/mcp }
 ```
 
-### Cursor (remote)
-
-`~/.cursor/mcp.json`:
+```json
+// Cursor:     ~/.cursor/mcp.json
+{ "mcpServers": { "sonarqube-mcp": { "url": "http://localhost:8080/mcp" } } }
+```
 
 ```json
-{
-  "mcpServers": {
-    "sonarqube-mcp": {
-      "url": "http://localhost:8080/mcp",
-      "env": {
-        "MCP_UPSTREAM_ENDPOINT": "https://api.example.com",
-        "MCP_UPSTREAM_TOKEN": "your-token"
-      }
-    }
-  }
-}
+// Kiro:       ~/.kiro/mcp.json
+{ "mcpServers": { "sonarqube-mcp": { "url": "http://localhost:8080/mcp" } } }
 ```
