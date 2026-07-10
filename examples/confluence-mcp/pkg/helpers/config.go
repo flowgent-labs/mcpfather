@@ -19,7 +19,7 @@ import (
 // Config is the root configuration for the MCP server.
 type Config struct {
 	Auth     AuthConfig     `yaml:"auth"`
-	Tools    ToolsConfig    `yaml:"tools"`
+	Tools    ToolsConfig    `yaml:"nativeTools"`
 	Mgmt     MgmtConfig     `yaml:"mgmt"`
 	Runtime  RuntimeConfig  `yaml:"runtime"`
 	Upstream UpstreamConfig `yaml:"upstream"`
