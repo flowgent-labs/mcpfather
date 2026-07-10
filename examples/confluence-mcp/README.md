@@ -2,7 +2,7 @@
 
 # confluence-mcp
 
-[![Go](https://img.shields.io/badge/go-1.24+-00ADD8?logo=go)](https://go.dev/)
+[![Go](https://img.shields.io/badge/go-1.26.0+-00ADD8?logo=go)](https://go.dev/)
 [![MCP](https://img.shields.io/badge/protocol-MCP-blue)](https://modelcontextprotocol.io/)
 [![Prometheus](https://img.shields.io/badge/metrics-Prometheus-E6522C?logo=prometheus)](https://prometheus.io/)
 [![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
@@ -17,12 +17,13 @@
 ```sh
 make
 
-# Or with OpenTelemetry distributed tracing (adds gRPC/OTLP deps)
-make build-with-otel
+# Or with OpenTelemetry distributed tracing (gRPC or HTTP)
+make build-with-otel-grpc   # OTLP gRPC exporter
+make build-with-otel-http   # OTLP HTTP/protobuf exporter
 
 # Configure your upstream API
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
-export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
 
 # HTTP mode
 ./bin/confluence-mcp --transport http --port 8080 &
@@ -44,42 +45,68 @@ export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 
 ## Authentication
 
+Auth is split into two independent layers — neither shares credentials with the other:
+
+| Layer | Config YAML path | Env var prefix | Role |
+|---|---|---|---|
+| **Frontend** | `auth.frontend.oidc` | `MCP__AUTH__FRONTEND__OIDC__*` | Validates AI agent bearer tokens (inbound) |
+| **Backend OIDC** | `auth.backend.oidc` | `MCP__AUTH__BACKEND__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
+| **Backend LDAP** | `auth.backend.ldap` | `MCP__AUTH__BACKEND__LDAP__*` | Server's own LDAP service-account bind for upstream APIs |
+| **Backend Static** | `auth.backend.static` | `MCP__AUTH__BACKEND__STATIC__*` | Server's own static token/cookie for upstream APIs |
+
+**Frontend (inbound)** — validates bearer tokens presented by AI agents (MCP clients).
+Only applies to `--transport http`; stdio has no network boundary. Standard OIDC JWT
+bearer validation per RFC 9728 / MCP Authorization spec.
+
+**Backend (outbound)** — credentials the MCP server uses to call upstream APIs.
 Token priority (first available wins):
 
-1. `Authorization` header from MCP client (forwarded as-is)
-2. **OIDC** client_credentials grant (`auth.oidc.*`)
-3. **LDAP** service account bind (`auth.ldap.*`)
-4. **Static** bearer token (`auth.static.bearer_token`)
-5. macOS Keychain / Windows Credential Manager (legacy)
+1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
+2. **LDAP** service account bind (`auth.backend.ldap.*`)
+3. **Static** bearer token (`auth.backend.static.bearer_token`)
 
-Cookie-based auth is also available via `auth.static.cookie_token`.
+The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
+Cookie-based auth is also available via `auth.backend.static.cookie_token`.
 
 ## Configuration
 
 Create `~/.confluence-mcp/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
-upstream:
-  endpoint: https://api.example.com
+runtime:
+  upstream:
+    endpoint: https://api.example.com
+  download_dir: ""
+  log_authorization: false
 
 auth:
-  oidc:
-    enabled: true
-    issuer: https://idp.example.com/realms/myrealm
-    client_id: my-client
-    client_secret: "${MCP__AUTH__OIDC__CLIENT_SECRET}"
-    scopes: openid
-    # token_url: ""   # auto-discovered from issuer /.well-known
+  # Inbound: validate AI agent bearer tokens (http transport only).
+  frontend:
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      jwks_uri: ""           # optional override (auto-discovered from issuer)
+      audience: ""           # expected "aud" claim; also the RFC 9728 resource ID
 
-  ldap:
-    enabled: false
-    url: ldaps://ldap.example.com
-    base_dn: dc=example,dc=com
-    bind_dn: cn=svc,dc=example,dc=com
-    bind_password: "${MCP__AUTH__LDAP__BIND_PASSWORD}"
+  # Outbound: credentials the server uses to call upstream APIs.
+  backend:
+    oidc:
+      enabled: true
+      issuer: https://idp.example.com/realms/myrealm
+      client_id: my-client
+      client_secret: "${MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET}"
+      scopes: openid
+      # token_url: ""   # auto-discovered from issuer /.well-known
 
-  static:
-    bearer_token: "${MCP__AUTH__STATIC__BEARER_TOKEN}"   # or set cookie_token
+    ldap:
+      enabled: false
+      url: ldaps://ldap.example.com
+      base_dn: dc=example,dc=com
+      bind_dn: cn=svc,dc=example,dc=com
+      bind_password: "${MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD}"
+
+    static:
+      bearer_token: "${MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN}"   # or set cookie_token
 
 tools:
   expose:
@@ -88,7 +115,7 @@ tools:
     # excludes: [Tool3]                   # hide noisy tools
 ```
 
-All values can be set via `MCP__`-prefixed environment variables (e.g. `MCP__AUTH__OIDC__CLIENT_ID`).
+All values can be set via `MCP__`-prefixed environment variables (e.g. `MCP__AUTH__BACKEND__OIDC__CLIENT_ID`).
 
 ## Management — Metrics, Tracing, Pprof
 
@@ -185,8 +212,8 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -206,8 +233,8 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -221,7 +248,7 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor
@@ -236,8 +263,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -256,8 +283,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -275,8 +302,8 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -290,7 +317,7 @@ bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__STATIC__BEARER_TOKEN"
+bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -316,8 +343,9 @@ make build-image
 # Or manually:
 docker build -t confluence-mcp:latest -f deploy/docker/Dockerfile .
 
-# Build the Docker image with OTel tracing
-make build-image-with-otel
+# Build the Docker image with OTel tracing (gRPC or HTTP)
+make build-image-with-otel-grpc
+make build-image-with-otel-http
 
 # Install/upgrade with Helm (static bearer token)
 helm upgrade -i confluence-mcp deploy/helm \
@@ -333,9 +361,9 @@ helm upgrade -i confluence-mcp deploy/helm \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
-  --set config.auth.oidc.enabled=true \
-  --set config.auth.oidc.issuer="https://idp.example.com" \
-  --set config.auth.oidc.clientId="my-client" \
+  --set config.auth.backend.oidc.enabled=true \
+  --set config.auth.backend.oidc.issuer="https://idp.example.com" \
+  --set config.auth.backend.oidc.clientId="my-client" \
   --set config.upstream.endpoint="https://api.example.com"
 
 # With LDAP authentication
@@ -344,9 +372,9 @@ helm upgrade -i confluence-mcp deploy/helm \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
-  --set config.auth.ldap.enabled=true \
-  --set config.auth.ldap.url="ldaps://ldap.example.com" \
-  --set config.auth.ldap.bindDN="cn=svc,dc=example,dc=com" \
+  --set config.auth.backend.ldap.enabled=true \
+  --set config.auth.backend.ldap.url="ldaps://ldap.example.com" \
+  --set config.auth.backend.ldap.bindDN="cn=svc,dc=example,dc=com" \
   --set config.upstream.endpoint="https://api.example.com"
 ```
 
