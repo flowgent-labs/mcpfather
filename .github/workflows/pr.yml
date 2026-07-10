@@ -24,7 +24,7 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Test
+      - name: Unit Tests
         run: make test
 
   integration-oidc:
@@ -81,3 +81,84 @@ jobs:
       - name: Collect Dex Logs (on failure)
         if: failure()
         run: docker logs mcpgen-dex
+
+  integration-ldap:
+    runs-on: ubuntu-latest
+    env:
+      GLAUTH_URL: "ldap://localhost:3893"
+      GLAUTH_BIND_DN: "cn=mcp-svc,ou=svcaccts,dc=test,dc=local"
+      GLAUTH_BIND_PASSWORD: "ldap-secret-123"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Start Glauth LDAP Server
+        run: |
+          docker run -d --name mcpgen-glauth \
+            --network host \
+            -v ${{ github.workspace }}/it/docker/glauth/config.toml:/app/config/config.cfg:ro \
+            registry.cn-shenzhen.aliyuncs.com/wl4g/glauth:v2.5.0
+
+      - name: Wait for Glauth
+        timeout-minutes: 1
+        run: |
+          for i in $(seq 1 30); do
+            if nc -z localhost 3893 2>/dev/null; then
+              echo "Glauth LDAP server is ready"
+              exit 0
+            fi
+            echo "Waiting for Glauth... ($i/30)"
+            sleep 2
+          done
+          echo "Glauth failed to start"
+          docker logs mcpgen-glauth
+          exit 1
+
+      - name: Build
+        run: make build
+
+      - name: Run LDAP Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "LDAP" ./it/...
+
+      - name: Collect Glauth Logs (on failure)
+        if: failure()
+        run: docker logs mcpgen-glauth
+
+  integration-virtual-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Run Virtual Tools Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "E2E_VirtualTool|E2E_MCP_HeaderForwarding|TestScenario_|E2E_SonatypeIQ" ./it/...
+
+  integration-core-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Run Core E2E Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "E2E_Core|TestGenerator_|TestAuth_|TestLogging_|TestDownload_|TestCLI_|TestCyclicRef_|TestRegression_|TestConfig_" ./it/...
