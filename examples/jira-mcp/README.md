@@ -2,140 +2,186 @@
 
 # jira-mcp
 
-## Quick Start
+MCP server generated from OpenAPI — exposes **435 native tools**.
 
-**Build** and **run** in under a minute:
+## Quick Start
 
 ```sh
 make
 
-# Auth (env vars — see Authentication below)
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
+# Or with OpenTelemetry distributed tracing (adds gRPC/OTLP deps)
+make build-with-otel
+
+# Configure your upstream API
+export MCP__UPSTREAM__ENDPOINT=https://api.example.com
+export MCP__AUTH__STATIC__BEARER_TOKEN=your-token
 
 # HTTP mode
 ./bin/jira-mcp --transport http --port 8080 &
-# CLI mode
+
+# CLI mode (list tools, call a tool)
 ./bin/jira-mcp -t cli list
+./bin/jira-mcp -t cli <tool-name> [OPTIONS]
 ```
 
 ## Options
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-t, --transport` | `stdio` | Transport: `stdio` / `http` / `cli` |
+| `-t, --transport` | `stdio` | `stdio` / `http` / `cli` |
 | `-p, --port` | `8080` | HTTP server port |
-| `--metrics-port` | `0` | Override mgmt.port from config.yaml (0 = use config) |
-| `-v, --verbose` | `0` | Log verbosity (0=quiet … 10=trace) |
+| `--metrics-port` | `0` | Override mgmt port (0 = use config) |
+| `-v, --verbose` | `0` | Log verbosity (0–10) |
 | `--print-default-config` | — | Print default config.yaml to stdout |
 
 ## Authentication
 
-**Token** (Authorization header), priority order:
-1. `Authorization` header from MCP client (forwarded)
-2. `MCP_UPSTREAM_TOKEN` env var
-3. `MCP_UPSTREAM_TOKEN_FILE` (e.g. `export MCP_UPSTREAM_TOKEN_FILE=.credentials`)
-4. macOS Keychain / Windows Credential Manager
+Token priority (first available wins):
 
-**Cookie** (session-based auth):
-- `MCP_UPSTREAM_COOKIE` env var
-- `MCP_UPSTREAM_COOKIE_FILE` file
+1. `Authorization` header from MCP client (forwarded as-is)
+2. **OIDC** client_credentials grant (`auth.oidc.*`)
+3. **LDAP** service account bind (`auth.ldap.*`)
+4. **Static** bearer token (`auth.static.bearer_token`)
+5. macOS Keychain / Windows Credential Manager (legacy)
 
-Token and cookie can be set simultaneously (independent headers).
+Cookie-based auth is also available via `auth.static.cookie_token`.
 
 ## Configuration
 
-Create `~/.jira-mcp/config.yaml` (`--print-default-config` to see a template):
-
-**Tool filtering** — control which native tools AI agents can discover:
+Create `~/.jira-mcp/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
+upstream:
+  endpoint: https://api.example.com
+
+auth:
+  oidc:
+    enabled: true
+    issuer: https://idp.example.com/realms/myrealm
+    client_id: my-client
+    client_secret: "${MCP__AUTH__OIDC__CLIENT_SECRET}"
+    scopes: openid
+    # token_url: ""   # auto-discovered from issuer /.well-known
+
+  ldap:
+    enabled: false
+    url: ldaps://ldap.example.com
+    base_dn: dc=example,dc=com
+    bind_dn: cn=svc,dc=example,dc=com
+    bind_password: "${MCP__AUTH__LDAP__BIND_PASSWORD}"
+
+  static:
+    bearer_token: "${MCP__AUTH__STATIC__BEARER_TOKEN}"   # or set cookie_token
+
 tools:
   expose:
-    register-all-tools-by-default: false
-    includes: [ListSpaces, SearchContent]
-    # excludes: [DeleteSpace]
+    register_all_tools_by_default: true   # expose all native tools
+    # includes: [Tool1, Tool2]            # or whitelist specific tools
+    # excludes: [Tool3]                   # hide noisy tools
 ```
 
-**Virtual Tools** — compose native tools via a 5-step pipeline DSL:
+All values can be set via `MCP__`-prefixed environment variables (e.g. `MCP__AUTH__OIDC__CLIENT_ID`).
 
-```yaml
-virtualTools:
-  - name: MyVirtualTool
-    description: Application details with remediation suggestions
-    inputSchema:
-      type: object
-      properties: { appId: { type: string } }
-      required: [appId]
-    pipeline:
-      - { id: getApp, kind: call, spec: { tool: GetApplication, args: { applicationId: "$input.appId" } } }
-      - { id: appName, kind: jq, spec: { from: "$getApp", expr: .name } }
-      - { id: done, kind: return, spec: { from: "$appName" } }
-```
-
-Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
-
-## Metrics & Tracing
-
-Configure via `~/.jira-mcp/config.yaml` `mgmt:` block:
+## Management — Metrics, Tracing, Pprof
 
 ```yaml
 mgmt:
   enabled: true
   host: 0.0.0.0
-  port: 9991            # /metrics + /health endpoints
-  pprof:
-    enabled: false
-    server_bind: 0.0.0.0:6669
+  port: 9991
+
   otel:
     enabled: false
     endpoint: localhost:4317
     protocol: grpc
-    timeout: 10000
     sample_rate: 1.0
+
   metrics:
     enabled: true
     prometheus: true
     export_interval: 30s
-    histogram_boundaries:
-      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
-    labels: {}
-```
 
-Start the server and verify:
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+```
 
 ```sh
-./bin/jira-mcp --transport http --port 8080                # mgmt port from config.yaml
-./bin/jira-mcp --transport http --port 8080 --metrics-port 9090  # override mgmt.port
-curl http://localhost:9991/metrics   # Prometheus metrics
-curl http://localhost:9991/health    # health check
+./bin/jira-mcp --transport http --port 8080
+curl http://localhost:9991/metrics    # Prometheus endpoint
+curl http://localhost:9991/health     # health check
 ```
 
-Metric: `mcp_tool_call_duration_seconds` (histogram)
-Labels: `tool_name`, `tool_type` (native/virtual), `status` (success/error)
+Trace spans are named `mcp.tool.<name>`. W3C `traceparent` is propagated to upstream calls.
 
-**Distributed Tracing:** Enable `mgmt.otel.enabled: true` and set the OTLP gRPC endpoint.
-A trace span `mcp.tool.<name>` is created per invocation. W3C trace context
-(`traceparent`) is propagated to upstream API calls so your AI agent can
-correlate end-to-end in Jaeger / Tempo / Jasper UI.
+## Available Tools (435)
 
-CLI `--metrics-port` overrides `mgmt.port`; env `OTEL_EXPORTER_OTLP_ENDPOINT` falls back
-when `mgmt.otel.endpoint` is empty.
+| Tool | Description |
+|------|-------------|
+| `AcknowledgeErrors` | Retry cluster upgrade - Retries the cluster upgrade. |
+| `AddActorUsers` | Add actor to project role - Adds an actor (user or group) to a project role. For user actors, their usernames should be used. |
+| `AddAttachment` | Add one or more attachments to an issue - Add one or more attachments to an issue. This resource expects a multipart post. The media-type multipart/form-data is defined in RFC 1867. Most client libraries have classes that make dealing with multipart posts simple. For instance, in Java the Apache HTTP Components library provides a MultiPartEntity that makes it simple to submit a multipart POST. In order to protect against XSRF attacks, because this method accepts multipart/form-data, it has XSRF protection on it. This means you must submit a header of X-Atlassian-Token: no-check with the request, otherwise it will be blocked. The name of the multipart/form-data parameter that contains attachments must be file. A simple example to upload a file called "myfile.txt" to issue TEST-123: curl -D- -u admin:admin -X POST -H "X-Atlassian-Token: no-check" -F "file=@myfile.txt" http://myhost/rest/api/2/issue/TEST-123/attachments |
+| `AddComment` | Add a comment - Adds a new comment to an issue. |
+| `AddField` | Add field to a tab - Adds field to the given tab. |
+| `AddFieldToDefaultScreen` | Add field to default screen - Moves field on the given tab. |
+| `AddProjectAssociationsToScheme` | Add project associations to scheme - Adds additional projects to those already associated with the specified issue type scheme |
+| `AddProjectRoleActorsToRole` | Adds default actors to a role - Adds default actors to the given role. The request data should contain a list of usernames or a list of groups to add. |
+| `AddSharePermission` | Add share permissions to filter - Adds a share permissions to the given filter. Adding a global permission removes all previous permissions from the filter |
+| `AddTab` | Create tab for a screen - Creates tab for given screen. |
+| `AddUserToApplication1` | Add user to application - Add user to given application. Admin permission will be required to perform this operation. |
+| `AddUserToGroup` | Add a user to a specified group - Adds given user to a group |
+| `AddVote` | Add vote to issue - Adds voter (currently logged user) to particular ticket. You need to be logged in to use this method. |
+| `AddWatcher1` | Add a user as watcher - Adds a user to an issue's watcher list. |
+| `AddWorklog` | Add a worklog entry - Adds a new worklog entry to an issue. |
+| … | *420 more tools not shown* |
+
+## Virtual Tools
+
+Compose native tools via a declarative pipeline DSL:
+
+```yaml
+virtualTools:
+  - name: MyVirtualTool
+    description: Chain multiple native tools together
+    inputSchema:
+      type: object
+      properties:
+        appId: { type: string }
+      required: [appId]
+    pipeline:
+      - id: getApp
+        kind: call
+        spec: { tool: GetApplication, args: { applicationId: "$input.appId" } }
+      - id: appName
+        kind: jq
+        spec: { from: "$getApp", expr: .name }
+      - id: done
+        kind: return
+        spec: { from: "$appName" }
+```
+
+Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 
 ## Agent Integration
 
-All env vars above (auth, OTEL) can be set in each agent's `env` block.
-
-### stdio (Local)
+### stdio (local)
 
 ```json
 // ~/.config/opencode/config.json
-{ "mcp": { "jira-mcp": { "type": "local", "command": ["./jira-mcp"], "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." }, "enabled": true } } }
-```
-
-```json
-// ~/.claude/settings.json  (also ~/.config/claude-desktop/claude_desktop_config.json)
-{ "mcpServers": { "jira-mcp": { "command": "./jira-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcp": {
+    "jira-mcp": {
+      "type": "local",
+      "command": ["./jira-mcp"],
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      },
+      "enabled": true
+    }
+  }
+}
 ```
 
 ```yaml
@@ -145,52 +191,128 @@ mcp:
     jira-mcp:
       command: ./jira-mcp
       args: ["--transport", "stdio"]
-      env: { MCP_UPSTREAM_ENDPOINT: "...", MCP_UPSTREAM_TOKEN: "..." }
+      env:
+        MCP__UPSTREAM__ENDPOINT: https://api.example.com
+        MCP__AUTH__STATIC__BEARER_TOKEN: your-token
 ```
 
 ```json
 // ~/.cursor/mcp.json
-{ "mcpServers": { "jira-mcp": { "command": "./jira-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "jira-mcp": {
+      "command": "./jira-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
 ```json
 // ~/.kiro/mcp.json
-{ "mcpServers": { "jira-mcp": { "command": "./jira-mcp", "args": ["--transport", "stdio"], "env": { "MCP_UPSTREAM_ENDPOINT": "...", "MCP_UPSTREAM_TOKEN": "..." } } } }
+{
+  "mcpServers": {
+    "jira-mcp": {
+      "command": "./jira-mcp",
+      "args": ["--transport", "stdio"],
+      "env": {
+        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
+        "MCP__AUTH__STATIC__BEARER_TOKEN": "your-token"
+      }
+    }
+  }
+}
 ```
 
-### HTTP (Remote)
-
-Start the server, then configure the agent to connect via URL:
-
-```sh
-export MCP_UPSTREAM_ENDPOINT=https://api.example.com
-export MCP_UPSTREAM_TOKEN=your-token
-./bin/jira-mcp --transport http --port 8080 --metrics-port 9090
-```
+### HTTP (remote)
 
 ```json
-// OpenCode:  ~/.config/opencode/config.json
-{ "mcp": { "jira-mcp": { "type": "remote", "url": "http://localhost:8080/mcp" } } }
-```
-
-```json
-// Claude Code / Desktop
-{ "mcpServers": { "jira-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.config/opencode/config.json
+{
+  "mcp": {
+    "jira-mcp": {
+      "type": "remote",
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```yaml
-# Codex CLI:  ~/.codex/config.yaml
+# ~/.codex/config.yaml
 mcp:
   servers:
-    jira-mcp: { url: http://localhost:8080/mcp }
+    jira-mcp:
+      url: http://localhost:8080/mcp
 ```
 
 ```json
-// Cursor:     ~/.cursor/mcp.json
-{ "mcpServers": { "jira-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.cursor/mcp.json
+{
+  "mcpServers": {
+    "jira-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
 
 ```json
-// Kiro:       ~/.kiro/mcp.json
-{ "mcpServers": { "jira-mcp": { "url": "http://localhost:8080/mcp" } } }
+// ~/.kiro/mcp.json
+{
+  "mcpServers": {
+    "jira-mcp": {
+      "url": "http://localhost:8080/mcp"
+    }
+  }
+}
 ```
+
+## Deployment — Docker & Kubernetes
+
+```sh
+# Build the Docker image (without OTel)
+make build-image
+
+# Or manually:
+docker build -t jira-mcp:latest -f deploy/docker/Dockerfile .
+
+# Build the Docker image with OTel tracing
+make build-image-with-otel
+
+# Install/upgrade with Helm (static bearer token)
+helm upgrade -i jira-mcp deploy/helm \
+  --set image.repository=jira-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With OIDC authentication
+helm upgrade -i jira-mcp deploy/helm \
+  --set image.repository=jira-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
+  --set config.auth.oidc.enabled=true \
+  --set config.auth.oidc.issuer="https://idp.example.com" \
+  --set config.auth.oidc.clientId="my-client" \
+  --set config.upstream.endpoint="https://api.example.com"
+
+# With LDAP authentication
+helm upgrade -i jira-mcp deploy/helm \
+  --set image.repository=jira-mcp \
+  --set image.tag=latest \
+  --set secret.static.create=true \
+  --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
+  --set config.auth.ldap.enabled=true \
+  --set config.auth.ldap.url="ldaps://ldap.example.com" \
+  --set config.auth.ldap.bindDN="cn=svc,dc=example,dc=com" \
+  --set config.upstream.endpoint="https://api.example.com"
+```
+
+See `deploy/helm/values.yaml` for all configurable parameters.
