@@ -5,6 +5,7 @@ package mcputils
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -121,9 +122,11 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Forward MCP session ID as a standard HTTP header (X-MCP-Session-ID).
-	if sid := GetSessionID(ctx); sid != "" {
-		req.Header.Set("X-MCP-Session-ID", sid)
+	// Forward MCP session ID when enable_mcp_session_forwarding is configured.
+	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForwarding {
+		if sid := GetSessionID(ctx); sid != "" {
+			req.Header.Set("X-MCP-Session-ID", sid)
+		}
 	}
 
 	// Log outgoing request with final headers
@@ -340,14 +343,81 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, e
 	return filePath, written, nil
 }
 
-// ForwardUploadRequest reads a local file and sends it as the request body to
-// the upstream service. It handles the full lifecycle — reading the file,
-// forwarding headers (with Token Passthrough Prohibition), sending the
-// request, and processing binary/error responses.
-func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, localFilePath, contentType, toolName string) (*mcp.CallToolResult, error) {
-	fileData, err := os.ReadFile(localFilePath)
+// ForwardAndParseResponse sends a request to the upstream and handles the full
+// response lifecycle: error status codes, binary downloads, and text responses.
+// All non-upload tool handlers call this to eliminate per-tool boilerplate.
+func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, pathKeys []string, contentType, toolName string) (*mcp.CallToolResult, error) {
+	startTime := time.Now()
+	resp, err := ForwardRequest(ctx, upstreamBase, method, path, args, pathKeys, contentType)
 	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s: %v", localFilePath, err)), nil
+		return nil, fmt.Errorf("upstream request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), resp.Header, nil)
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return mcp.NewToolResultError(fmt.Sprintf("upstream error: status %d, body: %s", resp.StatusCode, string(body))), nil
+	}
+
+	if IsBinaryDownload(resp) {
+		filePath, written, err := SaveBinaryStream(resp, toolName)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read upstream response: %w", err)
+	}
+
+	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), resp.Header, body)
+
+	return mcp.NewToolResultText(string(body)), nil
+}
+
+// ForwardUploadRequest reads file data (from uploads directory or base64 content)
+// and sends it as the request body to the upstream service.
+//
+// Two modes:
+//   - fileContentBase64 != "": decode and stage in uploads dir, then upload
+//     (supports HTTP mode where clients send file content inline).
+//   - fileContentBase64 == "": read fileName from the uploads directory
+//     (supports stdio mode where files are placed on the shared filesystem).
+func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileName, fileContentBase64, contentType, toolName string) (*mcp.CallToolResult, error) {
+	var fileData []byte
+
+	if fileContentBase64 != "" {
+		decoded, err := base64.StdEncoding.DecodeString(fileContentBase64)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to decode base64 file content: %v", err)), nil
+		}
+		uploadDir, err := resolveUploadDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve upload dir: %w", err)
+		}
+		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			return nil, fmt.Errorf("failed to create upload directory %s: %w", uploadDir, err)
+		}
+		stagedPath := filepath.Join(uploadDir, filepath.Clean(fileName))
+		if err := os.WriteFile(stagedPath, decoded, 0644); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to stage uploaded file %s: %v", stagedPath, err)), nil
+		}
+		fileData = decoded
+	} else {
+		uploadDir, err := resolveUploadDir()
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve upload dir: %w", err)
+		}
+		localPath := filepath.Join(uploadDir, filepath.Clean(fileName))
+		data, err := os.ReadFile(localPath)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s from uploads directory: %v", localPath, err)), nil
+		}
+		fileData = data
 	}
 
 	startTime := time.Now()
@@ -370,9 +440,6 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, local
 			}
 		}
 	}
-	// The client's Authorization header is skipped above and never reused
-	// here — see the Token Passthrough Prohibition note. The server always
-	// presents its own backend credential upstream instead.
 	if token := GetUpstreamToken(); token != "" {
 		req.Header.Set("Authorization", FormatAuthorizationHeader(token))
 	}
@@ -381,9 +448,10 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, local
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Forward MCP session ID as a standard HTTP header.
-	if sid := GetSessionID(ctx); sid != "" {
-		req.Header.Set("X-MCP-Session-ID", sid)
+	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForwarding {
+		if sid := GetSessionID(ctx); sid != "" {
+			req.Header.Set("X-MCP-Session-ID", sid)
+		}
 	}
 
 	LogRequest(method, upstreamURL, nil, req.Header, fileData)
@@ -399,7 +467,7 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, local
 	}
 	defer resp.Body.Close()
 
-	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), nil)
+	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), resp.Header, nil)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -419,7 +487,7 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, local
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
-	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), body)
+	LogResponse(ctx, resp.StatusCode, method, resp.Request.URL.String(), time.Since(startTime), resp.Header, body)
 
 	return mcp.NewToolResultText(string(body)), nil
 }

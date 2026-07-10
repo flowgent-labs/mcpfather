@@ -56,7 +56,7 @@ func validateStep(step StepConfig) error {
 	case "emit":
 		// from is optional (may use item directly)
 	default:
-		return fmt.Errorf("Unknown step kind %q (valid: call, jq, foreach, return, emit)", step.Kind)
+		return fmt.Errorf("Unknown step kind %q (valid: %s)", step.Kind, strings.Join(ValidStepKindNames(), ", "))
 	}
 	return nil
 }

@@ -97,7 +97,7 @@ Create `~/.sonarqube-mcp/config.yaml` (run `--print-default-config` for a full t
 upstream:
   endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
   # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
-  enable_mcp_session_in_forwarding: false
+  enable_mcp_session_forwarding: true
 
 runtime:
   download_dir: ""
