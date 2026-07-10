@@ -347,17 +347,23 @@ func main() {
 
 		<-ctx.Done()
 		fmt.Fprintln(os.Stderr, "Shutting down...")
-		if err := httpServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
-			fmt.Fprintf(os.Stderr, "HTTP server shutdown error: %v\n", err)
+
+		// Give in-flight requests a brief grace period, then force-close.
+		// SSE streaming connections (GET /mcp) never become idle, so
+		// Shutdown() alone would block forever waiting for them to drain.
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+		if err := httpServer.Shutdown(shutdownCtx); err != nil {
+			httpServer.Close()
 		}
 		if mgmtServer != nil {
-			if err := mgmtServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
-				fmt.Fprintf(os.Stderr, "Management server shutdown error: %v\n", err)
+			if err := mgmtServer.Shutdown(shutdownCtx); err != nil {
+				mgmtServer.Close()
 			}
 		}
 		if pprofServer != nil {
-			if err := pprofServer.Shutdown(context.WithoutCancel(ctx)); err != nil {
-				fmt.Fprintf(os.Stderr, "pprof server shutdown error: %v\n", err)
+			if err := pprofServer.Shutdown(shutdownCtx); err != nil {
+				pprofServer.Close()
 			}
 		}
 
