@@ -121,6 +121,7 @@ virtualTools:
             resolved: "false"
             ps: $opts.limit
         require:
+          field: "issues"
           nonEmpty: true
           message: No issues found for the given project, branch and pull request.
       - id: enriched
@@ -128,6 +129,7 @@ virtualTools:
         spec:
           in: $rawIssues.issues
           as: issue
+          onMissing: skip
           concurrency: $opts.snippetConcurrency
           preserveOrder: true
           pipeline:
@@ -251,6 +253,7 @@ virtualTools:
             inNewCodePeriod: $opts.newCodeOnly
             ps: $opts.limit
         require:
+          field: "issues"
           nonEmpty: true
           message: No issues found for the given project and branch.
       - id: enriched
@@ -258,6 +261,7 @@ virtualTools:
         spec:
           in: $rawIssues.issues
           as: issue
+          onMissing: skip
           concurrency: $opts.snippetConcurrency
           preserveOrder: true
           pipeline:
