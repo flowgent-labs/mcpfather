@@ -117,7 +117,7 @@ func printDefaultConfigYAML() {
 	fmt.Println("upstream:")
 	fmt.Println("  endpoint: \"\"               # upstream API base URL (e.g. https://api.example.com)")
 	fmt.Println("  # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.")
-	fmt.Println("  enable_mcp_session_in_forwarding: false")
+	fmt.Println("  enable_mcp_session_forwarding: true")
 	fmt.Println()
 	fmt.Println("# ---- Runtime settings ----")
 	fmt.Println("runtime:")

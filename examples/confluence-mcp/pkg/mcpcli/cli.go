@@ -98,7 +98,7 @@ func ListTools() {
 	})
 
 	if len(nativeTools) == 0 {
-		fmt.Fprintf(os.Stderr, "Warning: no native tools are enabled. To expose native tools, set tools.expose.register-all-tools-by-default: true or add tool names to tools.expose.includes in ~/.confluence-mcp/config.yaml\n")
+		fmt.Fprintf(os.Stderr, "Warning: no native tools are enabled. To expose native tools, set nativeTools.expose.register_all_tools_by_default: true or add tool names to tools.expose.includes in ~/.confluence-mcp/config.yaml\n")
 	}
 
 	fmt.Printf("Available subcommands (%d):\n", len(allTools))

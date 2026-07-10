@@ -146,7 +146,7 @@ config:
       prometheus: true
   upstream:
     endpoint: ""
-    enableMCPSessionInForwarding: false
+    enableMCPSessionForwarding: true
   runtime:
     downloadDir: ""
     logAuthorization: false

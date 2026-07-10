@@ -3,9 +3,7 @@
 package mcputils
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -19,8 +17,8 @@ import (
 //   2-3: standard — includes query parameters
 //   4-5: detailed — includes request headers
 //   6-7: verbose — includes request body
-//   8-9: debug — pretty-printed body, timing, full dump
-//   10: full debug
+//   8-9: debug — full dump
+//   10: full debug — request + response headers, body
 
 var verbosity int
 
@@ -89,9 +87,34 @@ func vlogCtx(ctx context.Context, level int, format string, args ...interface{})
 	fmt.Fprintf(os.Stderr, "%s [upstream] %s\n", prefix, msg)
 }
 
+func truncateForLog(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + fmt.Sprintf("... (truncated, total %d bytes)", len(s))
+}
+
+// logHeaders prints all headers from h. Sensitive headers (Authorization, Cookie)
+// have their values redacted as "***" unless cfg.Runtime.LogAuthorization is true.
+// Returns true if any redaction occurred.
+func logHeaders(h http.Header, logFn func(string, ...interface{})) bool {
+	printAuth := logPrintAuth()
+	redacted := false
+	for key, values := range h {
+		isSensitive := strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie")
+		for _, v := range values {
+			val := v
+			if isSensitive && !printAuth {
+				val = "***"
+				redacted = true
+			}
+			logFn("%s: %s", key, val)
+		}
+	}
+	return redacted
+}
+
 // LogRequest logs an outgoing request according to the configured verbosity level.
-// When verbosity >= 5, request headers are printed. The Authorization header value is
-// redacted (shown as "***") unless MCP__RUNTIME__LOG_AUTHORIZATION=true.
 func LogRequest(method string, url string, query map[string][]string, header http.Header, body []byte) {
 	if verbosity < 2 {
 		return
@@ -102,34 +125,20 @@ func LogRequest(method string, url string, query map[string][]string, header htt
 		vlog(3, "query: %v", query)
 	}
 	if verbosity >= 5 && header != nil {
-		printAuth := logPrintAuth()
-		for key, values := range header {
-			isSensitive := strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie")
-			for _, v := range values {
-				val := v
-				if isSensitive && !printAuth {
-					val = "***"
-				}
-				vlog(5, "%s: %s", key, val)
-			}
+		redacted := logHeaders(header, func(format string, args ...interface{}) {
+			vlog(5, format, args...)
+		})
+		if redacted {
+			vlog(5, "(sensitive header values redacted — set runtime.log_authorization=true to reveal)")
 		}
 	}
 	if verbosity >= 7 && len(body) > 0 {
-		vlog(7, "body: %s", string(body))
-	}
-	if verbosity >= 9 && len(body) > 0 {
-		var prettyJSON bytes.Buffer
-		if err := json.Indent(&prettyJSON, body, "  ", "  "); err == nil {
-			vlog(9, "body (pretty):")
-			fmt.Fprint(os.Stderr, prettyJSON.String())
-			fmt.Fprintln(os.Stderr)
-		}
+		vlog(7, "body: %s", truncateForLog(string(body), 4096))
 	}
 }
 
 // LogResponse logs an upstream response according to the configured verbosity level.
-// At level 1, prints a single nginx-style access log line: "STATUS METHOD PATH (DURATION)".
-func LogResponse(ctx context.Context, statusCode int, method string, url string, duration time.Duration, body []byte) {
+func LogResponse(ctx context.Context, statusCode int, method string, url string, duration time.Duration, respHeaders http.Header, body []byte) {
 	if verbosity < 1 {
 		return
 	}
@@ -138,7 +147,15 @@ func LogResponse(ctx context.Context, statusCode int, method string, url string,
 		return
 	}
 	vlogCtx(ctx, 2, "%d %s %s (%s)", statusCode, method, url, duration)
-	if verbosity >= 9 && len(body) > 0 {
-		vlogCtx(ctx, 9, "response body: %s", string(body))
+	if verbosity >= 5 && respHeaders != nil {
+		redacted := logHeaders(respHeaders, func(format string, args ...interface{}) {
+			vlogCtx(ctx, 5, "resp "+format, args...)
+		})
+		if redacted {
+			vlogCtx(ctx, 5, "(sensitive header values redacted — set runtime.log_authorization=true to reveal)")
+		}
+	}
+	if verbosity >= 7 && len(body) > 0 {
+		vlogCtx(ctx, 7, "resp body: %s", truncateForLog(string(body), 4096))
 	}
 }

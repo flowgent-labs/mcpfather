@@ -147,14 +147,11 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 		mcputilsImport := BuildModuleName(g.outputDir) + "/pkg/helpers"
 		requiredImports := []string{
 			"context",
-			"fmt",
-			"io",
-			"time",
 			"github.com/mark3labs/mcp-go/mcp",
 			mcputilsImport,
 		}
 
-		if len(existingImports) > 0 {
+		if existingImplementation != "" && len(existingImports) > 0 {
 			fmt.Fprintf(&toolBuf, "import (\n")
 			for _, imp := range existingImports {
 				fmt.Fprintf(&toolBuf, "\t%s\n", imp)

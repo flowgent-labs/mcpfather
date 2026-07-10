@@ -84,12 +84,14 @@ func InsertOrUpdateSamlConfigurationHandler(ctx context.Context, request mcp.Cal
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Always forward MCP session ID as a standard HTTP header.
+	// Forward MCP session ID when enable_mcp_session_forwarding is configured.
 	// The raw "Mcp-Session-Id"/"mcp-session-id" header from the MCP client is
 	// never forwarded as-is because some upstream APIs (e.g. Sonatype IQ)
 	// reject non-standard headers with HTTP 400.
-	if sid := mcputils.GetSessionID(ctx); sid != "" {
-		req.Header.Set("X-MCP-Session-ID", sid)
+	if cfg := mcputils.GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForwarding {
+		if sid := mcputils.GetSessionID(ctx); sid != "" {
+			req.Header.Set("X-MCP-Session-ID", sid)
+		}
 	}
 
 	mcputils.LogRequest("PUT", upstreamURL, nil, req.Header, nil)
@@ -105,7 +107,7 @@ func InsertOrUpdateSamlConfigurationHandler(ctx context.Context, request mcp.Cal
 	}
 	defer resp.Body.Close()
 
-	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), nil)
+	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), resp.Header, nil)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		body, _ := io.ReadAll(resp.Body)
@@ -125,7 +127,7 @@ func InsertOrUpdateSamlConfigurationHandler(ctx context.Context, request mcp.Cal
 		return nil, fmt.Errorf("failed to read upstream response: %w", err)
 	}
 
-	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), body)
+	mcputils.LogResponse(ctx, resp.StatusCode, "PUT", resp.Request.URL.String(), time.Since(startTime), resp.Header, body)
 
 	return mcp.NewToolResultText(string(body)), nil
 }
