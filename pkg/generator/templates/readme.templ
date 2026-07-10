@@ -20,17 +20,38 @@ make
 # Or with OpenTelemetry distributed tracing (gRPC or HTTP)
 make build-with-otel-grpc   # OTLP gRPC exporter
 make build-with-otel-http   # OTLP HTTP/protobuf exporter
+```
 
+### Start in `HTTP` mode (example)
+
+```sh
 # Configure your upstream API
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
 export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
 
-# HTTP mode
 ./bin/{{ .BinaryName }} --transport http --port 8080 &
+```
 
-# CLI mode (list tools, call a tool)
-./bin/{{ .BinaryName }} -t cli list
-./bin/{{ .BinaryName }} -t cli <tool-name> [OPTIONS]
+- Inspection MCP frontend Authentication (OAuth2.1).
+
+```bash
+export MCP__AUTH__FRONTEND__OIDC__ENABLED=true
+export MCP__AUTH__FRONTEND__OIDC__ISSUER="https://keycloak.example.com/realms/master"
+export MCP__AUTH__FRONTEND__OIDC__AUDIENCE="{{ .BinaryName }}"
+./bin/{{ .BinaryName }} -v 10 --transport http --port 8080
+
+# Obtain the OAuth2.1 metadata.
+curl -s https://iam.example.com/realms/master/.well-known/openid-configuration
+
+curl -s localhost:8080/.well-known/oauth-protected-resource
+#{"resource":"{{ .BinaryName }}","authorization_servers":["https://keycloak.example.com/realms/master"],"bearer_methods_supported":["header"]}
+```
+
+### Run in `CLI` mode (example)
+
+```sh
+./bin/{{ .BinaryName }} -v 1 -t cli list
+./bin/{{ .BinaryName }} -v 1 -t cli <tool-name> [OPTIONS]
 ```
 
 ## Options
@@ -73,9 +94,12 @@ Cookie-based auth is also available via `auth.backend.static.cookie_token`.
 Create `~/.{{ .BinaryName }}/config.yaml` (run `--print-default-config` for a full template):
 
 ```yaml
+upstream:
+  endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
+  # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
+  enable_mcp_session_in_forwarding: false
+
 runtime:
-  upstream:
-    endpoint: https://api.example.com
   download_dir: ""
   log_authorization: false
 
@@ -84,7 +108,7 @@ auth:
   frontend:
     oidc:
       enabled: false
-      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      issuer: ""             # e.g. https://idp.example.com/realms/myrealm
       jwks_uri: ""           # optional override (auto-discovered from issuer)
       audience: ""           # expected "aud" claim; also the RFC 9728 resource ID
 
@@ -108,7 +132,7 @@ auth:
     static:
       bearer_token: "${MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN}"   # or set cookie_token
 
-tools:
+nativeTools:
   expose:
     register_all_tools_by_default: true   # expose all native tools
     # includes: [Tool1, Tool2]            # or whitelist specific tools
