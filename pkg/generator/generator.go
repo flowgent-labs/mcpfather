@@ -17,6 +17,7 @@ type Generator struct {
 	includePaths []string
 	excludePaths []string
 	verbose      bool
+	tools        []converter.Tool
 }
 
 func NewGenerator(specPath string, validation bool, packageName string, outputDir string, includePaths []string, excludePaths []string, verbose bool) (*Generator, error) {
