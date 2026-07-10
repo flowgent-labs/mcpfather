@@ -13,6 +13,8 @@ jobs:
       github.event_name == 'push' && !startsWith(github.event.head_commit.message, 'Merge pull request #') ||
       (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
     runs-on: ubuntu-latest
+    outputs:
+      new_tag: ${{ steps.bump.outputs.new_tag }}
     permissions:
       contents: write
     steps:
@@ -39,6 +41,26 @@ jobs:
             COMMIT_MSG="${{ github.event.pull_request.title }}"
           fi
 
+          # Only release on feat, fix, and refactor commits
+          SHOULD_RELEASE=false
+          BUMP_LEVEL=""
+          if echo "${COMMIT_MSG}" | grep -qiE "^refactor:"; then
+            SHOULD_RELEASE=true
+            BUMP_LEVEL="major"
+          elif echo "${COMMIT_MSG}" | grep -qiE "^feat:"; then
+            SHOULD_RELEASE=true
+            BUMP_LEVEL="minor"
+          elif echo "${COMMIT_MSG}" | grep -qiE "^fix:"; then
+            SHOULD_RELEASE=true
+            BUMP_LEVEL="patch"
+          fi
+
+          if [ "${SHOULD_RELEASE}" != "true" ]; then
+            echo "Commit type does not trigger a release (only feat:, fix:, refactor:). Skipping."
+            echo "should_release=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
           # Get latest tag
           LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
           echo "Latest tag: ${LATEST_TAG}"
@@ -48,32 +70,29 @@ jobs:
           MINOR=$(echo "${LATEST_TAG}" | sed 's/v//' | cut -d. -f2)
           PATCH=$(echo "${LATEST_TAG}" | sed 's/v//' | cut -d. -f3)
 
-          if echo "${COMMIT_MSG}" | grep -qiE "^refactor:"; then
-            # Major bump for refactor
-            MAJOR=$((MAJOR + 1))
-            MINOR=0
-            PATCH=0
-            echo "Bump: major (refactor detected)"
-          elif echo "${COMMIT_MSG}" | grep -qiE "^feat:"; then
-            # Minor bump for feat
-            MINOR=$((MINOR + 1))
-            PATCH=0
-            echo "Bump: minor (feat detected)"
-          elif echo "${COMMIT_MSG}" | grep -qiE "^(fix:|docs:|chore:|test:|ci:|perf:)"; then
-            # Patch bump for fix and others
-            PATCH=$((PATCH + 1))
-            echo "Bump: patch (fix/docs/chore detected)"
-          else
-            # Default patch bump
-            PATCH=$((PATCH + 1))
-            echo "Bump: patch (default)"
-          fi
+          case "${BUMP_LEVEL}" in
+            major)
+              MAJOR=$((MAJOR + 1))
+              MINOR=0
+              PATCH=0
+              ;;
+            minor)
+              MINOR=$((MINOR + 1))
+              PATCH=0
+              ;;
+            patch)
+              PATCH=$((PATCH + 1))
+              ;;
+          esac
+          echo "Bump: ${BUMP_LEVEL} (${COMMIT_MSG})"
 
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "New tag: ${NEW_TAG}"
+          echo "should_release=true" >> $GITHUB_OUTPUT
           echo "new_tag=${NEW_TAG}" >> $GITHUB_OUTPUT
 
       - name: Create Git Tag
+        if: steps.bump.outputs.should_release == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -81,9 +100,11 @@ jobs:
           git push origin "${{ steps.bump.outputs.new_tag }}"
 
       - name: Build Cross-Platform Binaries
+        if: steps.bump.outputs.should_release == 'true'
         run: make build-all
 
       - name: Create GitHub Release
+        if: steps.bump.outputs.should_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.bump.outputs.new_tag }}
@@ -102,3 +123,39 @@ jobs:
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-push-image:
+    needs: release
+    if: needs.release.outputs.new_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/flowgent-labs/mcpfather:${{ needs.release.outputs.new_tag }}
+            ghcr.io/flowgent-labs/mcpfather:latest
+          platforms: linux/amd64,linux/arm64
