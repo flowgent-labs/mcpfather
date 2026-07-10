@@ -9,12 +9,72 @@ import (
 	"text/template"
 )
 
-// GenerateHelpers creates a client.go file with utility functions for MCP tools
+// GenerateHelpers creates the helpers package with all utility files.
 func (g *Generator) GenerateHelpers() error {
+	if err := g.generateConfigGo(); err != nil {
+		return err
+	}
+	if err := g.generateAuthGo(); err != nil {
+		return err
+	}
 	if err := g.generateClientGo(); err != nil {
 		return err
 	}
 	return g.generateRequestLog()
+}
+
+// generateConfigGo creates the config.go file (Config structs, viper loading, env override).
+func (g *Generator) generateConfigGo() error {
+	t, err := templatesFS.ReadFile("templates/config.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read config template file: %w", err)
+	}
+
+	tmpl, err := template.New("config").Parse(string(t))
+	if err != nil {
+		return fmt.Errorf("failed to parse config template: %w", err)
+	}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, nil); err != nil {
+		return fmt.Errorf("failed to execute config template: %w", err)
+	}
+
+	formatted, err := format.Source(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated config code: %w\n%s", err, buffer.String())
+	}
+
+	return writeFileContent(g.outputDir+"/pkg/helpers", "config.go", func() ([]byte, error) {
+		return formatted, nil
+	})
+}
+
+// generateAuthGo creates the auth.go file (OIDC token manager, static auth).
+func (g *Generator) generateAuthGo() error {
+	t, err := templatesFS.ReadFile("templates/auth.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read auth template file: %w", err)
+	}
+
+	tmpl, err := template.New("auth").Parse(string(t))
+	if err != nil {
+		return fmt.Errorf("failed to parse auth template: %w", err)
+	}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, nil); err != nil {
+		return fmt.Errorf("failed to execute auth template: %w", err)
+	}
+
+	formatted, err := format.Source(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated auth code: %w\n%s", err, buffer.String())
+	}
+
+	return writeFileContent(g.outputDir+"/pkg/helpers", "auth.go", func() ([]byte, error) {
+		return formatted, nil
+	})
 }
 
 // generateClientGo creates the client.go file (ForwardRequest, params helpers)
@@ -89,7 +149,10 @@ func (g *Generator) generateRequestLog() error {
 	return nil
 }
 
-// GenerateTrace creates the trace.go file with OpenTelemetry tracing (OTLP export).
+// GenerateTrace creates trace.go and trace_noop.go with OpenTelemetry tracing (OTLP export).
+// trace.go (build tag: otel) carries the full OTel SDK + gRPC dependency.
+// trace_noop.go (default, no build tag) provides stubs compiled by default.
+// Use -tags otel to enable distributed tracing.
 func (g *Generator) GenerateTrace() error {
 	traceTemplate, err := templatesFS.ReadFile("templates/trace.templ")
 	if err != nil {
@@ -120,10 +183,40 @@ func (g *Generator) GenerateTrace() error {
 		return fmt.Errorf("failed to write trace.go file: %w", err)
 	}
 
+	// No-op stub for builds with -tags no_otel
+	traceNoopTemplate, err := templatesFS.ReadFile("templates/trace_noop.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read trace_noop template file: %w", err)
+	}
+
+	tmplNoop, err := template.New("trace_noop").Parse(string(traceNoopTemplate))
+	if err != nil {
+		return fmt.Errorf("failed to parse trace_noop template: %w", err)
+	}
+
+	var bufferNoop bytes.Buffer
+	if err := tmplNoop.Execute(&bufferNoop, data); err != nil {
+		return fmt.Errorf("failed to execute trace_noop template: %w", err)
+	}
+
+	formattedNoop, err := format.Source(bufferNoop.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated trace_noop code: %w", err)
+	}
+
+	err = writeFileContent(g.outputDir+"/pkg/helpers", "trace_noop.go", func() ([]byte, error) {
+		return formattedNoop, nil
+	})
+	if err != nil {
+		return fmt.Errorf("failed to write trace_noop.go file: %w", err)
+	}
+
 	return nil
 }
 
-// GenerateMetrics creates the metrics.go file with OpenTelemetry instrumentation for tool calls.
+// GenerateMetrics creates metrics.go with OpenTelemetry instrumentation for tool calls.
+// Prometheus metrics are always compiled in — they are a core built-in capability.
+// Use -tags otel to additionally enable OpenTelemetry distributed tracing.
 func (g *Generator) GenerateMetrics() error {
 	metricsTemplate, err := templatesFS.ReadFile("templates/metrics.templ")
 	if err != nil {
@@ -157,25 +250,5 @@ func (g *Generator) GenerateMetrics() error {
 	return nil
 }
 
-// GenerateCredentials copies credential manager files to the helpers package.
-// These files use Go build tags to support macOS Keychain, Windows Credential
-// Manager, and provide stubs for other platforms.
-func (g *Generator) GenerateCredentials() error {
-	credFiles := []string{
-		"token_keychain.go",
-		"token_wincred.go",
-		"token_other.go",
-	}
-	for _, f := range credFiles {
-		content, err := templatesFS.ReadFile("templates/_credentials/" + f)
-		if err != nil {
-			return fmt.Errorf("failed to read template %s: %w", f, err)
-		}
-		if err := writeFileContent(g.outputDir+"/pkg/helpers", f, func() ([]byte, error) {
-			return content, nil
-		}); err != nil {
-			return fmt.Errorf("failed to write %s: %w", f, err)
-		}
-	}
-	return nil
-}
+// (Legacy credential helpers removed — keychain/wincred stubs are in config.templ)
+
