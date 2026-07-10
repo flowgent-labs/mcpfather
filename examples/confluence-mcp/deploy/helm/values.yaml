@@ -106,6 +106,12 @@ config:
         # -- Expected JWT "aud" claim; also published as the RFC 9728
         # protected-resource identifier at /.well-known/oauth-protected-resource.
         audience: ""
+        # -- When true, validated frontend JWT claims (sub, email) are forwarded
+        # upstream as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+        enableClientTokenClaimForward: true
+        # -- Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+        additionalClientTokenClaimForward: []
+        # e.g. ["given_name", "family_name", "preferred_username"]
     # -- Backend (outbound): credentials the server uses to call upstream APIs.
     # Independent from frontend — an inbound token is never reused outbound.
     backend:
