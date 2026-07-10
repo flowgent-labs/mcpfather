@@ -2,6 +2,7 @@ package converter
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
@@ -81,7 +82,13 @@ func (c *Converter) writeSchemaProperties(
 ) {
 	// Object properties
 	if isObject(schema) && len(schema.Properties) > 0 {
-		for propName, propRef := range schema.Properties {
+		propNames := make([]string, 0, len(schema.Properties))
+		for name := range schema.Properties {
+			propNames = append(propNames, name)
+		}
+		sort.Strings(propNames)
+		for _, propName := range propNames {
+			propRef := schema.Properties[propName]
 			if propRef != nil && propRef.Value != nil {
 				c.writeSchemaMarkdown(b, propRef.Value, indent+1, propName, visited)
 			}
