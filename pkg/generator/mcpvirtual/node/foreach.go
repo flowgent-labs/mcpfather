@@ -19,11 +19,17 @@ func ForeachNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.S
 
 	source, err := rctx.ResolvePath(spec.In)
 	if err != nil {
+		if spec.OnMissing == "skip" {
+			return []interface{}{}, nil
+		}
 		return nil, fmt.Errorf("failed to resolve foreach in: %w", err)
 	}
 
 	list, ok := source.([]interface{})
 	if !ok {
+		if spec.OnMissing == "skip" {
+			return []interface{}{}, nil
+		}
 		return nil, fmt.Errorf("foreach in must resolve to an array, got %T", source)
 	}
 
