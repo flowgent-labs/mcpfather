@@ -2,7 +2,7 @@
 
 module sonarqube-mcp
 
-go 1.26.4
+go 1.26.0
 
 require (
 	github.com/MicahParks/keyfunc/v3 v3.8.0

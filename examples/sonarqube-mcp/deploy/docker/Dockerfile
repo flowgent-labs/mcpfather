@@ -1,5 +1,5 @@
 # ---- Build Stage ----
-FROM docker.io/library/golang:1.24-alpine AS builder
+FROM registry.cn-shenzhen.aliyuncs.com/wl4g/golang:1.26-alpine AS builder
 
 WORKDIR /build
 
