@@ -3392,7 +3392,7 @@ auth:
       enabled: false
     static:
       bearer_token: ""
-tools:
+nativeTools:
   expose:
     register_all_tools_by_default: true
 virtualTools:
@@ -3538,7 +3538,7 @@ virtualTools:
 // TestDSLSchema_ToolsConfig validates the tools.expose section.
 func TestDSLSchema_ToolsConfig(t *testing.T) {
 	configYAML := `
-tools:
+nativeTools:
   expose:
     register_all_tools_by_default: true
     includes:
