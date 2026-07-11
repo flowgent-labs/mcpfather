@@ -1,10 +1,10 @@
 name: Build & Test
 
 on:
-  pull_request:
-    branches: [main]
   push:
-    branches: [main]
+    branches: ['**']
+  pull_request:
+    branches: ['**']
   schedule:
     # Daily build on main branch (03:07 UTC)
     - cron: "7 3 * * *"
@@ -23,27 +23,45 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Debug Go Env
-        run: |
-          set -x
-          go version
-          go env GOPATH GOROOT GOMOD GOCACHE
-          echo "=== Makefile test-unit recipe ==="
-          sed -n '28,29p' Makefile
-          echo "=== go list ./pkg/... ==="
-          go list ./pkg/...
-          echo "=== go list ./cmd/... ==="
-          go list ./cmd/...
-
       - name: Build
-        run: |
-          set -x
-          make build
+        run: make build
 
       - name: Unit Tests
-        run: |
-          set -x
-          go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
+        run: make test-unit
+
+  integration-core-e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Run Core E2E Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "E2E_Core|TestGenerator_|TestAuth_|TestLogging_|TestDownload_|TestCLI_|TestCyclicRef_|TestRegression_|TestConfig_" ./it/...
+
+  integration-virtual-tools:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: make build
+
+      - name: Run Virtual Tools Integration Tests
+        run: go test -v -count=1 -timeout 300s -run "E2E_VirtualTool|E2E_MCP_HeaderForwarding|TestScenario_|E2E_SonatypeIQ" ./it/...
 
   integration-oidc:
     runs-on: ubuntu-latest
@@ -80,11 +98,6 @@ jobs:
           echo "Keycloak failed to start"
           docker logs mcpfather-keycloak
           exit 1
-
-      - name: Verify OIDC Discovery
-        run: |
-          echo "=== OIDC Discovery Document ==="
-          curl -sSf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration | python3 -m json.tool
 
       - name: Build
         run: make build
@@ -142,37 +155,3 @@ jobs:
       - name: Collect Glauth Logs (on failure)
         if: failure()
         run: docker logs mcpfather-glauth
-
-  integration-virtual-tools:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build
-        run: make build
-
-      - name: Run Virtual Tools Integration Tests
-        run: go test -v -count=1 -timeout 300s -run "E2E_VirtualTool|E2E_MCP_HeaderForwarding|TestScenario_|E2E_SonatypeIQ" ./it/...
-
-  integration-core-e2e:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build
-        run: make build
-
-      - name: Run Core E2E Integration Tests
-        run: go test -v -count=1 -timeout 300s -run "E2E_Core|TestGenerator_|TestAuth_|TestLogging_|TestDownload_|TestCLI_|TestCyclicRef_|TestRegression_|TestConfig_" ./it/...
