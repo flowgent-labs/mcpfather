@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"text/template"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
+	"github.com/flowgent-labs/mcpfather/pkg/converter"
 )
 
 // GenerateServerFile creates a server.go file in the same package as the tools

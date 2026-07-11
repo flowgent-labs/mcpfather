@@ -38,7 +38,7 @@ helm.sh/chart: {{ include "sonatypeiq-mcp.chart" . | quote }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
-app.kubernetes.io/part-of: mcpgen
+app.kubernetes.io/part-of: mcpfather
 {{- end }}
 
 {{/*

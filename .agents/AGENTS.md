@@ -26,8 +26,6 @@
 | [examples/E2E-Sonarqube-VirtualTools.md](../examples/E2E-Sonarqube-VirtualTools.md) | Full E2E test walkthrough: virtual tools against real SonarQube, bug discoveries, design lessons |
 | [.agents/skills/virtual-tool-creator/SKILL.md](skills/virtual-tool-creator/SKILL.md) | Virtual tool pipeline configuration skill for AI agents |
 | [.agents/skills/virtual-tool-creator/references/bash-to-pipeline-mapping.md](skills/virtual-tool-creator/references/bash-to-pipeline-mapping.md) | Bash→DSL translation reference |
-| [.github/PULL_REQUEST_TEMPLATE/pull_request_template.md](../.github/PULL_REQUEST_TEMPLATE/pull_request_template.md) | PR template |
-| [.github/ISSUE_TEMPLATE/bug_report.md](../.github/ISSUE_TEMPLATE/bug_report.md) | Bug report template |
 
 ---
 
@@ -45,7 +43,7 @@ pkg/
       pipeline/            DSL types, validation, tool registry
     deploy/              Dockerfile + Helm chart (embedded, copied to generated projects)
 cmd/
-  mcpgen/              CLI entry point
+  mcpfather/              CLI entry point
   gen-config-dsl-schema/  JSON Schema generator for virtual tool DSL
 it/                    Integration tests + Docker fixtures (dex, glauth)
   cmd/testoidc/          Standalone OIDC provider for token exchange tests

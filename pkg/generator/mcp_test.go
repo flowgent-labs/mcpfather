@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
+	"github.com/flowgent-labs/mcpfather/pkg/converter"
 )
 
 // testConverter implements a minimal converter.Converter interface for testing.
@@ -138,7 +138,7 @@ Example:
 	}
 
 	// Verify the generated code actually compiles
-		proxyURL := os.Getenv("MCPGEN_TEST_PROXY")
+		proxyURL := os.Getenv("MCPFATHER_TEST_PROXY")
 		if proxyURL == "" {
 			proxyURL = os.Getenv("HTTPS_PROXY")
 		}
