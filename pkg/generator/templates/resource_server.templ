@@ -32,6 +32,44 @@ import (
 // GetUpstreamToken always returns the server's own backend credential
 // instead (Token Passthrough Prohibition).
 
+const (
+	clientTokenSubKey    contextKey = "client-token-sub"
+	clientTokenEmailKey  contextKey = "client-token-email"
+	clientTokenClaimsKey contextKey = "client-token-claims"
+)
+
+// GetClientTokenSub returns the 'sub' claim from the validated frontend JWT.
+// Empty string when frontend auth is disabled or the claim was missing.
+func GetClientTokenSub(ctx context.Context) string {
+	if s, ok := ctx.Value(clientTokenSubKey).(string); ok {
+		return s
+	}
+	return ""
+}
+
+// GetClientTokenEmail returns the 'email' claim from the validated frontend JWT.
+// Empty string when frontend auth is disabled or the claim was missing.
+func GetClientTokenEmail(ctx context.Context) string {
+	if s, ok := ctx.Value(clientTokenEmailKey).(string); ok {
+		return s
+	}
+	return ""
+}
+
+// GetClientTokenClaim returns an arbitrary claim value from the validated
+// frontend JWT as a string. Returns empty string when the claim is missing,
+// not a string, or frontend auth is disabled.
+func GetClientTokenClaim(ctx context.Context, claim string) string {
+	if claims, ok := ctx.Value(clientTokenClaimsKey).(map[string]interface{}); ok {
+		if v, ok := claims[claim]; ok {
+			if s, ok := v.(string); ok {
+				return s
+			}
+		}
+	}
+	return ""
+}
+
 // jwtValidAlgorithms whitelists asymmetric signing algorithms for inbound
 // tokens (RFC 8725 §3.1). Symmetric algorithms (HS*) are deliberately
 // excluded: accepting them alongside a JWKS of public keys would allow an
@@ -187,10 +225,22 @@ func RequireBearerToken(resourceMetadataURL string, next http.Handler) http.Hand
 			parserOpts = append(parserOpts, jwt.WithAudience(frontendAuth.cfg.Audience))
 		}
 
-		if _, err := jwt.ParseWithClaims(token, claims, frontendAuth.kf.Keyfunc, parserOpts...); err != nil {
+		parsedToken, err := jwt.ParseWithClaims(token, claims, frontendAuth.kf.Keyfunc, parserOpts...)
+		if err != nil {
 			writeUnauthorized(w, resourceMetadataURL, fmt.Sprintf("invalid token: %v", err))
 			return
 		}
+		_ = parsedToken
+
+		ctx := r.Context()
+		if sub, ok := claims["sub"].(string); ok && sub != "" {
+			ctx = context.WithValue(ctx, clientTokenSubKey, sub)
+		}
+		if email, ok := claims["email"].(string); ok && email != "" {
+			ctx = context.WithValue(ctx, clientTokenEmailKey, email)
+		}
+		ctx = context.WithValue(ctx, clientTokenClaimsKey, map[string]interface{}(claims))
+		r = r.WithContext(ctx)
 
 		next.ServeHTTP(w, r)
 	})

@@ -512,7 +512,7 @@
     "UpstreamConfig": {
       "additionalProperties": false,
       "properties": {
-        "enable_mcp_session_forwarding": {
+        "enable_mcp_session_forward": {
           "type": "boolean"
         },
         "endpoint": {

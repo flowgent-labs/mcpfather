@@ -122,10 +122,27 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 		req.Header.Set("Cookie", cookie)
 	}
 
-	// Forward MCP session ID when enable_mcp_session_forwarding is configured.
-	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForwarding {
+	// Forward MCP session ID when enable_mcp_session_forward is configured.
+	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForward {
 		if sid := GetSessionID(ctx); sid != "" {
 			req.Header.Set("X-MCP-Session-ID", sid)
+		}
+	}
+
+	// Forward validated client token claims when enable_client_token_claim_forward
+	// is configured (default: true). These are extracted from the frontend JWT
+	// by the resource server layer — never from the inbound Authorization header.
+	if cfg := GetConfig(); cfg != nil && cfg.Auth.Frontend.OIDC.EnableClientTokenClaimForward {
+		if sub := GetClientTokenSub(ctx); sub != "" {
+			req.Header.Set("X-MCP-Client-Token-Sub", sub)
+		}
+		if email := GetClientTokenEmail(ctx); email != "" {
+			req.Header.Set("X-MCP-Client-Token-Email", email)
+		}
+		for _, claim := range cfg.Auth.Frontend.OIDC.AdditionalClientTokenClaimForward {
+			if v := GetClientTokenClaim(ctx, claim); v != "" {
+				req.Header.Set("X-MCP-Client-Token-"+HeaderizeClaim(claim), v)
+			}
 		}
 	}
 
@@ -201,6 +218,18 @@ func ParamsParser[T any](args map[string]interface{}) (*T, error) {
 	}
 
 	return &typedArgs, nil
+}
+
+// HeaderizeClaim converts a snake_case claim name to an HTTP header suffix.
+// e.g. "given_name" → "Given-Name", "preferred_username" → "Preferred-Username".
+func HeaderizeClaim(claim string) string {
+	parts := strings.Split(claim, "_")
+	for i, p := range parts {
+		if len(p) > 0 {
+			parts[i] = strings.ToUpper(p[:1]) + p[1:]
+		}
+	}
+	return strings.Join(parts, "-")
 }
 
 // marshalJSONNoSci marshals data to JSON without scientific notation for
@@ -448,9 +477,23 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileN
 		req.Header.Set("Cookie", cookie)
 	}
 
-	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForwarding {
+	if cfg := GetConfig(); cfg != nil && cfg.Upstream.EnableMCPSessionForward {
 		if sid := GetSessionID(ctx); sid != "" {
 			req.Header.Set("X-MCP-Session-ID", sid)
+		}
+	}
+
+	if cfg := GetConfig(); cfg != nil && cfg.Auth.Frontend.OIDC.EnableClientTokenClaimForward {
+		if sub := GetClientTokenSub(ctx); sub != "" {
+			req.Header.Set("X-MCP-Client-Token-Sub", sub)
+		}
+		if email := GetClientTokenEmail(ctx); email != "" {
+			req.Header.Set("X-MCP-Client-Token-Email", email)
+		}
+		for _, claim := range cfg.Auth.Frontend.OIDC.AdditionalClientTokenClaimForward {
+			if v := GetClientTokenClaim(ctx, claim); v != "" {
+				req.Header.Set("X-MCP-Client-Token-"+HeaderizeClaim(claim), v)
+			}
 		}
 	}
 

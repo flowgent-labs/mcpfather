@@ -5,7 +5,7 @@
 upstream:
   endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
   # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
-  enable_mcp_session_forwarding: true
+  enable_mcp_session_forward: true
 
 # ---- Runtime settings ----
 runtime:
@@ -48,6 +48,12 @@ auth:
       issuer: ""            # e.g. https://idp.example.com/realms/myrealm
       jwks_uri: ""          # optional override (auto-discovered from issuer if empty)
       audience: ""          # expected JWT "aud" claim; also published as the RFC 9728 protected-resource identifier
+      # When true, validated frontend JWT claims (sub, email) are forwarded upstream
+      # as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+      enable_client_token_claim_forward: true
+      # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+      # e.g. ["given_name", "family_name", "preferred_username"]
+      # additional_client_token_claim_forward: []
 
   backend:
     # OIDC client credentials flow (machine-to-machine)

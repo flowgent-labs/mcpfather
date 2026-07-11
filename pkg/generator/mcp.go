@@ -547,10 +547,11 @@ type readmeToolEntry struct {
 
 // readmeTemplateData is the data passed to readme.templ.
 type readmeTemplateData struct {
-	BinaryName     string
-	ToolCount      int
-	Tools          []readmeToolEntry
-	RemainingCount int
+	BinaryName          string
+	UpstreamServiceName string
+	ToolCount           int
+	Tools               []readmeToolEntry
+	RemainingCount      int
 }
 
 // GenerateReadme creates a README.md for the generated MCP server project.
@@ -572,11 +573,17 @@ func (g *Generator) GenerateReadme() error {
 		})
 	}
 
+	svcName := binName
+	if g.spec != nil && g.spec.Info != nil && g.spec.Info.Title != "" {
+		svcName = g.spec.Info.Title
+	}
+
 	data := readmeTemplateData{
-		BinaryName:     binName,
-		ToolCount:      len(g.tools),
-		Tools:          tools,
-		RemainingCount: len(g.tools) - limit,
+		BinaryName:          binName,
+		UpstreamServiceName: svcName,
+		ToolCount:           len(g.tools),
+		Tools:               tools,
+		RemainingCount:      len(g.tools) - limit,
 	}
 
 	tmplContent, err := templatesFS.ReadFile("templates/readme.templ")
