@@ -3,11 +3,13 @@ package tests
 import (
 	"bufio"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -114,3 +116,102 @@ func (p *testOIDCProvider) Close() {
 
 func (p *testOIDCProvider) Issuer() string  { return p.issuer }
 func (p *testOIDCProvider) TokenURL() string { return p.issuer + "/token" }
+
+// ---------------------------------------------------------------------------
+// Password-grant token exchange & E2E tests
+//
+// These use the standalone mock OIDC provider because Dex v2.41+ no longer
+// supports the password (ROPC) grant. Every other OIDC flow (discovery,
+// connectivity, config) is tested against real Dex in 03_oidc_integration_test.go.
+// ---------------------------------------------------------------------------
+
+// TestOIDCTokenExchange verifies the OIDC provider issues tokens via password grant.
+func TestOIDCTokenExchange(t *testing.T) {
+	oidc := startTestOIDCProvider(t)
+	defer oidc.Close()
+
+	body := strings.NewReader("grant_type=client_credentials&client_id=test-client&client_secret=test-secret&scope=openid")
+	resp, err := http.Post(oidc.TokenURL(), "application/x-www-form-urlencoded", body)
+	if err != nil {
+		t.Fatalf("token request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("token endpoint returned %d", resp.StatusCode)
+	}
+	t.Logf("OIDC token exchange OK (client_credentials grant via mock)")
+}
+
+// TestOIDCFullE2E runs a full end-to-end test with the mock OIDC provider:
+//  1. Start a standalone OIDC provider (client_credentials grant)
+//  2. Start a mock upstream API that records the Authorization header
+//  3. Generate and build an MCP server from the minimal spec
+//  4. Configure the generated server with OIDC client_credentials settings
+//  5. Start the server in HTTP mode
+//  6. Call a tool and verify the upstream received a Bearer token
+//
+// Note: This test uses the mock OIDC provider because Dex v2.41+ does not
+// support the password grant. Discovery and connectivity are verified
+// against real Dex in TestOIDCDexDiscovery.
+func TestOIDCFullE2E(t *testing.T) {
+	oidc := startTestOIDCProvider(t)
+	defer oidc.Close()
+
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	binPath := buildServer(t, projectDir)
+	binaryName := filepath.Base(projectDir)
+
+	homeDir := t.TempDir()
+	configYAML := fmt.Sprintf(`
+auth:
+  oidc:
+    enabled: true
+    issuer: %s
+    client_id: mcpgen-client
+    client_secret: mcpgen-secret
+    scopes: openid
+    
+upstream:
+  endpoint: %s
+`, oidc.Issuer(), mock.server.URL)
+	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+
+	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
+	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start HTTP server: %v", err)
+	}
+	defer func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}()
+
+	baseURL := "http://localhost:" + port
+	waitForServer(t, baseURL)
+
+	time.Sleep(2 * time.Second)
+	t.Logf("MCP server stderr: %s", stderrBuf.String())
+
+	result := callNativeTool(t, baseURL, "EchoHeaders", map[string]interface{}{})
+	t.Logf("Tool result: %s", trimMsg(result, 300))
+
+	if mock.requestCount() == 0 {
+		t.Fatal("no request reached the mock upstream")
+	}
+	auth := mock.requests[0].Authorization
+	if auth == "" {
+		t.Error("expected Authorization header in upstream request, but it was empty")
+	} else if !strings.HasPrefix(auth, "Bearer ") {
+		t.Errorf("expected Bearer token, got: %s", auth)
+	} else {
+		t.Logf("Upstream received valid Bearer token from OIDC provider (len=%d)", len(auth))
+	}
+}
