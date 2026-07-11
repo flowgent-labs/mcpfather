@@ -154,11 +154,6 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			mcputilsImport,
 		}
 
-		// Add extra imports needed for upload handlers
-		if tool.UploadContentType != "" {
-			requiredImports = append(requiredImports, "os", "net/http", "bytes", "strings")
-		}
-
 		if len(existingImports) > 0 {
 			fmt.Fprintf(&toolBuf, "import (\n")
 			for _, imp := range existingImports {

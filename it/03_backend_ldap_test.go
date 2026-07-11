@@ -118,12 +118,12 @@ func TestLDAPConfigEnvOverrides(t *testing.T) {
 	creds := defaultGlauthCreds()
 
 	envVars := []string{
-		"MCP__AUTH__LDAP__ENABLED=true",
-		"MCP__AUTH__LDAP__URL=" + creds.URL,
-		"MCP__AUTH__LDAP__BASE_DN=dc=test,dc=local",
-		"MCP__AUTH__LDAP__BIND_DN=" + creds.BindDN,
-		"MCP__AUTH__LDAP__BIND_PASSWORD=" + creds.BindPassword,
-		"MCP__AUTH__LDAP__TIMEOUT=10",
+		"MCP__AUTH__BACKEND__LDAP__ENABLED=true",
+		"MCP__AUTH__BACKEND__LDAP__URL=" + creds.URL,
+		"MCP__AUTH__BACKEND__LDAP__BASE_DN=dc=test,dc=local",
+		"MCP__AUTH__BACKEND__LDAP__BIND_DN=" + creds.BindDN,
+		"MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD=" + creds.BindPassword,
+		"MCP__AUTH__BACKEND__LDAP__TIMEOUT=10",
 		"MCP__UPSTREAM__ENDPOINT=http://localhost:0",
 	}
 
@@ -157,14 +157,15 @@ func TestLDAPFullE2E(t *testing.T) {
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
 auth:
-  ldap:
-    enabled: true
-    url: %s
-    base_dn: dc=test,dc=local
-    bind_dn: %s
-    bind_password: %s
-    insecure_skip_verify: false
-    timeout: 5
+  backend:
+    ldap:
+      enabled: true
+      url: %s
+      base_dn: dc=test,dc=local
+      bind_dn: %s
+      bind_password: %s
+      insecure_skip_verify: false
+      timeout: 5
 upstream:
   endpoint: %s
 `, creds.URL, creds.BindDN, creds.BindPassword, mock.server.URL)
@@ -223,14 +224,15 @@ func TestLDAPWrongCredentials(t *testing.T) {
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
 auth:
-  ldap:
-    enabled: true
-    url: %s
-    base_dn: dc=test,dc=local
-    bind_dn: %s
-    bind_password: wrong-password
-    insecure_skip_verify: false
-    timeout: 5
+  backend:
+    ldap:
+      enabled: true
+      url: %s
+      base_dn: dc=test,dc=local
+      bind_dn: %s
+      bind_password: wrong-password
+      insecure_skip_verify: false
+      timeout: 5
 upstream:
   endpoint: %s
 `, creds.URL, creds.BindDN, mock.server.URL)

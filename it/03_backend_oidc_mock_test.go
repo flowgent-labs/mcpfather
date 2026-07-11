@@ -3,6 +3,7 @@ package tests
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -114,15 +115,58 @@ func (p *testOIDCProvider) Close() {
 	p.cmd.Wait()
 }
 
-func (p *testOIDCProvider) Issuer() string  { return p.issuer }
-func (p *testOIDCProvider) TokenURL() string { return p.issuer + "/token" }
+func (p *testOIDCProvider) Issuer() string    { return p.issuer }
+func (p *testOIDCProvider) TokenURL() string   { return p.issuer + "/token" }
+func (p *testOIDCProvider) Audience() string   { return "mcpfather" }
+
+// Token obtains a valid signed JWT via client_credentials grant.
+func (p *testOIDCProvider) Token(t *testing.T) string {
+	t.Helper()
+	body := strings.NewReader("grant_type=client_credentials&client_id=mcpfather-client&client_secret=mcpfather-secret")
+	resp, err := http.Post(p.TokenURL(), "application/x-www-form-urlencoded", body)
+	if err != nil {
+		t.Fatalf("token request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode token response: %v", err)
+	}
+	if result.AccessToken == "" {
+		t.Fatal("token response missing access_token")
+	}
+	return result.AccessToken
+}
+
+// SignToken requests a JWT with custom claims from the /sign endpoint.
+func (p *testOIDCProvider) SignToken(t *testing.T, claims map[string]interface{}) string {
+	t.Helper()
+	body, _ := json.Marshal(claims)
+	resp, err := http.Post(p.issuer+"/sign", "application/json", strings.NewReader(string(body)))
+	if err != nil {
+		t.Fatalf("sign token request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	var result struct {
+		AccessToken string `json:"access_token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		t.Fatalf("decode sign response: %v", err)
+	}
+	if result.AccessToken == "" {
+		t.Fatal("sign response missing access_token")
+	}
+	return result.AccessToken
+}
 
 // ---------------------------------------------------------------------------
 // Password-grant token exchange & E2E tests
 //
 // These use the standalone mock OIDC provider because Dex v2.41+ no longer
 // supports the password (ROPC) grant. Every other OIDC flow (discovery,
-// connectivity, config) is tested against real Dex in 03_oidc_integration_test.go.
+// connectivity, config) is tested against real Dex in 03_backend_oidc_dex_test.go.
 // ---------------------------------------------------------------------------
 
 // TestOIDCTokenExchange verifies the OIDC provider issues tokens via password grant.
@@ -168,13 +212,14 @@ func TestOIDCFullE2E(t *testing.T) {
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
 auth:
-  oidc:
-    enabled: true
-    issuer: %s
-    client_id: mcpfather-client
-    client_secret: mcpfather-secret
-    scopes: openid
-    
+  backend:
+    oidc:
+      enabled: true
+      issuer: %s
+      client_id: mcpfather-client
+      client_secret: mcpfather-secret
+      scopes: openid
+
 upstream:
   endpoint: %s
 `, oidc.Issuer(), mock.server.URL)
