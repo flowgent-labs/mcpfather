@@ -1,0 +1,351 @@
+# Environment variables with MCP__ prefix override these values.
+# e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID overrides auth.backend.oidc.client_id
+
+# ---- Upstream API endpoint ----
+upstream:
+  endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
+  # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
+  enable_mcp_session_forward: true
+
+# ---- Runtime settings ----
+runtime:
+  download_dir: ""             # override download directory for binary responses
+  log_authorization: false     # set true to print Authorization header values in logs
+
+# ---- Management Endpoints (metrics, tracing, pprof) ----
+mgmt:
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc             # grpc | http/protobuf | http/json
+    timeout: 10000             # connection timeout in milliseconds
+    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}                 # static labels added to every metric
+
+# ---- Authentication ----
+# frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).
+# backend  = outbound: credentials the server uses to call upstream APIs.
+# The two are independent — the inbound token is never reused outbound
+# (see MCP Authorization spec: Token Passthrough Prohibition).
+auth:
+  frontend:
+    # Standard OAuth 2.1 / OIDC JWT bearer validation (Resource Server role, RFC 9728).
+    # Only enforced on the http transport; stdio has no network boundary.
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      jwks_uri: ""          # optional override (auto-discovered from issuer if empty)
+      audience: ""          # expected JWT "aud" claim; also published as the RFC 9728 protected-resource identifier
+      # When true, validated frontend JWT claims (sub, email) are forwarded upstream
+      # as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+      enable_client_token_claim_forward: true
+      # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+      # e.g. ["given_name", "family_name", "preferred_username"]
+      # additional_client_token_claim_forward: []
+
+  backend:
+    # OIDC client credentials flow (machine-to-machine)
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://keycloak.example.com/realms/myrealm
+      client_id: ""
+      client_secret: ""
+      scopes: "openid"       # space-separated scope list
+      token_url: ""          # optional override (auto-discovered from issuer if empty)
+
+    # LDAP service account bind (machine-to-machine)
+    ldap:
+      enabled: false
+      url: ""               # ldap:// or ldaps:// server URL
+      base_dn: ""
+      bind_dn: ""
+      bind_password: ""
+      insecure_skip_verify: false
+      timeout: 10            # connection timeout in seconds
+
+    # Static credentials for legacy / simple APIs
+    static:
+      bearer_token: ""       # static Bearer token
+      bearer_token_file: ""   # path to file containing bearer token (K8s secrets)
+      cookie_token: ""        # static cookie (e.g. JSESSIONID for legacy systems)
+      cookie_token_file: ""   # path to file containing cookie token (K8s secrets)
+
+# ---- Native MCP Tools ----
+nativeTools:
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    register_all_tools_by_default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if register_all_tools_by_default is false.
+    includes: []
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over register_all_tools_by_default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
+
+# ---- Virtual Tools ----
+# Compose multiple native tools into a single virtual tool via a declarative
+# e.g: 5-step pipeline (call → jq → foreach → emit → return).
+# Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+virtualTools:
+  - name: get_scan_violations_recommends
+    enabled: true
+    description: >
+      Retrieve policy violations for a scan, keep components at or above a
+      threat threshold, enrich each component with remediation suggestions.
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: true
+    inputSchema:
+      type: object
+      required:
+        - applicationPublicId
+        - scanId
+
+      properties:
+        applicationPublicId:
+          type: string
+          default: 12609073_rengine
+          description: Sonatype IQ application public id.
+
+        scanId:
+          type: string
+          default: b3a29500a885473ca6b4b5c759c39bf2
+          description: Report id / scan id to inspect.
+
+        minThreatLevel:
+          type: integer
+          default: 5
+          minimum: 0
+          maximum: 10
+          description: Minimum policy threat level used to keep violations and components.
+
+        includeViolationTimes:
+          type: boolean
+          default: true
+          description: Include policy violation times in the policy report request.
+
+        historyLimit:
+          type: integer
+          default: 100
+          minimum: 1
+          maximum: 100
+          description: Number of recent application reports used to resolve the scan stage.
+
+        includeParentRemediation:
+          type: boolean
+          default: true
+          description: Include parent remediation suggestions for transitive dependencies.
+
+        remediationConcurrency:
+          type: integer
+          default: 4
+          minimum: 1
+          maximum: 16
+          description: Maximum remediation lookups to run concurrently.
+    pipeline:
+      - id: policy
+        kind: call
+        spec:
+          tool: GetPolicyViolations1
+          parse: json
+          args:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            includeViolationTimes: $input.includeViolationTimes
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $policy
+          expr: .application.id
+        require:
+          nonEmpty: true
+          message: Cannot find internal application id in policy response.
+      - id: history
+        kind: call
+        spec:
+          tool: GetReportHistoryForApplication
+          parse: json
+          args:
+            applicationId: $appInternal
+            limit: $input.historyLimit
+      - id: stage
+        kind: jq
+        spec:
+          from: $history
+          vars:
+            scanId: $input.scanId
+          expr: |
+            ([.reports[]
+              | select(.scanId == $scanId)
+              | .stage][0] // null)
+        require:
+          nonEmpty: true
+          message: Cannot find stage for scanId=$input.scanId.
+      - id: threatComponents
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            minThreatLevel: $input.minThreatLevel
+          expr: |
+            [
+              .components[]?
+              | select(
+                  (.violations // [])
+                  | any(.policyThreatLevel >= $minThreatLevel)
+                )
+              | {
+                  displayName,
+                  packageUrl,
+                  hash,
+                  sha256,
+                  componentIdentifier,
+
+                  maxThreatLevel:
+                    ([.violations[]?.policyThreatLevel] | max),
+
+                  active:
+                    any(
+                      .violations[];
+                      .policyThreatLevel >= $minThreatLevel
+                      and (.waived != true)
+                    ),
+
+                  violations:
+                    [
+                      .violations[]?
+                      | select(.policyThreatLevel >= $minThreatLevel)
+                      | {
+                          policyViolationId,
+                          policyName,
+                          policyThreatLevel,
+                          policyThreatCategory,
+                          waived,
+
+                          constraints:
+                            [
+                              .constraints[]?
+                              | {
+                                  constraintName,
+                                  conditions:
+                                    [
+                                      .conditions[]?.conditionReason
+                                    ]
+                                }
+                            ]
+                        }
+                    ],
+
+                  remediationRequest:
+                    {
+                      packageUrl,
+                      hash,
+                      sha256,
+                      componentIdentifier,
+                      displayName,
+                      proprietary,
+                      thirdParty,
+                      originalPurl
+                    }
+                }
+            ]
+      - id: components
+        kind: foreach
+        spec:
+          in: $threatComponents
+          as: component
+          concurrency: $input.remediationConcurrency
+          preserveOrder: true
+
+          pipeline:
+
+            - id: remediation
+              kind: call
+              spec:
+                tool: GetSuggestedRemediationForComponent
+                parse: json
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  stageId: $stage
+                  scanId: $input.scanId
+                  includeParentRemediation: $input.includeParentRemediation
+                  body: $component.remediationRequest
+
+            - id: enrichedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation
+                expr: |
+                  (. | del(.remediationRequest))
+                  +
+                  {
+                    remediation:
+                      [
+                        ($remediation.remediation.versionChanges // [])[]
+                        | {
+                            type,
+                            recommendedDisplayName:
+                              .data.component.displayName,
+                            recommendedPackageUrl:
+                              .data.component.packageUrl,
+                            recommendedVersion:
+                              .data.component.componentIdentifier.coordinates.version
+                          }
+                      ]
+                  }
+      - id: report
+        kind: return
+        spec:
+          from: $components
+          vars:
+            appPublic: $input.applicationPublicId
+            appInternal: $appInternal
+            scanId: $input.scanId
+            stage: $stage
+          expr: |
+            {
+              application: {
+                publicId: $appPublic,
+                internalId: $appInternal
+              },
+
+              scan: {
+                scanId: $scanId,
+                stage: $stage
+              },
+
+              summary: {
+                threatComponentCount: length,
+                activeThreatComponentCount:
+                  ([ .[]
+                     | select(.active == true)
+                   ] | length)
+              },
+
+              components: .
+            }
