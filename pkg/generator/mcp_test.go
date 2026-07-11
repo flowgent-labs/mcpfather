@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wl4g-ai/mcpgen/pkg/converter"
+	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
 )
 
 // testConverter implements a minimal converter.Converter interface for testing.
