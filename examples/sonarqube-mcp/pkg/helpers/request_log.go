@@ -17,8 +17,8 @@ import (
 //	 0:   silent — no upstream request logging
 //	 1-3: access log — method, URL, status, duration (nginx-style)
 //	 4-7: standard — + query parameters, request header names, response header names
-//	 8-9: detailed — + all request/response header values (Authorization/Cookie redacted)
-//	10+:  trace   — + request body, response body
+//	 8-9: detailed — + all request/response header values (Authorization/Cookie redacted) + body length
+//	10+:  trace   — + request body content (first 2048 bytes), response body content
 //
 // Each level includes everything from lower levels. Sensitive headers
 // (Authorization, Cookie) are always redacted unless runtime.log_authorization
@@ -166,9 +166,13 @@ func LogRequest(method string, url string, query map[string][]string, header htt
 			vlog(8, "    (sensitive header values redacted — set runtime.log_authorization=true to reveal)")
 		}
 	}
-	// Level 10+: request body
+	// Level 8-9: request body length only
+	if verbosity >= 8 && verbosity <= 9 && len(body) > 0 {
+		vlog(8, "    req body: %d bytes", len(body))
+	}
+	// Level 10+: request body length + content (first 2048 bytes)
 	if verbosity >= 10 && len(body) > 0 {
-		vlog(10, "    req body: %s", truncateForLog(string(body), 8192))
+		vlog(10, "    req body (%d bytes): %s", len(body), truncateForLog(string(body), 2048))
 	}
 }
 
@@ -191,9 +195,13 @@ func LogResponse(ctx context.Context, statusCode int, method string, url string,
 			vlogCtx(ctx, 8, "    (sensitive header values redacted — set runtime.log_authorization=true to reveal)")
 		}
 	}
-	// Level 10+: response body
+	// Level 8-9: response body length only
+	if verbosity >= 8 && verbosity <= 9 && len(body) > 0 {
+		vlogCtx(ctx, 8, "    resp body: %d bytes", len(body))
+	}
+	// Level 10+: response body length + content (first 2048 bytes)
 	if verbosity >= 10 && len(body) > 0 {
-		vlogCtx(ctx, 10, "    resp body: %s", truncateForLog(string(body), 8192))
+		vlogCtx(ctx, 10, "    resp body (%d bytes): %s", len(body), truncateForLog(string(body), 2048))
 	}
 }
 

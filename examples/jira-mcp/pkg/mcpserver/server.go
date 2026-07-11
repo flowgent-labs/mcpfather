@@ -37,13 +37,13 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 		}
 		defer span.End()
 
-		if v >= 2 {
+		if v >= 4 {
 			argsJSON, _ := json.Marshal(request.GetArguments())
 			sid := sessionID
 			if sid == "" {
 				sid = "-"
 			}
-			fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s request tool=%s args=%s\n", ts, sid, request.Params.Name, string(argsJSON))
+			fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s req tool=%s args=%s\n", ts, sid, request.Params.Name, string(argsJSON))
 		}
 
 		defer func() {
@@ -73,7 +73,7 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 					fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s %d %s (%s)\n", time.Now().Format(time.RFC3339), sid, status, request.Params.Name, duration)
 				}
 			}
-			if v >= 2 && result != nil {
+			if v >= 8 && result != nil {
 				resultText := ""
 				for _, c := range result.Content {
 					if tc, ok := c.(mcp.TextContent); ok {
@@ -81,7 +81,11 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 						break
 					}
 				}
-				fmt.Fprintf(os.Stderr, "%s [mcp] response body=%s\n", time.Now().Format(time.RFC3339), truncate(resultText, 200))
+				if v >= 10 {
+					fmt.Fprintf(os.Stderr, "%s [mcp] resp body (%d bytes): %s\n", time.Now().Format(time.RFC3339), len(resultText), truncate(resultText, 2048))
+				} else {
+					fmt.Fprintf(os.Stderr, "%s [mcp] resp body: %d bytes\n", time.Now().Format(time.RFC3339), len(resultText))
+				}
 			}
 		}()
 

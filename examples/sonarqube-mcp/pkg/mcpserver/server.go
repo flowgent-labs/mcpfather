@@ -73,7 +73,7 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 					fmt.Fprintf(os.Stderr, "%s [mcp] sid=%s %d %s (%s)\n", time.Now().Format(time.RFC3339), sid, status, request.Params.Name, duration)
 				}
 			}
-			if v >= 10 && result != nil {
+			if v >= 8 && result != nil {
 				resultText := ""
 				for _, c := range result.Content {
 					if tc, ok := c.(mcp.TextContent); ok {
@@ -81,7 +81,11 @@ func requestLoggerMiddleware(next server.ToolHandlerFunc) server.ToolHandlerFunc
 						break
 					}
 				}
-				fmt.Fprintf(os.Stderr, "%s [mcp] resp body=%s\n", time.Now().Format(time.RFC3339), truncate(resultText, 8192))
+				if v >= 10 {
+					fmt.Fprintf(os.Stderr, "%s [mcp] resp body (%d bytes): %s\n", time.Now().Format(time.RFC3339), len(resultText), truncate(resultText, 2048))
+				} else {
+					fmt.Fprintf(os.Stderr, "%s [mcp] resp body: %d bytes\n", time.Now().Format(time.RFC3339), len(resultText))
+				}
 			}
 		}()
 
