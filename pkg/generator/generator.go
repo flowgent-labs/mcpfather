@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/getkin/kin-openapi/openapi3"
-	"github.com/wl4g-ai/mcpgen/pkg/converter"
+	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
 )
 
 type Generator struct {
