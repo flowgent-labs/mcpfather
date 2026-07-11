@@ -316,7 +316,7 @@ func TestGenerator_VeryLongOperationId_Succeeds(t *testing.T) {
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=test-token",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=test-token",
 		},
 		"-t", "cli", toolName, "--id=12345",
 	)
@@ -341,7 +341,7 @@ func TestAuth_BasicPrefixPreserved(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=Basic myCredential123",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=Basic myCredential123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -362,7 +362,7 @@ func TestAuth_BearerPrefixPreserved(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=Bearer secretToken999",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=Bearer secretToken999",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -383,7 +383,7 @@ func TestAuth_NoPrefixDefaultsToBearer(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=plainToken",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=plainToken",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -409,8 +409,8 @@ func TestAuth_TokenFileFallback(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=",
-			"MCP__AUTH__STATIC__BEARER_TOKEN_FILE=" + tokenFile,
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE=" + tokenFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -436,8 +436,8 @@ func TestAuth_TokenFileWithBasicPrefix(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=",
-			"MCP__AUTH__STATIC__BEARER_TOKEN_FILE=" + tokenFile,
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE=" + tokenFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -458,7 +458,7 @@ func TestAuth_CookieFromEnv(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -484,8 +484,8 @@ func TestAuth_CookieFileFallback(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__COOKIE_TOKEN=",
-			"MCP__AUTH__STATIC__COOKIE_TOKEN_FILE=" + cookieFile,
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=",
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE=" + cookieFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -506,8 +506,8 @@ func TestAuth_CookieAndTokenBothSet(t *testing.T) {
 	_, _ = runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=Bearer secretToken999",
-			"MCP__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=Bearer secretToken999",
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -538,7 +538,7 @@ func TestLogging_AuthHeaderRedactedByDefault(t *testing.T) {
 	_, stderr := runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=secretSauce",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=secretSauce",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -564,7 +564,7 @@ func TestLogging_AuthHeaderPrintedWhenEnvSet(t *testing.T) {
 	_, stderr := runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=visibleToken",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=visibleToken",
 			"MCP__RUNTIME__LOG_AUTHORIZATION=true",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
@@ -586,7 +586,7 @@ func TestLogging_CookieRedactedByDefault(t *testing.T) {
 	_, stderr := runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=secretSession",
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=secretSession",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -611,7 +611,7 @@ func TestLogging_CookiePrintedWhenEnvSet(t *testing.T) {
 	_, stderr := runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=visibleSession",
+			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=visibleSession",
 			"MCP__RUNTIME__LOG_AUTHORIZATION=true",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
@@ -634,7 +634,7 @@ func TestLogging_NonAuthHeadersPrinted(t *testing.T) {
 	_, stderr := runCLI(t, bin,
 		[]string{
 			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__STATIC__BEARER_TOKEN=someToken",
+			"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=someToken",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -727,7 +727,7 @@ func waitForServer(t *testing.T, baseURL string) {
 }
 
 // TestAuth_HTTPTransportMatchesCLI verifies that the HTTP transport sends the
-// same Authorization header as CLI mode when using MCP__AUTH__STATIC__BEARER_TOKEN.
+// same Authorization header as CLI mode when using MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN.
 func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 	mock := startMockUpstream(okHandler())
 	defer mock.Close()
@@ -738,7 +738,7 @@ func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"MCP__UPSTREAM__ENDPOINT="+mock.server.URL,
-		"MCP__AUTH__STATIC__BEARER_TOKEN=Basic httpToken456",
+		"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=Basic httpToken456",
 	)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -781,7 +781,7 @@ func TestLogging_HTTPTransportRedactsAuthByDefault(t *testing.T) {
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "10")
 	cmd.Env = append(os.Environ(),
 		"MCP__UPSTREAM__ENDPOINT="+mock.server.URL,
-		"MCP__AUTH__STATIC__BEARER_TOKEN=shouldBeHidden",
+		"MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=shouldBeHidden",
 	)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -1253,7 +1253,7 @@ func TestE2E_Core_AuthNoDoublePrefix(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Core Test 3: Cookie forwarding via MCP__AUTH__STATIC__COOKIE_TOKEN
+// Core Test 3: Cookie forwarding via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
 // ---------------------------------------------------------------------------
 
 func TestE2E_Core_CookieForwarding(t *testing.T) {
@@ -2113,10 +2113,10 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 		"MCP__UPSTREAM__ENDPOINT="+mockURL,
 	)
 	if token != "" {
-		cmd.Env = append(cmd.Env, "MCP__AUTH__STATIC__BEARER_TOKEN="+token)
+		cmd.Env = append(cmd.Env, "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN="+token)
 	}
 	if cookie != "" {
-		cmd.Env = append(cmd.Env, "MCP__AUTH__STATIC__COOKIE_TOKEN="+cookie)
+		cmd.Env = append(cmd.Env, "MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN="+cookie)
 	}
 
 	var stderrBuf strings.Builder

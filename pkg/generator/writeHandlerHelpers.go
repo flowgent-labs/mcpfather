@@ -17,6 +17,9 @@ func (g *Generator) GenerateHelpers() error {
 	if err := g.generateAuthGo(); err != nil {
 		return err
 	}
+	if err := g.generateResourceServerGo(); err != nil {
+		return err
+	}
 	if err := g.generateClientGo(); err != nil {
 		return err
 	}
@@ -73,6 +76,34 @@ func (g *Generator) generateAuthGo() error {
 	}
 
 	return writeFileContent(g.outputDir+"/pkg/helpers", "auth.go", func() ([]byte, error) {
+		return formatted, nil
+	})
+}
+
+// generateResourceServerGo creates the resource_server.go file (inbound JWT
+// bearer token validation — the MCP server's Resource Server role).
+func (g *Generator) generateResourceServerGo() error {
+	t, err := templatesFS.ReadFile("templates/resource_server.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read resource_server template file: %w", err)
+	}
+
+	tmpl, err := template.New("resource_server").Parse(string(t))
+	if err != nil {
+		return fmt.Errorf("failed to parse resource_server template: %w", err)
+	}
+
+	var buffer bytes.Buffer
+	if err := tmpl.Execute(&buffer, nil); err != nil {
+		return fmt.Errorf("failed to execute resource_server template: %w", err)
+	}
+
+	formatted, err := format.Source(buffer.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format generated resource_server code: %w\n%s", err, buffer.String())
+	}
+
+	return writeFileContent(g.outputDir+"/pkg/helpers", "resource_server.go", func() ([]byte, error) {
 		return formatted, nil
 	})
 }
@@ -149,66 +180,94 @@ func (g *Generator) generateRequestLog() error {
 	return nil
 }
 
-// GenerateTrace creates trace.go and trace_noop.go with OpenTelemetry tracing (OTLP export).
-// trace.go (build tag: otel) carries the full OTel SDK + gRPC dependency.
-// trace_noop.go (default, no build tag) provides stubs compiled by default.
-// Use -tags otel to enable distributed tracing.
+// GenerateTrace creates trace_grpc.go, trace_http.go, and trace_noop.go with
+// OpenTelemetry tracing (OTLP export).
+//
+//	trace_grpc.go  (build tag: otel_grpc) — OTLP gRPC exporter
+//	trace_http.go  (build tag: otel_http) — OTLP HTTP/protobuf exporter
+//	trace_noop.go  (default, no build tag) — stubs compiled by default
+//
+// Use -tags otel_grpc or -tags otel_http to enable distributed tracing.
 func (g *Generator) GenerateTrace() error {
-	traceTemplate, err := templatesFS.ReadFile("templates/trace.templ")
+	// trace_grpc.go
+	grpcTemplate, err := templatesFS.ReadFile("templates/trace_grpc.templ")
 	if err != nil {
-		return fmt.Errorf("failed to read trace template file: %w", err)
+		return fmt.Errorf("failed to read trace_grpc template: %w", err)
 	}
 
-	tmpl, err := template.New("trace").Parse(string(traceTemplate))
+	grpcTmpl, err := template.New("trace_grpc").Parse(string(grpcTemplate))
 	if err != nil {
-		return fmt.Errorf("failed to parse trace template: %w", err)
+		return fmt.Errorf("failed to parse trace_grpc template: %w", err)
 	}
 
-	data := struct{}{}
-
-	var buffer bytes.Buffer
-	if err := tmpl.Execute(&buffer, data); err != nil {
-		return fmt.Errorf("failed to execute trace template: %w", err)
+	var grpcBuf bytes.Buffer
+	if err := grpcTmpl.Execute(&grpcBuf, struct{}{}); err != nil {
+		return fmt.Errorf("failed to execute trace_grpc template: %w", err)
 	}
 
-	formattedCode, err := format.Source(buffer.Bytes())
+	grpcFormatted, err := format.Source(grpcBuf.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to format generated trace code: %w", err)
+		return fmt.Errorf("failed to format trace_grpc: %w\n%s", err, grpcBuf.String())
 	}
 
-	err = writeFileContent(g.outputDir+"/pkg/helpers", "trace.go", func() ([]byte, error) {
-		return formattedCode, nil
-	})
+	if err := writeFileContent(g.outputDir+"/pkg/helpers", "trace_grpc.go", func() ([]byte, error) {
+		return grpcFormatted, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write trace_grpc.go: %w", err)
+	}
+
+	// trace_http.go
+	httpTemplate, err := templatesFS.ReadFile("templates/trace_http.templ")
 	if err != nil {
-		return fmt.Errorf("failed to write trace.go file: %w", err)
+		return fmt.Errorf("failed to read trace_http template: %w", err)
 	}
 
-	// No-op stub for builds with -tags no_otel
-	traceNoopTemplate, err := templatesFS.ReadFile("templates/trace_noop.templ")
+	httpTmpl, err := template.New("trace_http").Parse(string(httpTemplate))
 	if err != nil {
-		return fmt.Errorf("failed to read trace_noop template file: %w", err)
+		return fmt.Errorf("failed to parse trace_http template: %w", err)
 	}
 
-	tmplNoop, err := template.New("trace_noop").Parse(string(traceNoopTemplate))
+	var httpBuf bytes.Buffer
+	if err := httpTmpl.Execute(&httpBuf, struct{}{}); err != nil {
+		return fmt.Errorf("failed to execute trace_http template: %w", err)
+	}
+
+	httpFormatted, err := format.Source(httpBuf.Bytes())
+	if err != nil {
+		return fmt.Errorf("failed to format trace_http: %w\n%s", err, httpBuf.String())
+	}
+
+	if err := writeFileContent(g.outputDir+"/pkg/helpers", "trace_http.go", func() ([]byte, error) {
+		return httpFormatted, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write trace_http.go: %w", err)
+	}
+
+	// trace_noop.go (default, no build tag)
+	noopTemplate, err := templatesFS.ReadFile("templates/trace_noop.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read trace_noop template: %w", err)
+	}
+
+	noopTmpl, err := template.New("trace_noop").Parse(string(noopTemplate))
 	if err != nil {
 		return fmt.Errorf("failed to parse trace_noop template: %w", err)
 	}
 
-	var bufferNoop bytes.Buffer
-	if err := tmplNoop.Execute(&bufferNoop, data); err != nil {
+	var noopBuf bytes.Buffer
+	if err := noopTmpl.Execute(&noopBuf, struct{}{}); err != nil {
 		return fmt.Errorf("failed to execute trace_noop template: %w", err)
 	}
 
-	formattedNoop, err := format.Source(bufferNoop.Bytes())
+	noopFormatted, err := format.Source(noopBuf.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to format generated trace_noop code: %w", err)
+		return fmt.Errorf("failed to format trace_noop: %w\n%s", err, noopBuf.String())
 	}
 
-	err = writeFileContent(g.outputDir+"/pkg/helpers", "trace_noop.go", func() ([]byte, error) {
-		return formattedNoop, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to write trace_noop.go file: %w", err)
+	if err := writeFileContent(g.outputDir+"/pkg/helpers", "trace_noop.go", func() ([]byte, error) {
+		return noopFormatted, nil
+	}); err != nil {
+		return fmt.Errorf("failed to write trace_noop.go: %w", err)
 	}
 
 	return nil
