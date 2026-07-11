@@ -9,8 +9,9 @@
 
 ## Test Architecture (non-obvious from code alone)
 
-- **OIDC**: Real Dex (Docker) for discovery/connectivity. Mock provider (`it/cmd/testoidc`)
-  for `client_credentials` token exchange — Dex v2.41+ removed password grant.
+- **OIDC**: Real Keycloak 26.7.0 (Docker) for discovery, connectivity, client_credentials,
+  and device_code (RFC 8628) tests. Mock provider (`it/cmd/mockoidcsvc`) for negative
+  test cases (expired token, wrong audience, HS256 forgery) via custom /sign endpoint.
 - **LDAP**: All tests use real Glauth (Docker). No mock LDAP server.
 - **E2E secrets**: `source ~/.wl4gshrc.sec` to load SonarQube/Deeplake tokens.
 - See also: [examples/E2E-Sonarqube-VirtualTools.md](../examples/E2E-Sonarqube-VirtualTools.md)
@@ -45,10 +46,10 @@ pkg/
 cmd/
   mcpfather/              CLI entry point
   gen-config-dsl-schema/  JSON Schema generator for virtual tool DSL
-it/                    Integration tests + Docker fixtures (dex, glauth)
-  cmd/testoidc/          Standalone OIDC provider for token exchange tests
+it/                    Integration tests + Docker fixtures (keycloak, glauth)
+  cmd/mockoidcsvc/       Standalone OIDC provider for custom-claims token tests
   testdata/              OpenAPI spec fixtures
-  docker/                Dex OIDC + Glauth LDAP configs
+  docker/                Keycloak OIDC + Glauth LDAP configs
 examples/              Pre-generated MCP server examples (confluence, jira, sonarqube, sonatypeiq)
 .agents/               Claude Code agent skills
 .github/workflows/     CI (build, unit, OIDC/LDAP/virtual-tools/core-e2e) + CD (release)
