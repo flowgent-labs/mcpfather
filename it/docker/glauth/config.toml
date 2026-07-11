@@ -1,4 +1,4 @@
-# Glauth LDAP server configuration for mcpgen-go integration tests.
+# Glauth LDAP server configuration for mcpfather integration tests.
 # Provides an LDAP server with a service account for bind authentication
 # so that generated MCP servers can authenticate to upstream APIs via LDAP tokens.
 

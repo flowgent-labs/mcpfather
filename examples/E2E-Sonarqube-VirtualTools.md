@@ -47,7 +47,7 @@ Key environment variables:
 
 | Item | Value |
 |------|-------|
-| mcpgen version | Built from source (`make build`) |
+| mcpfather version | Built from source (`make build`) |
 | SonarQube target | `$MCP_UPSTREAM_ENDPOINT` (from `.env`) |
 | Test project | `$SONARQUBE_PROJECT_KEY` (from `.env`) |
 | Test branch | `$SONARQUBE_TEST_BRANCH` (from `.env`) |
@@ -57,17 +57,17 @@ Key environment variables:
 
 ## 2. Setup Steps
 
-### 2.1 Build mcpgen
+### 2.1 Build mcpfather
 
 ```bash
 make build
-# → bin/mcpgen-linux-amd64-<version>
+# → bin/mcpfather-linux-amd64-<version>
 ```
 
 ### 2.2 Generate the sonarqube-mcp project
 
 ```bash
-bin/mcpgen \
+bin/mcpfather \
   -i examples/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
   -o examples/sonarqube-mcp
 ```
@@ -76,7 +76,7 @@ If behind a restricted network, prefix with proxy env vars:
 
 ```bash
 HTTPS_PROXY="$HTTPS_PROXY" HTTP_PROXY="$HTTP_PROXY" \
-  bin/mcpgen \
+  bin/mcpfather \
     -i examples/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
     -o examples/sonarqube-mcp
 ```

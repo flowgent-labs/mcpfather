@@ -1,13 +1,13 @@
 # Swagger 2.0 specification — Blogs Platform API
 # Used for OAS 2.0 compatibility testing (should raise an error since
-# mcpgen requires OpenAPI 3.x).
+# mcpfather requires OpenAPI 3.x).
 swagger: "2.0"
 info:
   title: Blogs Platform API (Swagger 2.0)
   version: 1.0.0
   description: |
     Swagger 2.0 version of the Blogs Platform API.
-    This spec is used to verify that mcpgen correctly detects and reports
+    This spec is used to verify that mcpfather correctly detects and reports
     unsupported specification versions.
 
 host: api.blogs.example.com

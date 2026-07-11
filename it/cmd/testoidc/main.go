@@ -19,7 +19,7 @@ import (
 
 var (
 	port    = flag.Int("port", 0, "listen port (0 = random)")
-	clients = flag.String("clients", "mcpgen-client:mcpgen-secret", "comma-separated client_id:client_secret pairs")
+	clients = flag.String("clients", "mcpfather-client:mcpfather-secret", "comma-separated client_id:client_secret pairs")
 )
 
 func main() {
@@ -119,7 +119,7 @@ func makeJWT(clientID string) string {
 	payload := map[string]interface{}{
 		"iss": "test-oidc",
 		"sub": clientID,
-		"aud": "mcpgen",
+		"aud": "mcpfather",
 		"iat": 0,
 		"exp": 9999999999,
 	}
