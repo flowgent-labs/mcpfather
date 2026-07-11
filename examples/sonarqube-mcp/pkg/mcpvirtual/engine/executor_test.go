@@ -154,6 +154,160 @@ func TestExecutor_ForeachPipeline(t *testing.T) {
 	}
 }
 
+func TestExecutor_RequireField_Present(t *testing.T) {
+	reg := &countMockRegistry{
+		callResults: map[string]string{
+			"getData": `{"issues": [{"key": "abc"}], "total": 1}`,
+		},
+		callCount: make(map[string]int),
+	}
+
+	exec := NewExecutor(reg)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "call",
+			Spec: pipeline.StepSpec{
+				Tool:  "getData",
+				Parse: "json",
+				Args:  map[string]interface{}{},
+			},
+			Require: &pipeline.RequireConfig{
+				Field:    "issues",
+				NonEmpty: true,
+				Message:  "No issues found",
+			},
+		},
+		{
+			ID:   "done",
+			Kind: "return",
+			Spec: pipeline.StepSpec{From: "$fetch"},
+		},
+	}
+
+	result, err := exec.Execute(context.Background(), steps, map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success when issues field exists, got: %v", err)
+	}
+	text := result.Content[0].Text
+	if text == "" {
+		t.Fatal("expected non-empty result")
+	}
+}
+
+func TestExecutor_RequireField_Missing(t *testing.T) {
+	reg := &countMockRegistry{
+		callResults: map[string]string{
+			"getData": `{"total": 0, "other": "echoed"}`,
+		},
+		callCount: make(map[string]int),
+	}
+
+	exec := NewExecutor(reg)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "call",
+			Spec: pipeline.StepSpec{
+				Tool:  "getData",
+				Parse: "json",
+				Args:  map[string]interface{}{},
+			},
+			Require: &pipeline.RequireConfig{
+				Field:    "issues",
+				NonEmpty: true,
+				Message:  "No issues found for the given project and branch.",
+			},
+		},
+		{
+			ID:   "done",
+			Kind: "return",
+			Spec: pipeline.StepSpec{From: "$fetch"},
+		},
+	}
+
+	_, err := exec.Execute(context.Background(), steps, map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected require.field validation error when issues field is missing")
+	}
+	if err.Error() != "Step \"fetch\" validation failed: No issues found for the given project and branch." {
+		t.Errorf("expected friendly message, got: %v", err)
+	}
+}
+
+func TestExecutor_RequireField_DeepPath(t *testing.T) {
+	reg := &countMockRegistry{
+		callResults: map[string]string{
+			"getData": `{"data": {"result": {"items": [1,2,3]}}}`,
+		},
+		callCount: make(map[string]int),
+	}
+
+	exec := NewExecutor(reg)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "call",
+			Spec: pipeline.StepSpec{
+				Tool:  "getData",
+				Parse: "json",
+				Args:  map[string]interface{}{},
+			},
+			Require: &pipeline.RequireConfig{
+				Field: "data.result.items",
+			},
+		},
+		{
+			ID:   "done",
+			Kind: "return",
+			Spec: pipeline.StepSpec{From: "$fetch"},
+		},
+	}
+
+	result, err := exec.Execute(context.Background(), steps, map[string]interface{}{})
+	if err != nil {
+		t.Fatalf("expected success for deep path, got: %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected result")
+	}
+}
+
+func TestExecutor_RequireField_DeepMissing(t *testing.T) {
+	reg := &countMockRegistry{
+		callResults: map[string]string{
+			"getData": `{"data": {"result": {}}}`,
+		},
+		callCount: make(map[string]int),
+	}
+
+	exec := NewExecutor(reg)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "call",
+			Spec: pipeline.StepSpec{
+				Tool:  "getData",
+				Parse: "json",
+				Args:  map[string]interface{}{},
+			},
+			Require: &pipeline.RequireConfig{
+				Field: "data.result.items",
+			},
+		},
+		{
+			ID:   "done",
+			Kind: "return",
+			Spec: pipeline.StepSpec{From: "$fetch"},
+		},
+	}
+
+	_, err := exec.Execute(context.Background(), steps, map[string]interface{}{})
+	if err == nil {
+		t.Fatal("expected error for missing deep path")
+	}
+}
+
 func TestExecutor_RequireValidation(t *testing.T) {
 	reg := &countMockRegistry{
 		callResults: map[string]string{
