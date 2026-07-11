@@ -160,8 +160,17 @@
     "FrontendOIDCConfig": {
       "additionalProperties": false,
       "properties": {
+        "additional_client_token_claim_forward": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
         "audience": {
           "type": "string"
+        },
+        "enable_client_token_claim_forward": {
+          "type": "boolean"
         },
         "enabled": {
           "type": "boolean"

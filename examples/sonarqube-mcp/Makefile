@@ -72,7 +72,8 @@ build-with-otel-http: go.sum
 
 # ---- Container & Kubernetes ----
 
-IMAGE_REPO ?= docker.io/library/$(BINARY_NAME)
+IMAGE_REPO ?= ghcr.io/$(GITHUB_REPOSITORY_OWNER)/$(BINARY_NAME)
+GITHUB_REPOSITORY_OWNER ?= flowgent-labs
 IMAGE_TAG  ?= $(VERSION)
 MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
 MCP_UPSTREAM_TOKEN  ?= $(MCP_UPSTREAM_TOKEN)

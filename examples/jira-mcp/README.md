@@ -365,7 +365,11 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 make build-image
 
 # Or manually:
-docker build -t jira-mcp:latest -f deploy/docker/Dockerfile .
+docker build -t ghcr.io/your-org/jira-mcp:latest -f deploy/docker/Dockerfile .
+
+# Build and push to GitHub Container Registry (on push to main, CI does this automatically)
+make build-image
+docker push ghcr.io/your-org/jira-mcp:latest
 
 # Build the Docker image with OTel tracing (gRPC or HTTP)
 make build-image-with-otel-grpc
@@ -373,7 +377,7 @@ make build-image-with-otel-http
 
 # Install/upgrade with Helm (static bearer token)
 helm upgrade -i jira-mcp deploy/helm \
-  --set image.repository=jira-mcp \
+  --set image.repository=ghcr.io/your-org/jira-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
@@ -381,7 +385,7 @@ helm upgrade -i jira-mcp deploy/helm \
 
 # With OIDC authentication
 helm upgrade -i jira-mcp deploy/helm \
-  --set image.repository=jira-mcp \
+  --set image.repository=ghcr.io/your-org/jira-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
@@ -392,7 +396,7 @@ helm upgrade -i jira-mcp deploy/helm \
 
 # With LDAP authentication
 helm upgrade -i jira-mcp deploy/helm \
-  --set image.repository=jira-mcp \
+  --set image.repository=ghcr.io/your-org/jira-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \

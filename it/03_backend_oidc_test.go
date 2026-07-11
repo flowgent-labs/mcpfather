@@ -30,61 +30,11 @@ func dockerAvailable() bool {
 // ---------------------------------------------------------------------------
 
 // ensureBackendKeycloak makes sure a Keycloak OIDC provider is reachable.
+// Delegates to the shared Keycloak instance (sync.Once) managed by ensureKeycloak.
 func ensureBackendKeycloak(t *testing.T) (cleanup func()) {
 	t.Helper()
-
-	if !dockerAvailable() {
-		resp, err := http.Get("http://127.0.0.1:8080/realms/master/.well-known/openid-configuration")
-		if err != nil || resp.StatusCode != http.StatusOK {
-			t.Skipf("docker not found and Keycloak not reachable -- skipping")
-		}
-		if resp != nil {
-			resp.Body.Close()
-		}
-		t.Logf("Keycloak already reachable (no docker)")
-		return func() {}
-	}
-
-	for _, name := range []string{"mcpfather-keycloak", "keycloak"} {
-		exec.Command("docker", "stop", name).Run()
-		exec.Command("docker", "rm", name).Run()
-	}
-
-	cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-keycloak",
-		"--network", "host",
-		"--hostname", "127.0.0.1",
-		"-e", "KC_BOOTSTRAP_ADMIN_USERNAME=admin",
-		"-e", "KC_BOOTSTRAP_ADMIN_PASSWORD=admin",
-		"registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0",
-		"start-dev", "--hostname=127.0.0.1", "--hostname-strict=false",
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("docker run keycloak failed: %v\n%s -- skipping OIDC integration test", err, out)
-	}
-	t.Logf("Keycloak container started")
-
-	waitForKeycloak(t)
-	return func() {
-		exec.Command("docker", "stop", "mcpfather-keycloak").Run()
-		exec.Command("docker", "rm", "mcpfather-keycloak").Run()
-	}
-}
-
-func waitForKeycloak(t *testing.T) {
-	t.Helper()
-	discoveryURL := "http://127.0.0.1:8080/realms/master/.well-known/openid-configuration"
-	for i := 0; i < 120; i++ {
-		resp, err := http.Get(discoveryURL)
-		if err == nil {
-			resp.Body.Close()
-			if resp.StatusCode == http.StatusOK {
-				t.Logf("Keycloak OIDC discovery ready at %s", discoveryURL)
-				return
-			}
-		}
-		time.Sleep(1 * time.Second)
-	}
-	t.Skipf("Keycloak did not become ready within 120s -- skipping OIDC integration test")
+	_, cleanup = ensureKeycloak(t)
+	return cleanup
 }
 
 // ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ Bug / Performance / Compatibility / Other
 - Config (`config.yaml` excerpt, if applicable):
 
 **Time of Occurrence**
-[e.g. 2025-07-01 14:30 UTC]
+[e.g. 2026-07-01 14:30 UTC]
 
 **Logs**
 ```

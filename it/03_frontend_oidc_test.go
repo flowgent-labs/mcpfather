@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -163,60 +164,71 @@ func callNativeToolWithAuth(t *testing.T, baseURL, bearerToken, toolName string,
 // We work around this with manual cookie forwarding.
 // ===========================================================================
 
+// Shared Keycloak instance — started once per test binary via sync.Once.
+// Individual tests reuse the same container; cleanup is a no-op.
+var (
+	sharedKeycloakOnce   sync.Once
+	sharedKeycloakIssuer string
+	sharedKeycloakOK     bool
+)
+
 func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 	t.Helper()
+	noop := func() {}
 
-	if !dockerAvailable() {
-		resp, err := http.Get("http://127.0.0.1:8080/realms/master/.well-known/openid-configuration")
-		if err != nil || resp.StatusCode != http.StatusOK {
-			t.Skipf("docker not found and Keycloak not reachable -- skipping")
+	sharedKeycloakOnce.Do(func() {
+		if !dockerAvailable() {
+			resp, err := http.Get("http://127.0.0.1:8080/realms/master/.well-known/openid-configuration")
+			if err != nil || resp.StatusCode != http.StatusOK {
+				return // sharedKeycloakOK stays false → callers skip
+			}
+			if resp != nil {
+				resp.Body.Close()
+			}
+			sharedKeycloakIssuer = "http://127.0.0.1:8080/realms/master"
+			sharedKeycloakOK = true
+			return
 		}
-		if resp != nil {
-			resp.Body.Close()
+
+		for _, name := range []string{"mcpfather-keycloak", "keycloak"} {
+			exec.Command("docker", "stop", name).Run()
+			exec.Command("docker", "rm", name).Run()
 		}
-		issuer = "http://127.0.0.1:8080/realms/master"
-		t.Logf("Keycloak already reachable (no docker)")
-		return issuer, func() {}
+
+		keycloakDir := filepath.Join(repoRoot(t), "it", "docker", "keycloak")
+		importFile := filepath.Join(keycloakDir, "realm.json")
+
+		cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-keycloak",
+			"--network", "host",
+			"--hostname", "127.0.0.1",
+			"-e", "KC_BOOTSTRAP_ADMIN_USERNAME=admin",
+			"-e", "KC_BOOTSTRAP_ADMIN_PASSWORD=admin",
+			"registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0",
+			"start-dev", "--hostname=127.0.0.1", "--hostname-strict=false",
+		)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Logf("docker run keycloak failed: %v\n%s", err, out)
+			return
+		}
+
+		issuer := "http://127.0.0.1:8080/realms/master"
+		if !waitForURL(t, issuer+"/.well-known/openid-configuration", 120) {
+			t.Logf("Keycloak did not become ready within 120s")
+			return
+		}
+
+		adminToken := keycloakAdminToken(t)
+		setupKeycloakTestRealm(t, adminToken, importFile)
+
+		sharedKeycloakIssuer = issuer
+		sharedKeycloakOK = true
+		t.Logf("Shared Keycloak ready at %s", issuer)
+	})
+
+	if !sharedKeycloakOK {
+		t.Skipf("Keycloak not available -- skipping")
 	}
-
-	for _, name := range []string{"mcpfather-keycloak"} {
-		exec.Command("docker", "stop", name).Run()
-		exec.Command("docker", "rm", name).Run()
-	}
-
-	keycloakDir := filepath.Join(repoRoot(t), "it", "docker", "keycloak")
-	importFile := filepath.Join(keycloakDir, "realm.json")
-
-	cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-keycloak",
-		"--network", "host",
-		"--hostname", "127.0.0.1",
-		"-e", "KC_BOOTSTRAP_ADMIN_USERNAME=admin",
-		"-e", "KC_BOOTSTRAP_ADMIN_PASSWORD=admin",
-		"registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0",
-		"start-dev", "--hostname=127.0.0.1", "--hostname-strict=false",
-	)
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("docker run keycloak failed: %v\n%s -- skipping Keycloak integration test", err, out)
-	}
-	t.Logf("Keycloak container started")
-
-	cleanup = func() {
-		exec.Command("docker", "stop", "mcpfather-keycloak").Run()
-		exec.Command("docker", "rm", "mcpfather-keycloak").Run()
-	}
-
-	issuer = "http://127.0.0.1:8080/realms/master"
-
-	if !waitForURL(t, issuer+"/.well-known/openid-configuration", 120) {
-		cleanup()
-		t.Skipf("Keycloak did not become ready within 120s -- skipping")
-	}
-
-	adminToken := keycloakAdminToken(t)
-	setupKeycloakTestRealm(t, adminToken, importFile)
-
-	t.Logf("Keycloak ready at %s", issuer)
-	return issuer, cleanup
+	return sharedKeycloakIssuer, noop
 }
 
 func waitForURL(t *testing.T, u string, maxSec int) bool {
