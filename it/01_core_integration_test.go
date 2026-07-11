@@ -1365,7 +1365,7 @@ func TestE2E_Core_SessionForwardingEnabledByDefault(t *testing.T) {
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
 
-	// enable_mcp_session_forwarding defaults to true;
+	// enable_mcp_session_forward defaults to true;
 	// X-MCP-Session-ID should be forwarded by default.
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -1375,7 +1375,7 @@ func TestE2E_Core_SessionForwardingEnabledByDefault(t *testing.T) {
 	headers, _ := data["headers"].(map[string]interface{})
 
 	if _, ok := headers["X-Mcp-Session-Id"]; !ok {
-		t.Error("X-Mcp-Session-Id should be forwarded when enable_mcp_session_forwarding defaults to true")
+		t.Error("X-Mcp-Session-Id should be forwarded when enable_mcp_session_forward defaults to true")
 	}
 }
 
@@ -2087,7 +2087,7 @@ func TestConfig_EmptyExpose_AllToolsAvailable(t *testing.T) {
 	// Config file with upstream section only, no tools.expose
 	cfg := `
 upstream:
-    enable_mcp_session_forwarding: false
+    enable_mcp_session_forward: false
 runtime:
 `
 	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
