@@ -13,7 +13,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/wl4g-ai/mcpgen/pkg/converter"
+	"github.com/flowgent-labs/mcpgen-go/pkg/converter"
 )
 
 // GenerateToolFiles generates individual tool files while preserving existing handler implementations
