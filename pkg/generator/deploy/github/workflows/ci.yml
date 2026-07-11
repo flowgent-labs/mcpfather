@@ -4,9 +4,12 @@ name: Build & Test
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
-    branches: [main]
+    branches: ['**']
+  schedule:
+    # Daily build on main branch (03:07 UTC)
+    - cron: "7 3 * * *"
 
 jobs:
   build-and-test:
