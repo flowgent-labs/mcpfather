@@ -17,12 +17,12 @@ type Config struct {
 
 // VirtualToolConfig defines a single virtual MCP tool.
 type VirtualToolConfig struct {
-	Name        string                 `yaml:"name"`
+	Name        string                 `yaml:"name" schema:"required"`
 	Description string                 `yaml:"description"`
 	Enabled     *bool                  `yaml:"enabled,omitempty"`
 	Annotations map[string]interface{} `yaml:"annotations,omitempty"`
-	InputSchema map[string]interface{} `yaml:"inputSchema"`
-	Pipeline    []pipeline.StepConfig  `yaml:"pipeline"`
+	InputSchema map[string]interface{} `yaml:"inputSchema" schema:"required"`
+	Pipeline    []pipeline.StepConfig  `yaml:"pipeline" schema:"required"`
 }
 
 // LoadConfig reads and parses a config YAML file.
