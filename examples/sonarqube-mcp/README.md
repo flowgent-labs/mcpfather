@@ -370,52 +370,108 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 }
 ```
 
-## Deployment — Docker & Kubernetes
+## Deployment — Docker
+
+### Build
 
 ```sh
-# Build the Docker image (without OTel)
 make build-image
-
-# Or manually:
-docker build -t ghcr.io/your-org/sonarqube-mcp:latest -f deploy/docker/Dockerfile .
-
-# Build and push to GitHub Container Registry (on push to main, CI does this automatically)
-make build-image
-docker push ghcr.io/your-org/sonarqube-mcp:latest
-
-# Build the Docker image with OTel tracing (gRPC or HTTP)
-make build-image-with-otel-grpc
-make build-image-with-otel-http
-
-# Install/upgrade with Helm (static bearer token)
-helm upgrade -i sonarqube-mcp deploy/helm \
-  --set image.repository=ghcr.io/flowgent-labs/sonarqube-mcp \
-  --set image.tag=latest \
-  --set secret.static.create=true \
-  --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
-  --set config.upstream.endpoint="https://api.example.com"
-
-# With OIDC authentication
-helm upgrade -i sonarqube-mcp deploy/helm \
-  --set image.repository=ghcr.io/flowgent-labs/sonarqube-mcp \
-  --set image.tag=latest \
-  --set secret.static.create=true \
-  --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
-  --set config.auth.backend.oidc.enabled=true \
-  --set config.auth.backend.oidc.issuer="https://idp.example.com" \
-  --set config.auth.backend.oidc.clientId="my-client" \
-  --set config.upstream.endpoint="https://api.example.com"
-
-# With LDAP authentication
-helm upgrade -i sonarqube-mcp deploy/helm \
-  --set image.repository=ghcr.io/flowgent-labs/sonarqube-mcp \
-  --set image.tag=latest \
-  --set secret.static.create=true \
-  --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
-  --set config.auth.backend.ldap.enabled=true \
-  --set config.auth.backend.ldap.url="ldaps://ldap.example.com" \
-  --set config.auth.backend.ldap.bindDN="cn=svc,dc=example,dc=com" \
-  --set config.upstream.endpoint="https://api.example.com"
 ```
+
+Or manually:
+
+```sh
+docker build -t ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest -f deploy/docker/Dockerfile .
+docker push ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest
+```
+
+### Run
+
+Pull the pre-built image from GitHub Container Registry:
+
+```sh
+docker pull ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest
+```
+
+- **Static bearer token**
+
+  ```sh
+  docker run -d --name sonarqube-mcp \
+    -p 8080:8080 -p 9991:9991 \
+    -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
+    -e MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN="YOUR_BEARER_TOKEN" \
+    ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest \
+    --transport http --port 8080
+  ```
+
+- **OIDC backend auth**
+
+  ```sh
+  docker run -d --name sonarqube-mcp \
+    -p 8080:8080 -p 9991:9991 \
+    -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
+    -e MCP__AUTH__BACKEND__OIDC__ENABLED=true \
+    -e MCP__AUTH__BACKEND__OIDC__ISSUER="https://idp.example.com/realms/myrealm" \
+    -e MCP__AUTH__BACKEND__OIDC__CLIENT_ID="my-client" \
+    -e MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET="YOUR_CLIENT_SECRET" \
+    ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest \
+    --transport http --port 8080
+  ```
+
+- **LDAP backend auth**
+
+  ```sh
+  docker run -d --name sonarqube-mcp \
+    -p 8080:8080 -p 9991:9991 \
+    -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
+    -e MCP__AUTH__BACKEND__LDAP__ENABLED=true \
+    -e MCP__AUTH__BACKEND__LDAP__URL="ldaps://ldap.example.com" \
+    -e MCP__AUTH__BACKEND__LDAP__BASE_DN="dc=example,dc=com" \
+    -e MCP__AUTH__BACKEND__LDAP__BIND_DN="cn=svc,dc=example,dc=com" \
+    -e MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD="YOUR_BIND_PASSWORD" \
+    ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest \
+    --transport http --port 8080
+  ```
+
+## Deployment — Kubernetes (Helm)
+
+- **Static bearer token**
+
+  ```sh
+  helm upgrade -i sonarqube-mcp deploy/helm \
+    --set image.repository=ghcr.io/<YOUR_ORG>/sonarqube-mcp \
+    --set image.tag=latest \
+    --set secret.static.create=true \
+    --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
+    --set config.upstream.endpoint="https://api.example.com"
+  ```
+
+- **OIDC authentication**
+
+  ```sh
+  helm upgrade -i sonarqube-mcp deploy/helm \
+    --set image.repository=ghcr.io/<YOUR_ORG>/sonarqube-mcp \
+    --set image.tag=latest \
+    --set secret.static.create=true \
+    --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
+    --set config.auth.backend.oidc.enabled=true \
+    --set config.auth.backend.oidc.issuer="https://idp.example.com" \
+    --set config.auth.backend.oidc.clientId="my-client" \
+    --set config.upstream.endpoint="https://api.example.com"
+  ```
+
+- **LDAP authentication**
+
+  ```sh
+  helm upgrade -i sonarqube-mcp deploy/helm \
+    --set image.repository=ghcr.io/<YOUR_ORG>/sonarqube-mcp \
+    --set image.tag=latest \
+    --set secret.static.create=true \
+    --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
+    --set config.auth.backend.ldap.enabled=true \
+    --set config.auth.backend.ldap.url="ldaps://ldap.example.com" \
+    --set config.auth.backend.ldap.bindDN="cn=svc,dc=example,dc=com" \
+    --set config.upstream.endpoint="https://api.example.com"
+  ```
 
 See `deploy/helm/values.yaml` for all configurable parameters.
