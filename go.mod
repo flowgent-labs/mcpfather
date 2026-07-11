@@ -1,4 +1,4 @@
-module github.com/flowgent-labs/mcpgen-go
+module github.com/flowgent-labs/mcpfather
 
 go 1.24.0
 

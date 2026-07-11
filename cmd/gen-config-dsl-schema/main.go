@@ -1,4 +1,4 @@
-// schema-gen generates the JSON Schema for mcpgen virtual tool configuration.
+// schema-gen generates the JSON Schema for mcpfather virtual tool configuration.
 package main
 
 import (
@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/config"
-	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/config"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
 )
 
 type schema map[string]interface{}
@@ -120,10 +120,10 @@ func generate() schema {
 
 	return schema{
 		"$schema": "https://json-schema.org/draft/2020-12/schema",
-		"$id":     "https://mcpgen/schemas/virtual-tool-config",
+		"$id":     "https://mcpfather/schemas/virtual-tool-config",
 		"title":   "VirtualToolConfig",
 		"description": fmt.Sprintf(
-			"Schema for mcpgen virtual tool pipeline configuration ($HOME/.<binary>/config.yaml). Generated from Go structs: %s",
+			"Schema for mcpfather virtual tool pipeline configuration ($HOME/.<binary>/config.yaml). Generated from Go structs: %s",
 			sourceFiles(),
 		),
 		"type":     "object",

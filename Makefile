@@ -1,7 +1,7 @@
 .PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema
 
-BINARY_NAME := mcpgen
-CMD_PATH := ./cmd/mcpgen
+BINARY_NAME := mcpfather
+CMD_PATH := ./cmd/mcpfather
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS := -ldflags "-s -w -X main.versionStr=$(VERSION)"
 BUILD_FLAGS := -v -trimpath
