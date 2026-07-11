@@ -91,7 +91,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # ChangePassword1 (POST)
-  ./mcpclient.sh call ChangePassword1 '{"body": {"newPassword": "newPassword", "oldPassword": "oldPassword"}}'
+  ./mcpclient.sh call ChangePassword1 '{"body": {"oldPassword": "oldPassword", "newPassword": "newPassword"}}'
 EOEX
   cat <<'EOEX'
   # Children (GET)

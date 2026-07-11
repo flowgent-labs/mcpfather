@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/config"
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/engine"
-	"github.com/wl4g-ai/mcpgen/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/config"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/engine"
+	"github.com/flowgent-labs/mcpgen-go/pkg/generator/mcpvirtual/pipeline"
 )
 
 // ===========================================================================
