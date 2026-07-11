@@ -12,13 +12,20 @@ data:
       enable_mcp_session_forward: {{ .Values.config.upstream.enableMCPSessionForwarding }}
 
     auth:
-      # Frontend (inbound): validates bearer tokens presented by MCP clients.
+      # Frontend (inbound): validates bearer tokens presented by MCP clients
+      # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
+      # Only enforced on the http transport.
       frontend:
         oidc:
           enabled: {{ .Values.config.auth.frontend.oidc.enabled }}
           issuer: {{ .Values.config.auth.frontend.oidc.issuer | quote }}
           jwks_uri: {{ .Values.config.auth.frontend.oidc.jwksUri | quote }}
           audience: {{ .Values.config.auth.frontend.oidc.audience | quote }}
+          enable_client_token_claim_forward: {{ .Values.config.auth.frontend.oidc.enableClientTokenClaimForward }}
+          additional_client_token_claim_forward:
+            {{- range .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward }}
+            - {{ . | quote }}
+            {{- end }}
 
       # Backend (outbound): credentials used to call upstream APIs.
       backend:
