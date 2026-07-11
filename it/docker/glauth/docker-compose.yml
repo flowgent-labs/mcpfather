@@ -2,7 +2,7 @@ version: "3.8"
 services:
   glauth:
     image: registry.cn-shenzhen.aliyuncs.com/wl4g/glauth:v2.5.0
-    container_name: mcpgen-glauth
+    container_name: mcpfather-glauth
     restart: unless-stopped
     network_mode: host
     volumes:
