@@ -1,12 +1,13 @@
 // Standalone OIDC provider for integration testing.
-// Supports client_credentials grant with configurable clients,
-// real RSA key signing, JWKS endpoint, and flexible JWT claims.
+// Supports client_credentials and device_code grants with configurable
+// clients, real RSA key signing, JWKS endpoint, and flexible JWT claims.
 // Prints its listen address to stdout so tests can discover it.
 //
 // Endpoints:
-//   GET  /.well-known/openid-configuration  — OIDC discovery with jwks_uri
+//   GET  /.well-known/openid-configuration  — OIDC discovery
 //   GET  /keys                               — JWKS (public key)
-//   POST /token                              — client_credentials → signed JWT
+//   POST /token                              — client_credentials or device_code → JWT
+//   POST /device/code                        — initiate device authorization flow
 //   POST /sign                               — custom claims → signed JWT
 //   GET  /health                             — readiness probe
 package main
@@ -24,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -62,17 +64,23 @@ func main() {
 	// Print address to stdout for test discovery
 	fmt.Println(ln.Addr().String())
 
+	// Derive issuer from actual listen address so JWTs match what
+	// discovery advertises (real OIDC providers do this too).
+	issuerURL := "http://" + ln.Addr().String()
+
 	srv := &oidcServer{
-		clients:   clientMap,
-		privKey:   privKey,
-		issuerVal: *issuer,
-		audience:  *audience,
-		callCount: atomic.Int64{},
+		clients:     clientMap,
+		privKey:     privKey,
+		issuerVal:   issuerURL,
+		audience:    *audience,
+		callCount:   atomic.Int64{},
+		deviceCodes: make(map[string]*deviceCodeEntry),
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/.well-known/openid-configuration", srv.handleDiscovery)
 	mux.HandleFunc("/token", srv.handleToken)
+	mux.HandleFunc("/device/code", srv.handleDeviceCode)
 	mux.HandleFunc("/sign", srv.handleSign)
 	mux.HandleFunc("/keys", srv.handleJWKS)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -80,18 +88,26 @@ func main() {
 	})
 
 	log.SetOutput(os.Stderr)
-	log.Printf("Test OIDC provider listening on %s (issuer=%s, audience=%s)", ln.Addr().String(), *issuer, *audience)
+	log.Printf("Test OIDC provider listening on %s (issuer=%s, audience=%s)", ln.Addr().String(), issuerURL, *audience)
 	if err := http.Serve(ln, mux); err != nil {
 		log.Fatalf("serve: %v", err)
 	}
 }
 
+type deviceCodeEntry struct {
+	clientID  string
+	scope     string
+	expiresAt time.Time
+}
+
 type oidcServer struct {
-	clients   map[string]string
-	privKey   *rsa.PrivateKey
-	issuerVal string
-	audience  string
-	callCount atomic.Int64
+	clients     map[string]string
+	privKey     *rsa.PrivateKey
+	issuerVal   string
+	audience    string
+	callCount   atomic.Int64
+	deviceCodes map[string]*deviceCodeEntry
+	dcMu        sync.Mutex
 }
 
 func (s *oidcServer) issuerURL(r *http.Request) string {
@@ -101,11 +117,19 @@ func (s *oidcServer) issuerURL(r *http.Request) string {
 func (s *oidcServer) handleDiscovery(w http.ResponseWriter, r *http.Request) {
 	iss := s.issuerURL(r)
 	disc := map[string]interface{}{
-		"issuer":                 iss,
-		"token_endpoint":         iss + "/token",
-		"authorization_endpoint": iss + "/auth",
-		"jwks_uri":               iss + "/keys",
-		"grant_types_supported":  []string{"client_credentials"},
+		"issuer":                        iss,
+		"token_endpoint":                iss + "/token",
+		"authorization_endpoint":        iss + "/auth",
+		"device_authorization_endpoint": iss + "/device/code",
+		"jwks_uri":                      iss + "/keys",
+		"grant_types_supported": []string{
+			"client_credentials",
+			"urn:ietf:params:oauth:grant-type:device_code",
+		},
+		"response_types_supported":              []string{"code"},
+		"subject_types_supported":               []string{"public"},
+		"id_token_signing_alg_values_supported": []string{"RS256"},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_post"},
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(disc)
@@ -123,11 +147,19 @@ func (s *oidcServer) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.FormValue("grant_type") != "client_credentials" {
-		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
-		return
-	}
+	grantType := r.FormValue("grant_type")
 
+	switch grantType {
+	case "client_credentials":
+		s.handleClientCredentials(w, r)
+	case "urn:ietf:params:oauth:grant-type:device_code":
+		s.handleDeviceToken(w, r)
+	default:
+		http.Error(w, `{"error":"unsupported_grant_type"}`, http.StatusBadRequest)
+	}
+}
+
+func (s *oidcServer) handleClientCredentials(w http.ResponseWriter, r *http.Request) {
 	clientID := r.FormValue("client_id")
 	clientSecret := r.FormValue("client_secret")
 
@@ -137,10 +169,35 @@ func (s *oidcServer) handleToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.issueToken(w, clientID, r.FormValue("scope"))
+}
+
+func (s *oidcServer) handleDeviceToken(w http.ResponseWriter, r *http.Request) {
+	deviceCode := r.FormValue("device_code")
+	clientID := r.FormValue("client_id")
+
+	s.dcMu.Lock()
+	entry, ok := s.deviceCodes[deviceCode]
+	if ok && entry.clientID == clientID && time.Now().Before(entry.expiresAt) {
+		delete(s.deviceCodes, deviceCode)
+		s.dcMu.Unlock()
+		s.issueToken(w, clientID, entry.scope)
+		return
+	}
+	s.dcMu.Unlock()
+
+	if !ok {
+		http.Error(w, `{"error":"invalid_grant","error_description":"device code not found or already used"}`, http.StatusBadRequest)
+	} else {
+		http.Error(w, `{"error":"authorization_pending"}`, http.StatusUnauthorized)
+	}
+}
+
+func (s *oidcServer) issueToken(w http.ResponseWriter, subject, scope string) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"iss": s.issuerVal,
-		"sub": clientID,
+		"sub": subject,
 		"aud": s.audience,
 		"iat": now.Unix(),
 		"exp": now.Add(3600 * time.Second).Unix(),
@@ -158,10 +215,62 @@ func (s *oidcServer) handleToken(w http.ResponseWriter, r *http.Request) {
 		"access_token": signed,
 		"token_type":   "Bearer",
 		"expires_in":   3600,
-		"scope":        r.FormValue("scope"),
+		"scope":        scope,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(resp)
+}
+
+// handleDeviceCode initiates a device authorization flow (RFC 8628).
+// In this test provider approval is automatic — the /token endpoint
+// immediately returns a token when polled with the device_code.
+func (s *oidcServer) handleDeviceCode(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, `{"error":"invalid_request"}`, http.StatusBadRequest)
+		return
+	}
+
+	clientID := r.FormValue("client_id")
+	if clientID == "" {
+		http.Error(w, `{"error":"invalid_request","error_description":"client_id is required"}`, http.StatusBadRequest)
+		return
+	}
+
+	deviceCode := randomString(32)
+	userCode := randomString(8)
+
+	s.dcMu.Lock()
+	s.deviceCodes[deviceCode] = &deviceCodeEntry{
+		clientID:  clientID,
+		scope:     r.FormValue("scope"),
+		expiresAt: time.Now().Add(300 * time.Second),
+	}
+	s.dcMu.Unlock()
+
+	resp := map[string]interface{}{
+		"device_code":               deviceCode,
+		"user_code":                 strings.ToUpper(userCode[:4]) + "-" + strings.ToUpper(userCode[4:]),
+		"verification_uri":          s.issuerVal + "/device",
+		"verification_uri_complete": s.issuerVal + "/device?user_code=" + userCode,
+		"expires_in":                300,
+		"interval":                  1,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(resp)
+}
+
+func randomString(n int) string {
+	const letters = "abcdefghijklmnopqrstuvwxyz0123456789"
+	b := make([]byte, n)
+	for i := range b {
+		bi, _ := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		b[i] = letters[bi.Int64()]
+	}
+	return string(b)
 }
 
 // handleSign accepts a JSON body of JWT claims and returns a signed JWT.
