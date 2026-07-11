@@ -23,6 +23,13 @@ import (
 //go:embed deploy/helm/*
 //go:embed deploy/helm/templates/*
 //go:embed deploy/docker/*
+//go:embed deploy/github/workflows/*
+//go:embed deploy/github/ISSUE_TEMPLATE/*
+//go:embed deploy/github/PULL_REQUEST_TEMPLATE.md
+//go:embed deploy/github/CONTRIBUTING.md
+//go:embed deploy/github/SECURITY.md
+//go:embed deploy/github/CODE_OF_CONDUCT.md
+//go:embed deploy/github/LICENSE
 var templatesFS embed.FS
 
 // ToolTemplateData holds the data to pass to the template for a single tool
@@ -181,6 +188,13 @@ func (g *Generator) GenerateMCP() error {
 	}
 	if g.verbose {
 		fmt.Fprintf(os.Stderr, "[verbose] generated deploy/\n")
+	}
+
+	if err := g.GenerateGitHubCI(); err != nil {
+		return fmt.Errorf("failed to generate .github/workflows: %w", err)
+	}
+	if g.verbose {
+		fmt.Fprintf(os.Stderr, "[verbose] generated .github/workflows/ci.yml\n")
 	}
 
 	return nil
@@ -405,7 +419,8 @@ build-with-otel-http: go.sum
 
 # ---- Container & Kubernetes ----
 
-IMAGE_REPO ?= docker.io/library/$(BINARY_NAME)
+IMAGE_REPO ?= ghcr.io/$(GITHUB_REPOSITORY_OWNER)/$(BINARY_NAME)
+GITHUB_REPOSITORY_OWNER ?= flowgent-labs
 IMAGE_TAG  ?= $(VERSION)
 MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
 MCP_UPSTREAM_TOKEN  ?= $(MCP_UPSTREAM_TOKEN)
