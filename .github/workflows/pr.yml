@@ -56,33 +56,35 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Start Dex OIDC Provider
+      - name: Start Keycloak OIDC Provider
         run: |
-          docker run -d --name mcpfather-dex \
+          docker run -d --name mcpfather-keycloak \
             --network host \
-            -v ${{ github.workspace }}/it/docker/dex/config.yaml:/etc/dex/config.yaml:ro \
-            registry.cn-shenzhen.aliyuncs.com/wl4g/dex:v2.41.1 \
-            dex serve /etc/dex/config.yaml
+            --hostname 127.0.0.1 \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
+            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
+            registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0 \
+            start-dev --hostname=127.0.0.1 --hostname-strict=false
 
-      - name: Wait for Dex
-        timeout-minutes: 1
+      - name: Wait for Keycloak
+        timeout-minutes: 2
         run: |
-          for i in $(seq 1 30); do
-            if wget -qO- http://localhost:5556/dex/.well-known/openid-configuration 2>/dev/null; then
-              echo "Dex is ready"
+          for i in $(seq 1 60); do
+            if wget -qO- http://127.0.0.1:8080/realms/master/.well-known/openid-configuration 2>/dev/null; then
+              echo "Keycloak is ready"
               exit 0
             fi
-            echo "Waiting for Dex... ($i/30)"
+            echo "Waiting for Keycloak... ($i/60)"
             sleep 2
           done
-          echo "Dex failed to start"
-          docker logs mcpfather-dex
+          echo "Keycloak failed to start"
+          docker logs mcpfather-keycloak
           exit 1
 
       - name: Verify OIDC Discovery
         run: |
           echo "=== OIDC Discovery Document ==="
-          curl -sSf http://localhost:5556/dex/.well-known/openid-configuration | python3 -m json.tool
+          curl -sSf http://127.0.0.1:8080/realms/master/.well-known/openid-configuration | python3 -m json.tool
 
       - name: Build
         run: make build
@@ -90,9 +92,9 @@ jobs:
       - name: Run OIDC Integration Tests
         run: go test -v -count=1 -timeout 300s -run "OIDC" ./it/...
 
-      - name: Collect Dex Logs (on failure)
+      - name: Collect Keycloak Logs (on failure)
         if: failure()
-        run: docker logs mcpfather-dex
+        run: docker logs mcpfather-keycloak
 
   integration-ldap:
     runs-on: ubuntu-latest
