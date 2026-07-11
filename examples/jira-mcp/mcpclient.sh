@@ -67,7 +67,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddComment (POST)
-  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"updated": "2012-07-06T18:30:00.000+0000", "created": "2012-07-06T18:30:00.000+0000", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "visibility": {}, "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "properties": [], "id": "10000", "author": {}, "updateAuthor": "value"}}'
+  ./mcpclient.sh call AddComment '{"expand": "expand_value", "issueIdOrKey": "issueIdOrKey_value", "body": {"visibility": {}, "author": {}, "updated": "2012-07-06T18:30:00.000+0000", "id": "10000", "self": "http://www.example.com/jira/rest/api/2/issue/10010/comment/10000", "properties": [], "created": "2012-07-06T18:30:00.000+0000", "body": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "renderedBody": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque eget venenatis elit. Duis eu justo eget augue iaculis fermentum. Sed semper quam laoreet nisi egestas at posuere augue semper.", "updateAuthor": "value"}}'
 EOEX
   cat <<'EOEX'
   # AddField (POST)
@@ -87,7 +87,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddSharePermission (POST)
-  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value", "type": "type_value", "userKey": "userKey_value"}}'
+  ./mcpclient.sh call AddSharePermission '{"id": "id_value", "body": {"type": "type_value", "userKey": "userKey_value", "view": false, "edit": false, "groupname": "groupname_value", "projectId": "projectId_value", "projectRoleId": "projectRoleId_value"}}'
 EOEX
   cat <<'EOEX'
   # AddTab (POST)
@@ -111,7 +111,7 @@ EOEX
 EOEX
   cat <<'EOEX'
   # AddWorklog (POST)
-  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"updated": "2010-07-14T18:23:23.733+0000", "visibility": {}, "created": "2010-07-14T18:23:23.733+0000", "timeSpent": "3h 20m", "timeSpentSeconds": 12000, "author": "value", "issueId": "10002", "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "comment": "I did some work here.", "updateAuthor": {}, "id": "100028", "started": "2010-07-14T18:23:23.733+0000"}}'
+  ./mcpclient.sh call AddWorklog '{"adjustEstimate": "adjustEstimate_value", "issueIdOrKey": "issueIdOrKey_value", "newEstimate": "newEstimate_value", "reduceBy": "reduceBy_value", "body": {"updateAuthor": {}, "comment": "I did some work here.", "timeSpentSeconds": 12000, "updated": "2010-07-14T18:23:23.733+0000", "created": "2010-07-14T18:23:23.733+0000", "id": "100028", "self": "http://www.example.com/jira/rest/api/2/issue/10010/worklog/10000", "visibility": {}, "issueId": "10002", "timeSpent": "3h 20m", "author": "value", "started": "2010-07-14T18:23:23.733+0000"}}'
 EOEX
   cat <<'EOEX'
   # ApplyEmailTemplates (POST)
