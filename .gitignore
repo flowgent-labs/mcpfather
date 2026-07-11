@@ -12,6 +12,7 @@ main
 *.out
 *.log
 mock*
+!it/cmd/mockoidcsvc/
 
 # Vendor
 /vendor/
