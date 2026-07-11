@@ -377,7 +377,7 @@ make build-image-with-otel-http
 
 # Install/upgrade with Helm (static bearer token)
 helm upgrade -i confluence-mcp deploy/helm \
-  --set image.repository=ghcr.io/your-org/confluence-mcp \
+  --set image.repository=ghcr.io/flowgent-labs/confluence-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
@@ -385,7 +385,7 @@ helm upgrade -i confluence-mcp deploy/helm \
 
 # With OIDC authentication
 helm upgrade -i confluence-mcp deploy/helm \
-  --set image.repository=ghcr.io/your-org/confluence-mcp \
+  --set image.repository=ghcr.io/flowgent-labs/confluence-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
@@ -396,7 +396,7 @@ helm upgrade -i confluence-mcp deploy/helm \
 
 # With LDAP authentication
 helm upgrade -i confluence-mcp deploy/helm \
-  --set image.repository=ghcr.io/your-org/confluence-mcp \
+  --set image.repository=ghcr.io/flowgent-labs/confluence-mcp \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
