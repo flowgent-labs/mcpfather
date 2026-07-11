@@ -21,11 +21,27 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Debug Go Env
+        run: |
+          set -x
+          go version
+          go env GOPATH GOROOT GOMOD GOCACHE
+          echo "=== Makefile test-unit recipe ==="
+          sed -n '28,29p' Makefile
+          echo "=== go list ./pkg/... ==="
+          go list ./pkg/...
+          echo "=== go list ./cmd/... ==="
+          go list ./cmd/...
+
       - name: Build
-        run: make build
+        run: |
+          set -x
+          make build
 
       - name: Unit Tests
-        run: make test-unit
+        run: |
+          set -x
+          go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
   integration-oidc:
     runs-on: ubuntu-latest
