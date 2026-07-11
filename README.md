@@ -1,4 +1,4 @@
-# Mcpfather - Enterprise-grade MCP Builder
+# MCPFather - Enterprise-grade MCP server Builder
 
 [![Build & Test](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpfather/actions/workflows/pr.yml)
 [![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go)](https://go.dev/dl/)
@@ -457,6 +457,25 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
   }
 }
 ```
+
+## Helm Deployment
+
+Generated MCP servers ship with an embedded Helm chart under `deploy/helm/`.
+The official Docker image is published to GitHub Container Registry on every release.
+
+```sh
+# Install a generated MCP server from the ghcr.io image
+helm install my-mcp-server ./deploy/helm \
+  --set image.repository=ghcr.io/flowgent-labs/mcpfather \
+  --set image.tag=v1.0.0 \
+  --set config.upstream.endpoint=https://api.example.com \
+  --set config.auth.backend.static.create=true \
+  --set config.auth.backend.static.bearerToken=your-token
+```
+
+Images are automatically built and pushed to
+[ghcr.io/flowgent-labs/mcpfather](https://github.com/flowgent-labs/mcpfather/pkgs/container/mcpfather)
+on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 
 ## References swaggers
 
