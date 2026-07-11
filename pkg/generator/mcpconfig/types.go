@@ -37,10 +37,12 @@ type FrontendAuthConfig struct {
 
 // FrontendOIDCConfig configures JWT bearer token validation against an OIDC issuer.
 type FrontendOIDCConfig struct {
-	Enabled  bool   `yaml:"enabled"`
-	Issuer   string `yaml:"issuer"`
-	JWKSURI  string `yaml:"jwks_uri"`
-	Audience string `yaml:"audience"`
+	Enabled                          bool     `yaml:"enabled"`
+	Issuer                           string   `yaml:"issuer"`
+	JWKSURI                          string   `yaml:"jwks_uri"`
+	Audience                         string   `yaml:"audience"`
+	EnableClientTokenClaimForward    bool     `yaml:"enable_client_token_claim_forward"`
+	AdditionalClientTokenClaimForward []string `yaml:"additional_client_token_claim_forward,omitempty"`
 }
 
 // BackendAuthConfig holds authentication settings for upstream API calls.
@@ -152,9 +154,9 @@ func (c MetricsConfig) IsEnabled() bool {
 
 // UpstreamConfig controls how requests are forwarded to upstream APIs.
 type UpstreamConfig struct {
-	Endpoint                     string               `yaml:"endpoint"`
-	EnableMCPSessionForwarding   bool                 `yaml:"enable_mcp_session_forwarding"`
-	Tools                        []UpstreamToolConfig `yaml:"tools,omitempty"`
+	Endpoint                string               `yaml:"endpoint"`
+	EnableMCPSessionForward bool                 `yaml:"enable_mcp_session_forward"`
+	Tools                   []UpstreamToolConfig `yaml:"tools,omitempty"`
 }
 
 // UpstreamToolConfig holds per-tool upstream settings.
@@ -176,9 +178,16 @@ type RuntimeConfig struct {
 func DefaultConfig() *Config {
 	t := true
 	return &Config{
+		Auth: AuthConfig{
+			Frontend: FrontendAuthConfig{
+				OIDC: FrontendOIDCConfig{
+					EnableClientTokenClaimForward: true,
+				},
+			},
+		},
 		Upstream: UpstreamConfig{
-			Endpoint:                   "https://httpbin.org/anything",
-			EnableMCPSessionForwarding: true,
+			Endpoint:                "https://httpbin.org/anything",
+			EnableMCPSessionForward: true,
 		},
 		Mgmt: MgmtConfig{
 			Enabled: &t,
