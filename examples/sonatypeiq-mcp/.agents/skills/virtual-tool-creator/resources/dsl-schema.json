@@ -49,6 +49,11 @@
         "in": {
           "type": "string"
         },
+        "onMissing": {
+          "description": "Behavior when the in path cannot be resolved. \"skip\" returns []; \"error\" (default) fails the pipeline.",
+          "enum": ["skip", "error"],
+          "type": "string"
+        },
         "pipeline": {
           "items": {
             "$ref": "#/$defs/Step"
@@ -89,6 +94,10 @@
     "RequireConfig": {
       "additionalProperties": false,
       "properties": {
+        "field": {
+          "description": "Dotted path that must exist in the result (e.g. \"issues\" or \"issues.0.key\").",
+          "type": "string"
+        },
         "message": {
           "type": "string"
         },
@@ -96,9 +105,6 @@
           "type": "boolean"
         }
       },
-      "required": [
-        "nonEmpty"
-      ],
       "type": "object"
     },
     "ReturnSpec": {
@@ -236,9 +242,6 @@
         },
         "description": {
           "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
         },
         "inputSchema": {
           "additionalProperties": true,

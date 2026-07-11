@@ -30,12 +30,14 @@ type StepSpec struct {
 	As            string       `yaml:"as,omitempty"`
 	Concurrency   interface{}  `yaml:"concurrency,omitempty"` // number or $ref
 	PreserveOrder bool         `yaml:"preserveOrder,omitempty"`
+	OnMissing     string       `yaml:"onMissing,omitempty"` // "skip" to return [] when in path is unresolvable, "error" (default)
 	Pipeline      []StepConfig `yaml:"pipeline,omitempty"`
 }
 
 // RequireConfig defines post-execution validation on a step's result.
 type RequireConfig struct {
 	NonEmpty bool   `yaml:"nonEmpty"`
+	Field    string `yaml:"field"`    // required field path that must exist in result (e.g. "issues")
 	Message  string `yaml:"message"`
 }
 
