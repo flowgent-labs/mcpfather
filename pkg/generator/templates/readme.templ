@@ -103,14 +103,26 @@ runtime:
   download_dir: ""
   log_authorization: false
 
+# ---- Authentication ----
+# frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).
+# backend  = outbound: credentials the server uses to call upstream APIs.
+# The two are independent — the inbound token is never reused outbound
+# (see MCP Authorization spec: Token Passthrough Prohibition).
 auth:
-  # Inbound: validate AI agent bearer tokens (http transport only).
   frontend:
+    # Standard OAuth 2.1 / OIDC JWT bearer validation (Resource Server role, RFC 9728).
+    # Only enforced on the http transport; stdio has no network boundary.
     oidc:
       enabled: false
-      issuer: ""             # e.g. https://idp.example.com/realms/myrealm
-      jwks_uri: ""           # optional override (auto-discovered from issuer)
-      audience: ""           # expected "aud" claim; also the RFC 9728 resource ID
+      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      jwks_uri: ""          # optional override (auto-discovered from issuer if empty)
+      audience: ""          # expected JWT "aud" claim; also published as the RFC 9728 protected-resource identifier
+      # When true, validated frontend JWT claims (sub, email) are forwarded upstream
+      # as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+      enable_client_token_claim_forward: true
+      # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+      # e.g. ["given_name", "family_name", "preferred_username"]
+      # additional_client_token_claim_forward: []
 
   # Outbound: credentials the server uses to call upstream APIs.
   backend:
