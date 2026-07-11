@@ -1,36 +1,55 @@
-# ---- Native MCP Tools ----
-tools:
-  expose:
-    # When true, all native tools are registered by default
-    # (individual tools can be hidden via excludes).
-    # When false (the default), only tools listed in includes
-    # are exposed.
-    register-all-tools-by-default: false
-
-    # Explicitly expose these tools (operationId values).
-    # Takes precedence: tools listed here are always exposed,
-    # even if register-all-tools-by-default is false.
-    includes:
-      - GetIssuesList
-      - GetIssuesSearch
-      - GetSourcesIssueSnippets
-      - GetComponentsShow
-      - GetProjectsExportFindings
-      - GetQualityProfilesSearch
-      - GetQualityProfilesShow
-
-    # Explicitly hide these tools from external agents (operationId values).
-    # Takes precedence over register-all-tools-by-default.
-    # A tool listed in BOTH includes and excludes will cause
-    # the server to fail at startup.
-    excludes: []
-
-# ---- Upstream Request Forwarding ----
-upstream:
+# ---- Runtime settings ----
+runtime:
   # When true, the MCP session ID from client requests is forwarded
   # to upstream APIs as the X-MCP-Session-ID HTTP header.
   # (DEPRECATED: session ID is always forwarded as X-MCP-Session-ID)
   enable_mcp_session_in_forwarding: false
+  download_dir: ""            # override download directory for binary responses
+  log_authorization: false     # set true to print Authorization header values in logs
+
+# Environment variables with MCP__ prefix override these values.
+# e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID overrides auth.backend.oidc.client_id
+# ---- Authentication ----
+# frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).
+# backend  = outbound: credentials the server uses to call upstream APIs.
+# The two are independent — the inbound token is never reused outbound
+# (see MCP Authorization spec: Token Passthrough Prohibition).
+auth:
+  frontend:
+    # Standard OAuth 2.1 / OIDC JWT bearer validation (Resource Server role, RFC 9728).
+    # Only enforced on the http transport; stdio has no network boundary.
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      jwks_uri: ""          # optional override (auto-discovered from issuer if empty)
+      audience: ""          # expected JWT "aud" claim; also published as the RFC 9728 protected-resource identifier
+
+  backend:
+    # OIDC client credentials flow (machine-to-machine)
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://keycloak.example.com/realms/myrealm
+      client_id: ""
+      client_secret: ""
+      scopes: "openid"       # space-separated scope list
+      token_url: ""          # optional override (auto-discovered from issuer if empty)
+
+    # LDAP service account bind (machine-to-machine)
+    ldap:
+      enabled: false
+      url: ""               # ldap:// or ldaps:// server URL
+      base_dn: ""
+      bind_dn: ""
+      bind_password: ""
+      insecure_skip_verify: false
+      timeout: 10            # connection timeout in seconds
+
+    # Static credentials for legacy / simple APIs
+    static:
+      bearer_token: ""       # static Bearer token
+      bearer_token_file: ""   # path to file containing bearer token (K8s secrets)
+      cookie_token: ""        # static cookie (e.g. JSESSIONID for legacy systems)
+      cookie_token_file: ""   # path to file containing cookie token (K8s secrets)
 
 # ---- Management Endpoints (metrics, tracing, pprof) ----
 mgmt:
@@ -57,6 +76,33 @@ mgmt:
     histogram_boundaries:
       task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
     labels: {}                 # static labels added to every metric
+
+# ---- Native MCP Tools ----
+nativeTools:
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    register-all-tools-by-default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if register-all-tools-by-default is false.
+    includes:
+      - GetIssuesList
+      - GetIssuesSearch
+      - GetSourcesIssueSnippets
+      - GetComponentsShow
+      - GetProjectsExportFindings
+      - GetQualityProfilesSearch
+      - GetQualityProfilesShow
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over register-all-tools-by-default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
 
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative

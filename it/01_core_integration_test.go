@@ -2015,7 +2015,8 @@ func TestConfig_EmptyExpose_AllToolsAvailable(t *testing.T) {
 	// Config file with upstream section only, no tools.expose
 	cfg := `
 upstream:
-  enable_mcp_session_in_forwarding: false
+    enable_mcp_session_in_forwarding: false
+runtime:
 `
 	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
 
