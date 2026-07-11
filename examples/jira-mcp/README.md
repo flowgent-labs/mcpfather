@@ -10,7 +10,7 @@
 [![LDAP](https://img.shields.io/badge/auth-LDAP-FF8300)](https://ldap.com/)
 [![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
 
-> The MCP server generated from OpenAPI — exposes **435 native tools**. Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools, auth forwarding, and observability built-in, and even use as regular CLI.*
+> An Enterprise-grade MCP server, specifically designed for AI to call Jira Software Data Center REST API Reference APIs, generated from MCPFather — exposes **435 native tools**. Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools, auth forwarding, and observability built-in, and even use as regular CLI.
 
 ## Quick Start
 
@@ -97,7 +97,7 @@ Create `~/.jira-mcp/config.yaml` (run `--print-default-config` for a full templa
 upstream:
   endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
   # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
-  enable_mcp_session_forwarding: true
+  enable_mcp_session_forward: true
 
 runtime:
   download_dir: ""
