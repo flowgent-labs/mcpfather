@@ -360,7 +360,11 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 make build-image
 
 # Or manually:
-docker build -t {{ .BinaryName }}:latest -f deploy/docker/Dockerfile .
+docker build -t ghcr.io/your-org/{{ .BinaryName }}:latest -f deploy/docker/Dockerfile .
+
+# Build and push to GitHub Container Registry (on push to main, CI does this automatically)
+make build-image
+docker push ghcr.io/your-org/{{ .BinaryName }}:latest
 
 # Build the Docker image with OTel tracing (gRPC or HTTP)
 make build-image-with-otel-grpc
@@ -368,7 +372,7 @@ make build-image-with-otel-http
 
 # Install/upgrade with Helm (static bearer token)
 helm upgrade -i {{ .BinaryName }} deploy/helm \
-  --set image.repository={{ .BinaryName }} \
+  --set image.repository=ghcr.io/your-org/{{ .BinaryName }} \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
@@ -376,7 +380,7 @@ helm upgrade -i {{ .BinaryName }} deploy/helm \
 
 # With OIDC authentication
 helm upgrade -i {{ .BinaryName }} deploy/helm \
-  --set image.repository={{ .BinaryName }} \
+  --set image.repository=ghcr.io/your-org/{{ .BinaryName }} \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
@@ -387,7 +391,7 @@ helm upgrade -i {{ .BinaryName }} deploy/helm \
 
 # With LDAP authentication
 helm upgrade -i {{ .BinaryName }} deploy/helm \
-  --set image.repository={{ .BinaryName }} \
+  --set image.repository=ghcr.io/your-org/{{ .BinaryName }} \
   --set image.tag=latest \
   --set secret.static.create=true \
   --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \

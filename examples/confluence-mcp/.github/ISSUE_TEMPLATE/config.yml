@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://github.com/flowgent-labs/confluence-mcp#readme
+    about: Read the README for configuration and usage instructions.
