@@ -58,6 +58,12 @@ spec:
             {{- end }}
             - name: MCP__AUTH__FRONTEND__OIDC__AUDIENCE
               value: {{ .Values.config.auth.frontend.oidc.audience | quote }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ .Values.config.auth.frontend.oidc.enableClientTokenClaimForward | quote }}
+            {{- if .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ADDITIONAL_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ join "," .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.config.auth.backend.oidc.enabled }}
             - name: MCP__AUTH__BACKEND__OIDC__ENABLED
