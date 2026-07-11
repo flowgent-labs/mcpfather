@@ -10,6 +10,9 @@ main
 *.dylib
 *.test
 *.out
+*.log
+testoidc
+mock*
 
 # Vendor
 /vendor/

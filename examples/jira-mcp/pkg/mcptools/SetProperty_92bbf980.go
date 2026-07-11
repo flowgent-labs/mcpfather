@@ -32,5 +32,5 @@ func SetProperty_92bbf980Handler(ctx context.Context, request mcp.CallToolReques
 		args = make(map[string]interface{})
 	}
 	contentType := ""
-	return mcputils.ForwardAndParseResponse(ctx, upstream, "PUT", "/rest/agile/1.0/board/{boardId}/properties/{propertyKey}", args, []string{"boardId", "propertyKey"}, contentType, "SetProperty_92bbf980")
+	return mcputils.ForwardAndParseResponse(ctx, upstream, "PUT", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}", args, []string{"dashboardId", "itemId", "propertyKey"}, contentType, "SetProperty_92bbf980")
 }

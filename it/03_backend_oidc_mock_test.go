@@ -15,20 +15,35 @@ import (
 	"time"
 )
 
-// testOIDCProvider wraps a standalone OIDC provider subprocess.
-// It is a real, separately-compiled binary that speaks real OIDC protocol
-// on a real TCP port — not an in-process httptest.Server.
-type testOIDCProvider struct {
+// mockDexServerForSpecialCustomized is a standalone OIDC provider subprocess
+// that specifically simulates the client_credentials and password grant flows
+// which real Dex v2.41+ no longer supports.
+//
+// Deprecated: Dex v2.41+ removed password grant and never natively supported
+// client_credentials in a test-friendly way. This server exists ONLY for
+// completeness testing of those two legacy / non-standard grant types.
+// For authorization_code and refresh_token, use the real Dex container
+// (ensureDex). For negative test cases (expired token, wrong audience, etc.)
+// this server's /sign endpoint remains the only practical way to craft
+// custom-claims JWTs signed by a trusted key.
+//
+// The binary is compiled from it/cmd/testoidc/main.go and runs as a separate
+// OS process with its own RSA keypair, real OIDC discovery, and real JWKS.
+type mockDexServerForSpecialCustomized struct {
 	cmd    *exec.Cmd
 	cancel context.CancelFunc
 	addr   string // "host:port"
 	issuer string // "http://host:port"
 }
 
-// startTestOIDCProvider compiles and starts a standalone OIDC provider binary
-// that supports the client_credentials grant. The binary is compiled from
-// it/cmd/testoidc/main.go and runs as a separate OS process.
-func startTestOIDCProvider(t *testing.T) *testOIDCProvider {
+// startMockDexForDeprecatedGrants compiles and starts the special-purpose
+// OIDC provider for client_credentials / password grant testing.
+//
+// Deprecated: Prefer ensureDex (real Dex container) for standard grant types.
+// This function is retained only for:
+//   - client_credentials / password grant tests (unsupported by real Dex)
+//   - negative-test token crafting via /sign (expired, wrong audience, etc.)
+func startMockDexForDeprecatedGrants(t *testing.T) *mockDexServerForSpecialCustomized {
 	t.Helper()
 
 	// Build the binary
@@ -102,7 +117,7 @@ func startTestOIDCProvider(t *testing.T) *testOIDCProvider {
 		cmd.Wait()
 	})
 
-	return &testOIDCProvider{
+	return &mockDexServerForSpecialCustomized{
 		cmd:    cmd,
 		cancel: cancel,
 		addr:   addr,
@@ -110,17 +125,17 @@ func startTestOIDCProvider(t *testing.T) *testOIDCProvider {
 	}
 }
 
-func (p *testOIDCProvider) Close() {
+func (p *mockDexServerForSpecialCustomized) Close() {
 	p.cancel()
 	p.cmd.Wait()
 }
 
-func (p *testOIDCProvider) Issuer() string    { return p.issuer }
-func (p *testOIDCProvider) TokenURL() string   { return p.issuer + "/token" }
-func (p *testOIDCProvider) Audience() string   { return "mcpfather" }
+func (p *mockDexServerForSpecialCustomized) Issuer() string    { return p.issuer }
+func (p *mockDexServerForSpecialCustomized) TokenURL() string   { return p.issuer + "/token" }
+func (p *mockDexServerForSpecialCustomized) Audience() string   { return "mcpfather" }
 
 // Token obtains a valid signed JWT via client_credentials grant.
-func (p *testOIDCProvider) Token(t *testing.T) string {
+func (p *mockDexServerForSpecialCustomized) Token(t *testing.T) string {
 	t.Helper()
 	body := strings.NewReader("grant_type=client_credentials&client_id=mcpfather-client&client_secret=mcpfather-secret")
 	resp, err := http.Post(p.TokenURL(), "application/x-www-form-urlencoded", body)
@@ -141,7 +156,7 @@ func (p *testOIDCProvider) Token(t *testing.T) string {
 }
 
 // SignToken requests a JWT with custom claims from the /sign endpoint.
-func (p *testOIDCProvider) SignToken(t *testing.T, claims map[string]interface{}) string {
+func (p *mockDexServerForSpecialCustomized) SignToken(t *testing.T, claims map[string]interface{}) string {
 	t.Helper()
 	body, _ := json.Marshal(claims)
 	resp, err := http.Post(p.issuer+"/sign", "application/json", strings.NewReader(string(body)))
@@ -164,14 +179,14 @@ func (p *testOIDCProvider) SignToken(t *testing.T, claims map[string]interface{}
 // ---------------------------------------------------------------------------
 // Password-grant token exchange & E2E tests
 //
-// These use the standalone mock OIDC provider because Dex v2.41+ no longer
+// These use startMockDexForDeprecatedGrants because Dex v2.41+ no longer
 // supports the password (ROPC) grant. Every other OIDC flow (discovery,
 // connectivity, config) is tested against real Dex in 03_backend_oidc_dex_test.go.
 // ---------------------------------------------------------------------------
 
 // TestOIDCTokenExchange verifies the OIDC provider issues tokens via password grant.
 func TestOIDCTokenExchange(t *testing.T) {
-	oidc := startTestOIDCProvider(t)
+	oidc := startMockDexForDeprecatedGrants(t)
 	defer oidc.Close()
 
 	body := strings.NewReader("grant_type=client_credentials&client_id=test-client&client_secret=test-secret&scope=openid")
@@ -199,7 +214,7 @@ func TestOIDCTokenExchange(t *testing.T) {
 // support the password grant. Discovery and connectivity are verified
 // against real Dex in TestOIDCDexDiscovery.
 func TestOIDCFullE2E(t *testing.T) {
-	oidc := startTestOIDCProvider(t)
+	oidc := startMockDexForDeprecatedGrants(t)
 	defer oidc.Close()
 
 	mock := startMockUpstream(okHandler())

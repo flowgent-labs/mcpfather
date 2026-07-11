@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/flowgent-labs/mcpfather/pkg/generator"
@@ -20,8 +21,12 @@ var (
 	version    bool
 )
 
-// version is set at build time via -ldflags "-X main.version=1.2.3"
-var versionStr = "dev"
+// Build-time variables set via -ldflags.
+var (
+	versionStr = "dev"
+	gitCommit  = "unknown"
+	buildDate  = "unknown"
+)
 
 func init() {
 	flag.StringVar(&inputFile, "i", "", "Path to the OpenAPI specification file (JSON or YAML)")
@@ -38,8 +43,17 @@ func init() {
 	flag.BoolVar(&version, "version", false, "Print version and exit")
 }
 
+func printVersion() {
+	fmt.Printf("MCPfather %s (commit: %s, built: %s, %s)\n", versionStr, gitCommit, buildDate, runtime.Version())
+	fmt.Println("https://github.com/flowgent-labs/mcpfather")
+}
+
 func usage() {
-	fmt.Fprintf(os.Stderr, `Usage: mcpfather [OPTIONS]
+	fmt.Fprintf(os.Stderr, `MCPfather — Generate Enterprise-grade MCP (Model Context Protocol) servers from OpenAPI specifications.
+
+Project: https://github.com/flowgent-labs/mcpfather
+
+Usage: mcpfather [OPTIONS]
 
 Options:
   -i, --input       Path to the OpenAPI specification file (JSON or YAML)
@@ -57,7 +71,7 @@ func main() {
 	flag.Parse()
 
 	if version {
-		fmt.Println(versionStr)
+		printVersion()
 		return
 	}
 
