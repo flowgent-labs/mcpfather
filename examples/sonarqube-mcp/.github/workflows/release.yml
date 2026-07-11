@@ -21,6 +21,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Determine version bump
         id: bump
         run: |
@@ -87,6 +92,31 @@ jobs:
             git tag -a "${{ steps.bump.outputs.new_tag }}" -m "Release ${{ steps.bump.outputs.new_tag }}"
             git push origin "${{ steps.bump.outputs.new_tag }}"
           fi
+
+      - name: Build Cross-Platform Binaries
+        if: steps.bump.outputs.should_release == 'true'
+        run: make build-all
+
+      - name: Create GitHub Release
+        if: steps.bump.outputs.should_release == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.new_tag }}
+          name: ${{ steps.bump.outputs.new_tag }}
+          body: |
+            ## Release ${{ steps.bump.outputs.new_tag }}
+
+            Commit: ${{ github.event.head_commit.url }}
+
+            ### Changes
+            ${{ github.event.head_commit.message }}
+
+            ### Binaries
+            Cross-platform binaries built with `make build-all`.
+          files: bin/sonarqube-mcp-*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-push-image:
     needs: release
