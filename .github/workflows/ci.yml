@@ -1,3 +1,15 @@
+# CI workflow — triggered on PR lifecycle events (NOT on merge to main).
+#
+# Event matrix:
+#   pull_request (opened, synchronize, reopened) → build + all integration tests
+#   schedule (daily/weekly)                       → same, against main branch
+#
+# Deliberately NOT triggered by:
+#   - push to main (merge commits are handled by release.yml)
+#   - pull_request:closed (merged → release.yml; closed-without-merge is no-op)
+#
+# Concurrency: same PR/branch cancels the previous in-progress run.
+
 name: Build & Test
 
 on:
