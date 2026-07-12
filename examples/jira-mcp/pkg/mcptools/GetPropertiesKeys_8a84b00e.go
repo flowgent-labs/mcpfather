@@ -35,5 +35,5 @@ func GetPropertiesKeys_8a84b00eHandler(ctx context.Context, request mcp.CallTool
 		args = make(map[string]interface{})
 	}
 	contentType := ""
-	return mcputils.ForwardAndParseResponse(ctx, upstream, "GET", "/rest/agile/1.0/board/{boardId}/properties", args, []string{"boardId"}, contentType, "GetPropertiesKeys_8a84b00e")
+	return mcputils.ForwardAndParseResponse(ctx, upstream, "GET", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties", args, []string{"dashboardId", "itemId"}, contentType, "GetPropertiesKeys_8a84b00e")
 }

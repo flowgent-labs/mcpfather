@@ -3,12 +3,13 @@
 name: Release
 
 on:
-  push:
+  pull_request:
     branches: [main]
+    types: [closed]
 
 jobs:
   release:
-    if: "!startsWith(github.event.head_commit.message, 'Merge pull request #')"
+    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     outputs:
       new_tag: ${{ steps.bump.outputs.new_tag }}
@@ -21,32 +22,27 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
       - name: Determine version bump
         id: bump
         run: |
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_MSG=$(echo "${COMMIT_MSG}" | head -1)
+          PR_TITLE="${{ github.event.pull_request.title }}"
+          PR_TITLE=$(echo "${PR_TITLE}" | head -1)
 
           SHOULD_RELEASE=false
           BUMP_LEVEL=""
-          if echo "${COMMIT_MSG}" | grep -qiE "^refactor:"; then
+          if echo "${PR_TITLE}" | grep -qiE "^refactor:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="major"
-          elif echo "${COMMIT_MSG}" | grep -qiE "^feat:"; then
+          elif echo "${PR_TITLE}" | grep -qiE "^feat:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="minor"
-          elif echo "${COMMIT_MSG}" | grep -qiE "^fix:"; then
+          elif echo "${PR_TITLE}" | grep -qiE "^fix:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="patch"
           fi
 
           if [ "${SHOULD_RELEASE}" != "true" ]; then
-            echo "Commit type does not trigger a release (only feat:, fix:, refactor:). Skipping."
+            echo "PR title does not trigger a release (only feat:, fix:, refactor:). Skipping."
             echo "should_release=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -74,7 +70,7 @@ jobs:
               PATCH=$((PATCH + 1))
               ;;
           esac
-          echo "Bump: ${BUMP_LEVEL} (${COMMIT_MSG})"
+          echo "Bump: ${BUMP_LEVEL} (${PR_TITLE})"
 
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "New tag: ${NEW_TAG}"
@@ -93,32 +89,25 @@ jobs:
             git push origin "${{ steps.bump.outputs.new_tag }}"
           fi
 
+  build-binaries:
+    needs: release
+    if: needs.release.outputs.new_tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.new_tag }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
       - name: Build Cross-Platform Binaries
-        if: steps.bump.outputs.should_release == 'true'
         run: make build-all
 
-      - name: Create GitHub Release
-        if: steps.bump.outputs.should_release == 'true'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.bump.outputs.new_tag }}
-          name: ${{ steps.bump.outputs.new_tag }}
-          body: |
-            ## Release ${{ steps.bump.outputs.new_tag }}
-
-            Commit: ${{ github.event.head_commit.url }}
-
-            ### Changes
-            ${{ github.event.head_commit.message }}
-
-            ### Binaries
-            Cross-platform binaries built with `make build-all`.
-          files: bin/jira-mcp-*
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-push-image:
+  build-image:
     needs: release
     if: needs.release.outputs.new_tag != ''
     runs-on: ubuntu-latest
@@ -126,8 +115,10 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout
+      - name: Checkout tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.release.outputs.new_tag }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -152,3 +143,30 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/jira-mcp:${{ needs.release.outputs.new_tag }}
             ghcr.io/${{ github.repository_owner }}/jira-mcp:latest
           platforms: linux/amd64,linux/arm64
+
+  upload-release:
+    needs: [release, build-binaries]
+    if: needs.release.outputs.new_tag != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release.outputs.new_tag }}
+          name: ${{ needs.release.outputs.new_tag }}
+          body: |
+            ## Release ${{ needs.release.outputs.new_tag }}
+
+            PR: ${{ github.event.pull_request.html_url }}
+
+            ### Changes
+            ${{ github.event.pull_request.body }}
+
+            ### Binaries
+            Cross-platform binaries built with `make build-all`.
+          files: bin/jira-mcp-*
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
