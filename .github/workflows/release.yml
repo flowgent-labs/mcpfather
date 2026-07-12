@@ -4,10 +4,18 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
+    if: |
+      (github.event_name == 'pull_request' && github.event.pull_request.merged == true) ||
+      (github.event_name == 'push')
     runs-on: ubuntu-latest
     outputs:
       new_tag: ${{ steps.bump.outputs.new_tag }}
@@ -23,24 +31,28 @@ jobs:
       - name: Determine version bump
         id: bump
         run: |
-          PR_TITLE="${{ github.event.pull_request.title }}"
-          PR_TITLE=$(echo "${PR_TITLE}" | head -1)
+          if [ "${{ github.event_name }}" = "push" ]; then
+            COMMIT_MSG="${{ github.event.head_commit.message }}"
+            COMMIT_MSG=$(echo "${COMMIT_MSG}" | head -1)
+          else
+            COMMIT_MSG="${{ github.event.pull_request.title }}"
+          fi
 
           SHOULD_RELEASE=false
           BUMP_LEVEL=""
-          if echo "${PR_TITLE}" | grep -qiE "^refactor:"; then
+          if echo "${COMMIT_MSG}" | grep -qiE "^refactor:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="major"
-          elif echo "${PR_TITLE}" | grep -qiE "^feat:"; then
+          elif echo "${COMMIT_MSG}" | grep -qiE "^feat:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="minor"
-          elif echo "${PR_TITLE}" | grep -qiE "^fix:"; then
+          elif echo "${COMMIT_MSG}" | grep -qiE "^fix:"; then
             SHOULD_RELEASE=true
             BUMP_LEVEL="patch"
           fi
 
           if [ "${SHOULD_RELEASE}" != "true" ]; then
-            echo "PR title does not trigger a release (only feat:, fix:, refactor:). Skipping."
+            echo "Commit type does not trigger a release (only feat:, fix:, refactor:). Skipping."
             echo "should_release=false" >> $GITHUB_OUTPUT
             exit 0
           fi
@@ -68,7 +80,7 @@ jobs:
               PATCH=$((PATCH + 1))
               ;;
           esac
-          echo "Bump: ${BUMP_LEVEL} (${PR_TITLE})"
+          echo "Bump: ${BUMP_LEVEL} (${COMMIT_MSG})"
 
           NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
           echo "New tag: ${NEW_TAG}"
@@ -156,10 +168,10 @@ jobs:
           body: |
             ## Release ${{ needs.release.outputs.new_tag }}
 
-            PR: ${{ github.event.pull_request.html_url }}
+            ${{ github.event_name == 'pull_request' && format('PR: {0}', github.event.pull_request.html_url) || format('Commit: {0}', github.event.head_commit.url) }}
 
             ### Changes
-            ${{ github.event.pull_request.body }}
+            ${{ github.event_name == 'pull_request' && github.event.pull_request.body || github.event.head_commit.message }}
 
             ### Binaries
             Cross-platform binaries built with `make build-all`.
