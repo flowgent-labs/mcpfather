@@ -428,7 +428,26 @@ docker pull ghcr.io/<YOUR_ORG>/{{ .BinaryName }}:latest
     --transport http --port 8080
   ```
 
+
+### Test with mcpclient.sh
+
+After the container starts, use the bundled `mcpclient.sh` to verify:
+
+```sh
+# Point to the mapped host port (include /mcp path)
+export MCP_SERVER_ENDPOINT=http://localhost:18080/mcp
+export MCP_UPSTREAM_TOKEN="your-token-or-env-var"
+# Call any tool (example: {{ (index .Tools 0).Name }})
+./mcpclient.sh call {{ (index .Tools 0).Name }} '{"<param>":"<value>"}'
+# List all available tools
+./mcpclient.sh list-tools
+```
+
+> **Tip:** Map the host config directory for persistent configuration:
+> `-v ~/.{{ .BinaryName }}:/home/mcp/.{{ .BinaryName }}`
+
 ## Deployment — Kubernetes (Helm)
+
 
 - **Static bearer token**
 
