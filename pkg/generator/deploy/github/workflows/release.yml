@@ -159,6 +159,12 @@ jobs:
       - name: Build Cross-Platform Binaries
         run: make build-all
 
+      - name: Upload Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: bin/__BINARY_NAME__-*
+
   build-image:
     needs: release
     if: needs.release.outputs.new_tag != ''
@@ -203,6 +209,12 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Download Binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: binaries
+          path: bin/
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
