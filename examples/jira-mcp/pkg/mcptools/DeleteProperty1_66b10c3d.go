@@ -32,5 +32,5 @@ func DeleteProperty1_66b10c3dHandler(ctx context.Context, request mcp.CallToolRe
 		args = make(map[string]interface{})
 	}
 	contentType := ""
-	return mcputils.ForwardAndParseResponse(ctx, upstream, "DELETE", "/rest/api/2/dashboard/{dashboardId}/items/{itemId}/properties/{propertyKey}", args, []string{"dashboardId", "itemId", "propertyKey"}, contentType, "DeleteProperty1_66b10c3d")
+	return mcputils.ForwardAndParseResponse(ctx, upstream, "DELETE", "/rest/agile/1.0/sprint/{sprintId}/properties/{propertyKey}", args, []string{"propertyKey", "sprintId"}, contentType, "DeleteProperty1_66b10c3d")
 }
