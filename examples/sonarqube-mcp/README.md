@@ -445,12 +445,14 @@ First generate a default config, then mount it when running:
 
 ### Test with mcpclient.sh
 
-After the container starts, use the bundled `mcpclient.sh` to verify:
+After the container starts, use the bundled `mcpclient.sh` to verify.
+
+> **Note:** `mcpclient.sh` only supports **backend static** token auth. If the server requires
+> **frontend OIDC/LDAP** authentication, use a real AI-agent MCP client instead.
 
 ```sh
 # Point to the mapped host port (include /mcp path)
 export MCP_SERVER_ENDPOINT=http://localhost:18080/mcp
-export MCP_UPSTREAM_TOKEN="your-token-or-env-var"
 # Call any tool (example: GetAlmIntegrationsCheckPat)
 ./mcpclient.sh call GetAlmIntegrationsCheckPat '{"<param>":"<value>"}'
 # List all available tools
