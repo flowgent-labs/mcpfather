@@ -4,9 +4,15 @@ name: Build & Test
 
 on:
   push:
-    branches: [main]
+    branches-ignore: [main]
   pull_request:
-    branches: [main]
+  schedule:
+    # Daily build on main branch (03:07 UTC)
+    - cron: "7 3 * * *"
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build-and-test:
