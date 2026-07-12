@@ -2,6 +2,7 @@ name: Build & Test
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened]
   schedule:
     # Daily build on main branch (03:07 UTC)
     - cron: "7 3 * * *"
