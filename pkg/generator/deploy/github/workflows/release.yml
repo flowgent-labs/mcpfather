@@ -156,6 +156,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Ensure Go module cache
+        run: go mod tidy
+
       - name: Build Cross-Platform Binaries
         run: make build-all
 
