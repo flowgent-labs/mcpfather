@@ -63,17 +63,18 @@ jobs:
         run: |
           # Resolve the effective commit/PR title for semver detection.
           # On pull_request events github.event.pull_request.title is available.
-          # On push events we must extract the title from the commit message:
-          #   - Squash merge:  first line IS the PR title (e.g. "feat: add foo")
-          #   - Regular merge: first line is "Merge pull request #N from …",
-          #     second line is the PR title.
+          # On push events we check the commit message:
+          #   - Merge commit (has second parent): use HEAD^2 (the PR branch tip)
+          #     whose first line IS the original PR title (e.g. "feat: add foo").
+          #   - Squash/rebase/direct push: use HEAD's message directly.
           if [ "${{ github.event_name }}" = "push" ]; then
-            COMMIT_MSG="${{ github.event.head_commit.message }}"
-            FIRST_LINE=$(echo "${COMMIT_MSG}" | head -1)
-            if echo "${FIRST_LINE}" | grep -qiE '^Merge pull request #'; then
-              COMMIT_MSG=$(echo "${COMMIT_MSG}" | sed -n '2p' | sed 's/^[[:space:]]*//')
+            if git rev-parse HEAD^2 >/dev/null 2>&1; then
+              # HEAD is a merge commit → use the feature-branch tip's subject.
+              COMMIT_MSG=$(git log -1 --format=%s HEAD^2)
             else
-              COMMIT_MSG="${FIRST_LINE}"
+              # Squash/rebase merge or direct push → first line is the message.
+              COMMIT_MSG="${{ github.event.head_commit.message }}"
+              COMMIT_MSG=$(echo "${COMMIT_MSG}" | head -1)
             fi
           else
             COMMIT_MSG="${{ github.event.pull_request.title }}"
