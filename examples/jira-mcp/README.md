@@ -393,20 +393,27 @@ Pull the pre-built image from GitHub Container Registry:
 docker pull ghcr.io/<YOUR_ORG>/jira-mcp:latest
 ```
 
+First generate a default config, then mount it when running:
+
+```sh
+  docker run --rm ghcr.io/<YOUR_ORG>/jira-mcp:latest --print-default-config > ~/.jira-mcp/config.yaml
+```
+
 - **Static bearer token**
 
-  ```sh
+```sh
   docker run -d --name jira-mcp \
     -p 8080:8080 -p 9991:9991 \
     -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
     -e MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN="YOUR_BEARER_TOKEN" \
+    -v ~/.jira-mcp:/home/mcp/.jira-mcp \
     ghcr.io/<YOUR_ORG>/jira-mcp:latest \
     --transport http --port 8080
   ```
 
 - **OIDC backend auth**
 
-  ```sh
+```sh
   docker run -d --name jira-mcp \
     -p 8080:8080 -p 9991:9991 \
     -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
@@ -414,13 +421,14 @@ docker pull ghcr.io/<YOUR_ORG>/jira-mcp:latest
     -e MCP__AUTH__BACKEND__OIDC__ISSUER="https://idp.example.com/realms/myrealm" \
     -e MCP__AUTH__BACKEND__OIDC__CLIENT_ID="my-client" \
     -e MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET="YOUR_CLIENT_SECRET" \
+    -v ~/.jira-mcp:/home/mcp/.jira-mcp \
     ghcr.io/<YOUR_ORG>/jira-mcp:latest \
     --transport http --port 8080
   ```
 
 - **LDAP backend auth**
 
-  ```sh
+```sh
   docker run -d --name jira-mcp \
     -p 8080:8080 -p 9991:9991 \
     -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
@@ -429,15 +437,41 @@ docker pull ghcr.io/<YOUR_ORG>/jira-mcp:latest
     -e MCP__AUTH__BACKEND__LDAP__BASE_DN="dc=example,dc=com" \
     -e MCP__AUTH__BACKEND__LDAP__BIND_DN="cn=svc,dc=example,dc=com" \
     -e MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD="YOUR_BIND_PASSWORD" \
+    -v ~/.jira-mcp:/home/mcp/.jira-mcp \
     ghcr.io/<YOUR_ORG>/jira-mcp:latest \
     --transport http --port 8080
   ```
 
+
+### Test with mcpclient.sh
+
+After the container starts, use the bundled `mcpclient.sh` to verify:
+
+```sh
+# Point to the mapped host port (include /mcp path)
+export MCP_SERVER_ENDPOINT=http://localhost:18080/mcp
+export MCP_UPSTREAM_TOKEN="your-token-or-env-var"
+# Call any tool (example: AcknowledgeErrors)
+./mcpclient.sh call AcknowledgeErrors '{"<param>":"<value>"}'
+# List all available tools
+./mcpclient.sh list-tools
+```
+
+> **Tip:** Map the host config directory for persistent configuration:
+> `-v ~/.jira-mcp:/home/mcp/.jira-mcp`
+
 ## Deployment — Kubernetes (Helm)
+
+
+First generate a default config, then mount it when running:
+
+```sh
+  docker run --rm ghcr.io/<YOUR_ORG>/jira-mcp:latest --print-default-config > ~/.jira-mcp/config.yaml
+```
 
 - **Static bearer token**
 
-  ```sh
+```sh
   helm upgrade -i jira-mcp deploy/helm \
     --set image.repository=ghcr.io/<YOUR_ORG>/jira-mcp \
     --set image.tag=latest \
@@ -448,7 +482,7 @@ docker pull ghcr.io/<YOUR_ORG>/jira-mcp:latest
 
 - **OIDC authentication**
 
-  ```sh
+```sh
   helm upgrade -i jira-mcp deploy/helm \
     --set image.repository=ghcr.io/<YOUR_ORG>/jira-mcp \
     --set image.tag=latest \
@@ -462,7 +496,7 @@ docker pull ghcr.io/<YOUR_ORG>/jira-mcp:latest
 
 - **LDAP authentication**
 
-  ```sh
+```sh
   helm upgrade -i jira-mcp deploy/helm \
     --set image.repository=ghcr.io/<YOUR_ORG>/jira-mcp \
     --set image.tag=latest \
