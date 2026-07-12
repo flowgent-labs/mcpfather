@@ -34,12 +34,13 @@ build: go.sum
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-all: go.sum
-	GOOS=linux   GOARCH=amd64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
-	GOOS=linux   GOARCH=arm64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
-	GOOS=darwin  GOARCH=amd64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
-	GOOS=darwin  GOARCH=arm64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
-	GOOS=windows GOARCH=amd64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
-	GOOS=windows GOARCH=arm64 go mod tidy && go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
+	go mod tidy
+	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
+	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
+	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
+	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
+	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
+	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
 
 go.sum: go.mod
 	go mod tidy
@@ -63,11 +64,11 @@ gen-dsl-schema:
 build-with-otel: build-with-otel-grpc
 
 build-with-otel-grpc: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go mod tidy && go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-with-otel-http: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go mod tidy && go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
+	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 # ---- Container & Kubernetes ----
