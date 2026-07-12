@@ -1,8 +1,6 @@
 name: Build & Test
 
 on:
-  push:
-    branches-ignore: [main]
   pull_request:
   schedule:
     # Daily build on main branch (03:07 UTC)
