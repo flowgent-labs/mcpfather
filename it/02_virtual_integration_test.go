@@ -3630,4 +3630,3 @@ func validateAgainstSchema(schemaBytes []byte, instanceBytes []byte) error {
 
 	return sch.Validate(instance)
 }
-

@@ -289,7 +289,8 @@ func TestGenerator_VeryLongOperationId_Succeeds(t *testing.T) {
 	var toolFiles []string
 	files, _ := filepath.Glob(filepath.Join(dir, "pkg", "mcptools", "*.go"))
 	for _, f := range files {
-		if filepath.Base(f) != "registry.go" {
+		base := filepath.Base(f)
+		if base != "registry.go" && !strings.HasSuffix(base, "_test.go") {
 			toolFiles = append(toolFiles, f)
 		}
 	}
