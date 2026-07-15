@@ -197,6 +197,62 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 
 	return nil
 }
+// GenerateToolTestFiles generates individual tool test files (*_test.go) for each tool.
+func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
+	toolsDir := filepath.Join(g.outputDir, "pkg", "mcptools")
+	os.MkdirAll(toolsDir, 0755)
+
+	testTemplateContent, err := templatesFS.ReadFile("templates/tool_test.templ")
+	if err != nil {
+		return fmt.Errorf("failed to read tool test template: %w", err)
+	}
+
+	tmpl, err := template.New("tool_test.templ").Parse(string(testTemplateContent))
+	if err != nil {
+		return fmt.Errorf("failed to parse tool test template: %w", err)
+	}
+
+	helpersImportPath := BuildModuleName(g.outputDir) + "/pkg/helpers"
+	binaryName := filepath.Base(g.outputDir)
+
+	for _, tool := range config.Tools {
+		capitalizedName := capitalizeFirstLetter(tool.Name)
+
+		data := struct {
+			ToolNameOriginal  string
+			ToolHandlerName   string
+			HelpersImportPath string
+			BinaryName        string
+		}{
+			ToolNameOriginal:  capitalizedName,
+			ToolHandlerName:   capitalizedName + "Handler",
+			HelpersImportPath: helpersImportPath,
+			BinaryName:        binaryName,
+		}
+
+		var buf bytes.Buffer
+		if err := tmpl.Execute(&buf, data); err != nil {
+			return fmt.Errorf("failed to render test template for tool %s: %w", tool.Name, err)
+		}
+
+		formattedCode, err := format.Source(buf.Bytes())
+		if err != nil {
+			dumpPath := filepath.Join(toolsDir, capitalizedName+"_test.go.bad")
+			_ = os.WriteFile(dumpPath, buf.Bytes(), 0644)
+			return fmt.Errorf("failed to format test code for %s: %w (raw written to %s)", capitalizedName, err, dumpPath)
+		}
+
+		outputFileName := capitalizedName + "_test.go"
+		if err := writeFileContent(toolsDir, outputFileName, func() ([]byte, error) {
+			return formattedCode, nil
+		}); err != nil {
+			return fmt.Errorf("failed to write %s: %w", outputFileName, err)
+		}
+	}
+
+	return nil
+}
+
 func capitalizeFirstLetter(s string) string {
 	if len(s) == 0 {
 		return s
