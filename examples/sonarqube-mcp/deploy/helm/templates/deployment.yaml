@@ -1,0 +1,216 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "sonarqube-mcp.fullname" . }}
+  labels:
+    {{- include "sonarqube-mcp.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "sonarqube-mcp.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "sonarqube-mcp.labels" . | nindent 8 }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "sonarqube-mcp.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "sonarqube-mcp.name" . }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.port }}
+              protocol: TCP
+            - name: mgmt
+              containerPort: {{ .Values.service.mgmtPort }}
+              protocol: TCP
+          env:
+            - name: MCP__UPSTREAM__ENDPOINT
+              value: {{ .Values.config.upstream.endpoint | quote }}
+            {{- if .Values.config.auth.frontend.oidc.enabled }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ENABLED
+              value: "true"
+            - name: MCP__AUTH__FRONTEND__OIDC__ISSUER
+              value: {{ .Values.config.auth.frontend.oidc.issuer | quote }}
+            {{- if .Values.config.auth.frontend.oidc.jwksUri }}
+            - name: MCP__AUTH__FRONTEND__OIDC__JWKS_URI
+              value: {{ .Values.config.auth.frontend.oidc.jwksUri | quote }}
+            {{- end }}
+            - name: MCP__AUTH__FRONTEND__OIDC__AUDIENCE
+              value: {{ .Values.config.auth.frontend.oidc.audience | quote }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ .Values.config.auth.frontend.oidc.enableClientTokenClaimForward | quote }}
+            {{- if .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward }}
+            - name: MCP__AUTH__FRONTEND__OIDC__ADDITIONAL_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ join "," .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward | quote }}
+            {{- end }}
+            {{- end }}
+            {{- if .Values.config.auth.backend.oidc.enabled }}
+            - name: MCP__AUTH__BACKEND__OIDC__ENABLED
+              value: "true"
+            - name: MCP__AUTH__BACKEND__OIDC__ISSUER
+              value: {{ .Values.config.auth.backend.oidc.issuer | quote }}
+            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_ID
+              value: {{ .Values.config.auth.backend.oidc.clientId | quote }}
+            - name: MCP__AUTH__BACKEND__OIDC__SCOPES
+              value: {{ .Values.config.auth.backend.oidc.scopes | quote }}
+            {{- if .Values.config.auth.backend.oidc.tokenUrl }}
+            - name: MCP__AUTH__BACKEND__OIDC__TOKEN_URL
+              value: {{ .Values.config.auth.backend.oidc.tokenUrl | quote }}
+            {{- end }}
+            {{- if .Values.secret.static.create }}
+            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: oidc_client_secret
+            {{- end }}
+            {{- end }}
+            {{- if .Values.config.auth.backend.ldap.enabled }}
+            - name: MCP__AUTH__BACKEND__LDAP__ENABLED
+              value: "true"
+            - name: MCP__AUTH__BACKEND__LDAP__URL
+              value: {{ .Values.config.auth.backend.ldap.url | quote }}
+            - name: MCP__AUTH__BACKEND__LDAP__BASE_DN
+              value: {{ .Values.config.auth.backend.ldap.baseDN | quote }}
+            - name: MCP__AUTH__BACKEND__LDAP__BIND_DN
+              value: {{ .Values.config.auth.backend.ldap.bindDN | quote }}
+            {{- if .Values.config.auth.backend.ldap.insecureSkipVerify }}
+            - name: MCP__AUTH__BACKEND__LDAP__INSECURE_SKIP_VERIFY
+              value: "true"
+            {{- end }}
+            {{- if .Values.config.auth.backend.ldap.timeout }}
+            - name: MCP__AUTH__BACKEND__LDAP__TIMEOUT
+              value: {{ .Values.config.auth.backend.ldap.timeout | quote }}
+            {{- end }}
+            {{- if .Values.secret.static.create }}
+            - name: MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: ldap_bind_password
+            {{- end }}
+            {{- end }}
+            {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
+            {{- if .Values.secret.static.bearerToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: bearer_token
+            {{- end }}
+            {{- if .Values.secret.static.cookieToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: cookie_token
+            {{- end }}
+            {{- else if and (eq .Values.secret.provider "gcp") }}
+            {{- if .Values.secret.static.bearerToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: bearer_token
+            {{- end }}
+            {{- if .Values.secret.static.cookieToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "sonarqube-mcp.secretName" . }}
+                  key: cookie_token
+            {{- end }}
+            {{- end }}
+            - name: MCP__RUNTIME__LOG_AUTHORIZATION
+              value: {{ .Values.config.runtime.logAuthorization | quote }}
+            {{- if .Values.config.runtime.downloadDir }}
+            - name: MCP__RUNTIME__DOWNLOAD_DIR
+              value: {{ .Values.config.runtime.downloadDir | quote }}
+            {{- end }}
+          {{- if .Values.config.mgmt.otel.enabled }}
+            - name: MCP__MGMT__OTEL__ENABLED
+              value: "true"
+            - name: MCP__MGMT__OTEL__ENDPOINT
+              value: {{ .Values.config.mgmt.otel.endpoint | quote }}
+            - name: MCP__MGMT__OTEL__PROTOCOL
+              value: {{ .Values.config.mgmt.otel.protocol | quote }}
+            - name: MCP__MGMT__OTEL__SAMPLE_RATE
+              value: {{ .Values.config.mgmt.otel.sampleRate | quote }}
+          {{- end }}
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: mgmt
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: mgmt
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: config
+              mountPath: /home/mcp/config.yaml
+              subPath: config.yaml
+            {{- if eq .Values.secret.provider "gcp" }}
+            - name: secrets
+              mountPath: /mnt/secrets
+              readOnly: true
+            {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              mountPath: /home/mcp/downloads
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: config
+          configMap:
+            name: {{ include "sonarqube-mcp.fullname" . }}-config
+        {{- if eq .Values.secret.provider "gcp" }}
+        - name: secrets
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: {{ include "sonarqube-mcp.fullname" . }}-spc
+        {{- end }}
+        {{- if .Values.persistence.enabled }}
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "sonarqube-mcp.fullname" . }}-data
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

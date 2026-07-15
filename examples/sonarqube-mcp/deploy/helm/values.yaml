@@ -1,0 +1,203 @@
+# -- Number of replicas
+replicaCount: 1
+
+image:
+  repository: sonarqube-mcp
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations:
+    # GCP Workload Identity — bind a GCP service account to the k8s SA.
+    # iam.gke.io/gcp-service-account: sonarqube-mcp-mcp-sa@PROJECT_ID.iam.gserviceaccount.com
+  name: ""
+
+podAnnotations: {}
+podSecurityContext: {}
+securityContext: {}
+
+service:
+  type: ClusterIP
+  port: 8080
+  mgmtPort: 9991
+
+ingress:
+  nginx:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: sonarqube-mcp.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  envoy:
+    enabled: false
+    gatewayClassName: "envoy-gateway"
+    gatewayPort: 80
+    hosts:
+      - host: sonarqube-mcp.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+
+# -- Resource requests/limits for the MCP server pod
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+# -- Horizontal Pod Autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 80
+
+# -- Secret injection mechanism for auth credentials.
+#   provider: "static" = native k8s Secret (secret.static.create controls creation).
+#   provider: "gcp"    = GCP Secret Manager via CSI driver (requires GKE + SecretProviderClass).
+secret:
+  provider: "static"
+  static:
+    # -- Create the k8s Secret from the values below.
+    create: false
+    # -- Name of an externally-managed k8s Secret (only used when create is false).
+    externalName: ""
+    annotations: {}
+    # -- Static bearer token for upstream API auth.
+    bearerToken: ""
+    # -- Static cookie for upstream API auth.
+    cookieToken: ""
+    # -- OIDC client secret (used with config.auth.backend.oidc).
+    oidcClientSecret: ""
+    # -- LDAP bind password (used with config.auth.backend.ldap).
+    ldapBindPassword: ""
+  gcp:
+    # -- GCP project ID where the Secret Manager secret lives.
+    projectId: ""
+    # -- Secret Manager secret ID (the secret resource name, not the full path).
+    secretId: ""
+    # -- Path to the GCP service account key file (mounted via k8s Secret).
+    # Set to empty string to rely on Workload Identity.
+    credentialsFile: ""
+
+# -- MCP server configuration (mounted as ConfigMap)
+config:
+  auth:
+    # -- Frontend (inbound): validates bearer tokens presented by MCP clients
+    # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
+    # Only enforced on the http transport.
+    frontend:
+      oidc:
+        enabled: false
+        issuer: ""
+        jwksUri: ""
+        # -- Expected JWT "aud" claim; also published as the RFC 9728
+        # protected-resource identifier at /.well-known/oauth-protected-resource.
+        audience: ""
+        # -- When true, validated frontend JWT claims (sub, email) are forwarded
+        # upstream as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+        enableClientTokenClaimForward: true
+        # -- Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+        additionalClientTokenClaimForward: []
+        # e.g. ["given_name", "family_name", "preferred_username"]
+    # -- Backend (outbound): credentials the server uses to call upstream APIs.
+    # Independent from frontend — an inbound token is never reused outbound.
+    backend:
+      # -- OIDC client credentials flow (machine-to-machine).
+      oidc:
+        enabled: false
+        issuer: ""
+        clientId: ""
+        scopes: "openid"
+        tokenUrl: ""
+      # -- LDAP service account bind auth (machine-to-machine).
+      # Provides Basic auth header for upstream calls using the LDAP bind identity.
+      ldap:
+        enabled: false
+        # -- LDAP server URL (ldap:// or ldaps://).
+        url: ""
+        # -- Base DN for LDAP searches.
+        baseDN: ""
+        # -- Service account DN to bind with.
+        bindDN: ""
+        # -- If true, skip TLS certificate verification (ldaps only).
+        insecureSkipVerify: false
+        # -- Timeout for LDAP operations in seconds.
+        timeout: 10
+  tools:
+    registerAllByDefault: false
+    includes: []
+    excludes: []
+  mgmt:
+    enabled: true
+    otel:
+      enabled: false
+      endpoint: ""
+      protocol: "grpc"
+      sampleRate: 1.0
+    metrics:
+      enabled: true
+      prometheus: true
+  upstream:
+    endpoint: ""
+    enableMCPSessionForwarding: true
+  runtime:
+    downloadDir: ""
+    logAuthorization: false
+
+  # -- Virtual tools pipeline definitions.
+  # Each virtual tool has: name, description, inputSchema, and pipeline.
+  virtualTools: []
+  # Example:
+  # virtualTools:
+  #   - name: virt_chain
+  #     description: Chain multiple tool calls
+  #     inputSchema:
+  #       type: object
+  #       properties:
+  #         name:
+  #           type: string
+  #       required:
+  #         - name
+  #     pipeline:
+  #       - id: step1
+  #         kind: call
+  #         spec:
+  #           tool: SomeTool
+  #           args: {}
+  #       - id: done
+  #         kind: return
+  #         spec:
+  #           from: $step1
+
+# -- Persistence (PVC) for download files / cache.
+# Set storageClassName for cloud CSI drivers:
+#   GCP: standard-rwo
+#   AWS: gp3
+persistence:
+  enabled: false
+  storageClassName: ""
+  size: 1Gi
+  accessMode: ReadWriteOnce
+  annotations: {}
+
+# -- Node selector for pod assignment
+nodeSelector: {}
+
+# -- Tolerations for pod assignment
+tolerations: []
+
+# -- Affinity for pod assignment
+affinity: {}
