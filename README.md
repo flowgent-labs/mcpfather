@@ -541,8 +541,8 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 For questions, suggestions, or support:
 
-- **GitHub Issues**: [Create an issue](../../{{ .BinaryName }}/issues)
-- **Discussions**: [Start a discussion](../../{{ .BinaryName }}/discussions)
+- **GitHub Issues**: [Create an issue](https://github.com/flowgent-labs/issues)
+- **Discussions**: [Start a discussion](https://github.com/flowgent-labs/discussions)
 - **Email**: <jameswong1376@gmail.com>
 
 ## Acknowledgments
