@@ -514,14 +514,24 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 - [Nexus Repository API reference](https://help.sonatype.com/en/api-reference.html)
 - [nexus-repository-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json)
 
-### Sonarqube (*Not support swagger*)
+### Sonarqube (*Non Swagger Schema*)
 
 - [SonarQube API (Schema) - Recommends](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
     - It need use tool to convert ([sonarqube-convert-webservice-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-webservice-to-oas.py)) to OAS format from [sonarqube webservices schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
-- [SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)
-- [SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)
-- [sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)
-- [go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)
+- ~~[SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)~~
+- ~~[SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)~~
+- ~~[sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)~~
+- ~~[go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)~~
+
+### Github
+
+- [Github RESTful APIs OAS schemas](https://github.com/github/rest-api-description/blob/main/descriptions-next)
+    - [ghes-3.21.json](https://raw.githubusercontent.com/github/rest-api-description/refs/heads/main/descriptions-next/ghes-3.21/ghes-3.21.json)
+    - Or you can also directly use the [Github MCP server]()
+
+### Telegram (*Non Swagger Schema*)
+
+- [Telegram APIs json schema](https://core.telegram.org/schema/json)
 
 ## License
 
