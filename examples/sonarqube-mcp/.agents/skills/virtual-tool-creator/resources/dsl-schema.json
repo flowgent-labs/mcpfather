@@ -1,0 +1,613 @@
+{
+  "$defs": {
+    "AuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "backend": {
+          "$ref": "#/$defs/BackendAuthConfig"
+        },
+        "frontend": {
+          "$ref": "#/$defs/FrontendAuthConfig"
+        }
+      },
+      "type": "object"
+    },
+    "BackendAuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "ldap": {
+          "$ref": "#/$defs/LDAPConfig"
+        },
+        "oidc": {
+          "$ref": "#/$defs/BackendOIDCConfig"
+        },
+        "static": {
+          "$ref": "#/$defs/StaticAuthConfig"
+        }
+      },
+      "type": "object"
+    },
+    "BackendOIDCConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "client_id": {
+          "type": "string"
+        },
+        "client_secret": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "grant_type": {
+          "type": "string"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "password": {
+          "type": "string"
+        },
+        "scopes": {
+          "type": "string"
+        },
+        "token_url": {
+          "type": "string"
+        },
+        "username": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "CallSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "args": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "parse": {
+          "type": "string"
+        },
+        "tool": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "args"
+      ],
+      "type": "object"
+    },
+    "Config": {
+      "additionalProperties": false,
+      "properties": {
+        "auth": {
+          "$ref": "#/$defs/AuthConfig"
+        },
+        "mgmt": {
+          "$ref": "#/$defs/MgmtConfig"
+        },
+        "nativeTools": {
+          "$ref": "#/$defs/ToolsConfig"
+        },
+        "runtime": {
+          "$ref": "#/$defs/RuntimeConfig"
+        },
+        "upstream": {
+          "$ref": "#/$defs/UpstreamConfig"
+        }
+      },
+      "type": "object"
+    },
+    "EmitSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "vars": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "ForeachSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "as": {
+          "type": "string"
+        },
+        "concurrency": {},
+        "in": {
+          "type": "string"
+        },
+        "onMissing": {
+          "type": "string"
+        },
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "preserveOrder": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "in",
+        "as",
+        "pipeline"
+      ],
+      "type": "object"
+    },
+    "FrontendAuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "oidc": {
+          "$ref": "#/$defs/FrontendOIDCConfig"
+        }
+      },
+      "type": "object"
+    },
+    "FrontendOIDCConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "additional_client_token_claim_forward": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "audience": {
+          "type": "string"
+        },
+        "enable_client_token_claim_forward": {
+          "type": "boolean"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "issuer": {
+          "type": "string"
+        },
+        "jwks_uri": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "JQSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "vars": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "expr"
+      ],
+      "type": "object"
+    },
+    "LDAPConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_dn": {
+          "type": "string"
+        },
+        "bind_dn": {
+          "type": "string"
+        },
+        "bind_password": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "insecure_skip_verify": {
+          "type": "boolean"
+        },
+        "timeout": {
+          "type": "integer"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "MetricsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "export_interval": {
+          "type": "string"
+        },
+        "histogram_boundaries": {
+          "additionalProperties": {
+            "items": {
+              "type": "number"
+            },
+            "type": "array"
+          },
+          "type": "object"
+        },
+        "labels": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "prometheus": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "MgmtConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "host": {
+          "type": "string"
+        },
+        "metrics": {
+          "$ref": "#/$defs/MetricsConfig"
+        },
+        "otel": {
+          "$ref": "#/$defs/OtelConfig"
+        },
+        "port": {
+          "type": "integer"
+        },
+        "pprof": {
+          "$ref": "#/$defs/PprofConfig"
+        }
+      },
+      "type": "object"
+    },
+    "OtelConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "protocol": {
+          "type": "string"
+        },
+        "sample_rate": {
+          "type": "number"
+        },
+        "timeout": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "PprofConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "server_bind": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "RequireConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "field": {
+          "type": "string"
+        },
+        "message": {
+          "type": "string"
+        },
+        "nonEmpty": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ReturnSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "expr": {
+          "type": "string"
+        },
+        "from": {
+          "type": "string"
+        },
+        "vars": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
+    "RuntimeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "download_dir": {
+          "type": "string"
+        },
+        "log_authorization": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "StaticAuthConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "bearer_token": {
+          "type": "string"
+        },
+        "bearer_token_file": {
+          "type": "string"
+        },
+        "cookie_token": {
+          "type": "string"
+        },
+        "cookie_token_file": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "call"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/CallSpec"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "jq"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/JQSpec"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "foreach"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/ForeachSpec"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "return"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/ReturnSpec"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "emit"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "spec": {
+                "$ref": "#/$defs/EmitSpec"
+              }
+            }
+          }
+        }
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "call",
+            "jq",
+            "foreach",
+            "return",
+            "emit"
+          ],
+          "type": "string"
+        },
+        "require": {
+          "$ref": "#/$defs/RequireConfig"
+        },
+        "spec": {}
+      },
+      "required": [
+        "id",
+        "kind",
+        "spec"
+      ],
+      "type": "object"
+    },
+    "ToolsConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "expose": {
+          "$ref": "#/$defs/ToolsExposeConfig"
+        }
+      },
+      "type": "object"
+    },
+    "ToolsExposeConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "excludes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "includes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "register_all_tools_by_default": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "UpstreamConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enable_mcp_session_forward": {
+          "type": "boolean"
+        },
+        "endpoint": {
+          "type": "string"
+        },
+        "tools": {
+          "items": {
+            "$ref": "#/$defs/UpstreamToolConfig"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "UpstreamToolConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "VirtualTool": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "inputSchema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pipeline": {
+          "items": {
+            "$ref": "#/$defs/Step"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "inputSchema",
+        "pipeline"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://mcpfather/schemas/mcp-server-config",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": true,
+  "description": "Schema for mcpfather MCP server configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs in mcpconfig + mcpvirtual/config + mcpvirtual/pipeline.",
+  "properties": {
+    "auth": {
+      "$ref": "#/$defs/AuthConfig"
+    },
+    "mgmt": {
+      "$ref": "#/$defs/MgmtConfig"
+    },
+    "nativeTools": {
+      "$ref": "#/$defs/ToolsConfig"
+    },
+    "runtime": {
+      "$ref": "#/$defs/RuntimeConfig"
+    },
+    "upstream": {
+      "$ref": "#/$defs/UpstreamConfig"
+    },
+    "virtualTools": {
+      "items": {
+        "$ref": "#/$defs/VirtualTool"
+      },
+      "minItems": 1,
+      "type": "array"
+    }
+  },
+  "title": "MCPServerConfig",
+  "type": "object"
+}
