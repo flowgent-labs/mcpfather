@@ -1,0 +1,376 @@
+# Environment variables with MCP__ prefix override these values.
+# e.g. MCP__AUTH__BACKEND__OIDC__CLIENT_ID overrides auth.backend.oidc.client_id
+
+# ---- Upstream API endpoint ----
+upstream:
+  endpoint: ""               # upstream API base URL (e.g. https://api.example.com)
+  # When true, the MCP session ID is forwarded as X-MCP-Session-ID header.
+  enable_mcp_session_forward: true
+
+# ---- Runtime settings ----
+runtime:
+  download_dir: ""             # override download directory for binary responses
+  log_authorization: false     # set true to print Authorization header values in logs
+
+# ---- Management Endpoints (metrics, tracing, pprof) ----
+mgmt:
+  enabled: true
+  host: 0.0.0.0
+  port: 9991
+  pprof:
+    enabled: false
+    server_bind: 0.0.0.0:6669
+  otel:
+    enabled: false
+    endpoint: localhost:4317
+    protocol: grpc             # grpc | http/protobuf | http/json
+    timeout: 10000             # connection timeout in milliseconds
+    sample_rate: 1.0           # 0.0–1.0 trace sampling ratio
+  metrics:
+    enabled: true
+    prometheus: true
+    export_interval: 30s
+    histogram_boundaries:
+      task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+    labels: {}                 # static labels added to every metric
+
+# ---- Authentication ----
+# frontend = inbound: validates bearer tokens presented by MCP clients (AI agents).
+# backend  = outbound: credentials the server uses to call upstream APIs.
+# The two are independent — the inbound token is never reused outbound
+# (see MCP Authorization spec: Token Passthrough Prohibition).
+auth:
+  frontend:
+    # Standard OAuth 2.1 / OIDC JWT bearer validation (Resource Server role, RFC 9728).
+    # Only enforced on the http transport; stdio has no network boundary.
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://idp.example.com/realms/myrealm
+      jwks_uri: ""          # optional override (auto-discovered from issuer if empty)
+      audience: ""          # expected JWT "aud" claim; also published as the RFC 9728 protected-resource identifier
+      # When true, validated frontend JWT claims (sub, email) are forwarded upstream
+      # as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
+      enable_client_token_claim_forward: true
+      # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
+      # e.g. ["given_name", "family_name", "preferred_username"]
+      # additional_client_token_claim_forward: []
+
+  backend:
+    # OIDC client credentials flow (machine-to-machine)
+    oidc:
+      enabled: false
+      issuer: ""            # e.g. https://keycloak.example.com/realms/myrealm
+      client_id: ""
+      client_secret: ""
+      scopes: "openid"       # space-separated scope list
+      token_url: ""          # optional override (auto-discovered from issuer if empty)
+
+    # LDAP service account bind (machine-to-machine)
+    ldap:
+      enabled: false
+      url: ""               # ldap:// or ldaps:// server URL
+      base_dn: ""
+      bind_dn: ""
+      bind_password: ""
+      insecure_skip_verify: false
+      timeout: 10            # connection timeout in seconds
+
+    # Static credentials for legacy / simple APIs
+    static:
+      bearer_token: ""       # static Bearer token
+      bearer_token_file: ""   # path to file containing bearer token (K8s secrets)
+      cookie_token: ""        # static cookie (e.g. JSESSIONID for legacy systems)
+      cookie_token_file: ""   # path to file containing cookie token (K8s secrets)
+
+# ---- Native MCP Tools ----
+nativeTools:
+  expose:
+    # When true, all native tools are registered by default
+    # (individual tools can be hidden via excludes).
+    # When false (the default), only tools listed in includes
+    # are exposed.
+    register_all_tools_by_default: false
+
+    # Explicitly expose these tools (operationId values).
+    # Takes precedence: tools listed here are always exposed,
+    # even if register_all_tools_by_default is false.
+    includes:
+      - GetIssuesList
+      - GetIssuesSearch
+      - GetSourcesIssueSnippets
+      - GetComponentsShow
+      - GetProjectsExportFindings
+      - GetQualityProfilesSearch
+      - GetQualityProfilesShow
+
+    # Explicitly hide these tools from external agents (operationId values).
+    # Takes precedence over register_all_tools_by_default.
+    # A tool listed in BOTH includes and excludes will cause
+    # the server to fail at startup.
+    excludes: []
+
+# ---- Virtual Tools ----
+# Compose multiple native tools into a single virtual tool via a declarative
+# e.g: 5-step pipeline (call → jq → foreach → emit → return).
+# Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+virtualTools:
+  # ---- get_newcode_issues --------------------------------------------------
+  - name: get_newcode_issues
+    enabled: true
+    description: |
+      Get all issues for new/changed code in a pull request on a branch,
+      optionally filtered by source file path. Returns minimal fields +
+      code snippet lines to conserve AI agent tokens.
+    inputSchema:
+      type: object
+      required: [projectKey, branch, pullRequest]
+      properties:
+        projectKey:
+          type: string
+          description: SonarQube project key (e.g., rengine).
+        branch:
+          type: string
+          description: Git branch name (e.g., main).
+        pullRequest:
+          type: string
+          description: Pull request ID.
+        component:
+          type: string
+          default: ""
+          description: Optional file path filter. Full SonarQube component key (e.g., "rengine:src/main/java/Foo.java") or relative path under project.
+        limit:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+        snippetConcurrency:
+          type: integer
+          default: 6
+          minimum: 1
+          maximum: 16
+    pipeline:
+      - id: opts
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              scope: (if (.component // "") != "" then .component else .projectKey end),
+              limit: (.limit // 50),
+              snippetConcurrency: (.snippetConcurrency // 6)
+            }
+      - id: rawIssues
+        kind: call
+        spec:
+          tool: GetIssuesSearch
+          parse: json
+          args:
+            components: $opts.scope
+            branch: $input.branch
+            pullRequest: $input.pullRequest
+            types: "CODE_SMELL,BUG,VULNERABILITY"
+            resolved: "false"
+            ps: $opts.limit
+        require:
+          field: "issues"
+          nonEmpty: true
+          message: No issues found for the given project, branch and pull request.
+      - id: enriched
+        kind: foreach
+        spec:
+          in: $rawIssues.issues
+          as: issue
+          onMissing: skip
+          concurrency: $opts.snippetConcurrency
+          preserveOrder: true
+          pipeline:
+            - id: snippet
+              kind: call
+              spec:
+                tool: GetSourcesIssueSnippets
+                parse: json
+                args:
+                  issueKey: $issue.key
+            - id: emitMinimal
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  snippet: $snippet
+                expr: |
+                  {
+                    key,
+                    rule,
+                    severity,
+                    type,
+                    message,
+                    component,
+                    startLine: (.textRange.startLine // .line),
+                    endLine: (.textRange.endLine // .line),
+                    debt,
+                    codeSnippet: [
+                      ($snippet | .[] | .sources[]?)
+                      | {
+                          lineNumber: .line,
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          )
+                        }
+                    ]
+                  }
+      - id: done
+        kind: return
+        spec:
+          from: $enriched
+          vars:
+            project: $input.projectKey
+            branch: $input.branch
+            pullRequest: $input.pullRequest
+            total: $rawIssues.total
+          expr: |
+            {
+              project: $project,
+              branch: $branch,
+              pullRequest: $pullRequest,
+              summary: {
+                total: $total,
+                returned: length
+              },
+              issues: .
+            }
+
+  # ---- get_overall_issues ---------------------------------------------------
+  - name: get_overall_issues
+    enabled: true
+    description: |
+      Get all open issues for a project on a branch, optionally filtered
+      by source file path. Returns minimal fields + code snippet lines
+      to conserve AI agent tokens.
+    inputSchema:
+      type: object
+      required: [projectKey, branch]
+      properties:
+        projectKey:
+          type: string
+          description: SonarQube project key (e.g., rengine).
+        branch:
+          type: string
+          description: Git branch name (e.g., main).
+        component:
+          type: string
+          default: ""
+          description: Optional file path filter. Full SonarQube component key (e.g., "rengine:src/main/java/Foo.java") or relative path under project.
+        limit:
+          type: integer
+          default: 50
+          minimum: 1
+          maximum: 500
+        newCodeOnly:
+          type: boolean
+          default: false
+        snippetConcurrency:
+          type: integer
+          default: 6
+          minimum: 1
+          maximum: 16
+    pipeline:
+      - id: opts
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              scope: (if (.component // "") != "" then .component else .projectKey end),
+              limit: (.limit // 50),
+              newCodeOnly: (.newCodeOnly // false),
+              snippetConcurrency: (.snippetConcurrency // 6)
+            }
+      - id: rawIssues
+        kind: call
+        spec:
+          tool: GetIssuesSearch
+          parse: json
+          args:
+            components: $opts.scope
+            branch: $input.branch
+            types: "CODE_SMELL,BUG,VULNERABILITY"
+            resolved: "false"
+            inNewCodePeriod: $opts.newCodeOnly
+            ps: $opts.limit
+        require:
+          field: "issues"
+          nonEmpty: true
+          message: No issues found for the given project and branch.
+      - id: enriched
+        kind: foreach
+        spec:
+          in: $rawIssues.issues
+          as: issue
+          onMissing: skip
+          concurrency: $opts.snippetConcurrency
+          preserveOrder: true
+          pipeline:
+            - id: snippet
+              kind: call
+              spec:
+                tool: GetSourcesIssueSnippets
+                parse: json
+                args:
+                  issueKey: $issue.key
+            - id: emitMinimal
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  snippet: $snippet
+                expr: |
+                  {
+                    key,
+                    rule,
+                    severity,
+                    type,
+                    message,
+                    component,
+                    startLine: (.textRange.startLine // .line),
+                    endLine: (.textRange.endLine // .line),
+                    debt,
+                    codeSnippet: [
+                      ($snippet | .[] | .sources[]?)
+                      | {
+                          lineNumber: .line,
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          )
+                        }
+                    ]
+                  }
+      - id: done
+        kind: return
+        spec:
+          from: $enriched
+          vars:
+            project: $input.projectKey
+            branch: $input.branch
+            total: $rawIssues.total
+          expr: |
+            {
+              project: $project,
+              branch: $branch,
+              summary: {
+                total: $total,
+                returned: length
+              },
+              issues: .
+            }
