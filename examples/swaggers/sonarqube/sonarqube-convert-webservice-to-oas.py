@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Convert SonarQube webservices JSON to OpenAPI 3.1 (or 3.0.1) specification.
-
+   refer: https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true
 Usage:
   ./sonarqube-convert-webservice-to-oas.py [--version 3.1|3.0.1] [--server-url URL] < input.json > output.json
   ./sonarqube-convert-webservice-to-oas.py [--version 3.1|3.0.1] [--server-url URL] -i input.json -o output.json
