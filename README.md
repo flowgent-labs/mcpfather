@@ -465,16 +465,16 @@ The official Docker image is published to GitHub Container Registry on every rel
 
 ```sh
 # Install a generated MCP server from the ghcr.io image
-helm install my-mcp-server ./deploy/helm \
-  --set image.repository=ghcr.io/flowgent-labs/mcpfather \
+helm upgrade --install --create-namespace \
+  my-mcp-server ./deploy/helm \
+  --set image.repository=ghcr.io/<YOUR_ORG>/my-mcp-server \
   --set image.tag=v1.0.0 \
   --set config.upstream.endpoint=https://api.example.com \
   --set config.auth.backend.static.create=true \
-  --set config.auth.backend.static.bearerToken=your-token
+  --set config.auth.backend.static.bearerToken=<YOUR_TOKEN>
 ```
 
-Images are automatically built and pushed to
-[ghcr.io/flowgent-labs/mcpfather](https://github.com/flowgent-labs/mcpfather/pkgs/container/mcpfather)
+Images are automatically built and pushed to e.g: `ghcr.io/<YOUR_ORG>/my-mcp-server`
 on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 
 ## References swaggers
