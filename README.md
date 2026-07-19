@@ -514,12 +514,12 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 - [Nexus Repository API reference](https://help.sonatype.com/en/api-reference.html)
 - [nexus-repository-api.json (latest)](https://sonatype.github.io/sonatype-documentation/api/nexus-repository/latest/nexus-repository-api.json)
 
-### Sonarqube (*Non Swagger Schema*)
+### Sonarqube
 
-- [SonarQube API (Schema) - Recommends](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
-    - It need use tool to convert ([sonarqube-convert-webservice-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-webservice-to-oas.py)) to OAS format from [sonarqube webservices schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
+- [SonarQube APIs official schema - (*No Native Swagger format*)](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
+    - You can use this tool convert ([sonarqube-convert-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-to-oas.py)) to OAS format from [Sonarqube official schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
 - ~~[SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)~~
-- ~~[SonarQube API (Schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)~~
+- ~~[SonarQube API (custom schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)~~
 - ~~[sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)~~
 - ~~[go-sonarqube-mcp-server - @Deprecated](https://github.com/flowgent-labs/go-sonarqube-mcp-server) (enhanced go edition based on official above)~~
 
@@ -527,11 +527,12 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 
 - [Github RESTful APIs OAS schemas](https://github.com/github/rest-api-description/blob/main/descriptions-next)
     - [ghes-3.21.json](https://raw.githubusercontent.com/github/rest-api-description/refs/heads/main/descriptions-next/ghes-3.21/ghes-3.21.json)
-    - Or you can also directly use the [Github MCP server]()
+    - Or you can also deploy the [Local official Github MCP server](https://github.com/github/github-mcp-server#local-github-mcp-server)
 
-### Telegram (*Non Swagger Schema*)
+### Telegram
 
-- [Telegram APIs json schema](https://core.telegram.org/schema/json)
+- [Telegram APIs official schema - (*No Native Swagger format*)](https://core.telegram.org/schema/json)
+    - You can use this tool convert ([telegram-convert-to-oas.py](examples/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](examples/swaggers/telegram/telegram-v20260715.schema.json).
 
 ## License
 
