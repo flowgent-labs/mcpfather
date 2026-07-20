@@ -200,16 +200,6 @@ func printDefaultConfigYAML() {
 	fmt.Println("      scopes: \"openid\"       # space-separated scope list")
 	fmt.Println("      token_url: \"\"          # optional override (auto-discovered from issuer if empty)")
 	fmt.Println()
-	fmt.Println("    # LDAP service account bind (machine-to-machine)")
-	fmt.Println("    ldap:")
-	fmt.Println("      enabled: false")
-	fmt.Println("      url: \"\"               # ldap:// or ldaps:// server URL")
-	fmt.Println("      base_dn: \"\"")
-	fmt.Println("      bind_dn: \"\"")
-	fmt.Println("      bind_password: \"\"")
-	fmt.Println("      insecure_skip_verify: false")
-	fmt.Println("      timeout: 10            # connection timeout in seconds")
-	fmt.Println()
 	fmt.Println("    # Static credentials for legacy / simple APIs")
 	fmt.Println("    static:")
 	fmt.Println("      bearer_token: \"\"       # static Bearer token")
@@ -268,9 +258,7 @@ func main() {
 
 	// Initialize backend (outbound) credential managers (no-op if disabled)
 	mcputils.InitOIDC(cfg.Auth.Backend.OIDC)
-	mcputils.InitLDAP(cfg.Auth.Backend.LDAP)
 	defer mcputils.ShutdownOIDC()
-	defer mcputils.ShutdownLDAP()
 
 	mcputils.SetVerbosity(*verbose)
 

@@ -6,7 +6,6 @@
 [![OpenAPI](https://img.shields.io/badge/spec-OpenAPI%202%20%7C%203-6C8EBF)](https://www.openapis.org/)
 [![MCP](https://img.shields.io/badge/protocol-MCP-blue)](https://modelcontextprotocol.io/)
 [![OIDC](https://img.shields.io/badge/auth-OIDC-CB3837?logo=openid)](https://openid.net/connect/)
-[![LDAP](https://img.shields.io/badge/auth-LDAP-FF8300)](https://ldap.com/)
 [![Prometheus](https://img.shields.io/badge/metrics-Prometheus-E6522C?logo=prometheus)](https://prometheus.io/)
 [![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
 [![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
@@ -17,7 +16,7 @@
 
 - **OAS 2.x / 3.x support** — JSON or YAML, one-command generation. Every OpenAPI operation becomes a typed MCP tool with structured input/output schemas.
 - **Virtual Tools** — Declaratively compose native tools into pipelines (e.g `call → jq → foreach → emit → return`). Drastically reduces LLM token consumption for multi-step API workflows.
-- **Enterprise Auth** — Frontend OIDC JWT bearer validation (RFC 9728 Resource Server), plus backend OIDC (client credentials + password grants), LDAP service-account bind, and static bearer/cookie tokens for upstream APIs. Frontend and backend credentials are fully decoupled per the MCP Token Passthrough Prohibition.
+- **Enterprise Auth** — Frontend OIDC JWT bearer validation (RFC 9728 Resource Server), plus backend OIDC (client credentials + password grants), and static bearer/cookie tokens for upstream APIs. Frontend and backend credentials are fully decoupled per the MCP Token Passthrough Prohibition.
 - **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
 - **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
 - **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
@@ -179,7 +178,6 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 |---|---|---|---|
 | **Frontend** | `auth.frontend.oidc` | `MCP__AUTH__FRONTEND__OIDC__*` | Validates AI agent bearer tokens (inbound) |
 | **Backend OIDC** | `auth.backend.oidc` | `MCP__AUTH__BACKEND__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
-| **Backend LDAP** | `auth.backend.ldap` | `MCP__AUTH__BACKEND__LDAP__*` | Server's own LDAP service-account bind for upstream APIs |
 | **Backend Static** | `auth.backend.static` | `MCP__AUTH__BACKEND__STATIC__*` | Server's own static token/cookie for upstream APIs |
 
 > The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
@@ -202,10 +200,6 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET` | OIDC client secret for upstream authentication |
 | `MCP__AUTH__BACKEND__OIDC__ISSUER` | OIDC issuer for upstream token acquisition |
 | `MCP__AUTH__BACKEND__OIDC__SCOPES` | OIDC scopes (default: `openid`) |
-| `MCP__AUTH__BACKEND__LDAP__URL` | LDAP server URL for upstream bind |
-| `MCP__AUTH__BACKEND__LDAP__BASE_DN` | LDAP base DN |
-| `MCP__AUTH__BACKEND__LDAP__BIND_DN` | LDAP bind DN for service account |
-| `MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD` | LDAP bind password for service account |
 | `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN` | Static bearer token for upstream auth |
 | `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token |
 | `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
@@ -217,8 +211,7 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 > The server tries to obtain an upstream Bearer token in this order:
 
 1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
-2. **LDAP** service account bind — `Basic` header (`auth.backend.ldap.*`)
-3. **Static** bearer token (`auth.backend.static.bearer_token` or `bearer_token_file`)
+2. **Static** bearer token (`auth.backend.static.bearer_token` or `bearer_token_file`)
 
 The AI agent's own Authorization header is deliberately excluded from upstream forwarding (MCP spec: Token Passthrough Prohibition).
 

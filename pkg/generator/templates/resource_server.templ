@@ -23,7 +23,7 @@ import (
 // Authorization spec (2025-06-18) and RFC 9728 (OAuth 2.0 Protected Resource
 // Metadata). MCP clients (AI agents) are always modern systems capable of
 // standard OIDC, so only JWT bearer validation is supported here — no
-// RFC 7662 introspection, no static shared secrets, no legacy Basic/LDAP.
+// RFC 7662 introspection, no static shared secrets, no legacy Basic auth.
 //
 // This is intentionally decoupled from the backend (outbound) credentials in
 // auth.go: a validated inbound token is NEVER reused as the upstream

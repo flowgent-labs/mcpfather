@@ -22,7 +22,7 @@ We aim to acknowledge reports within 48 hours and provide an initial assessment 
 ### Scope
 
 - The MCP server's authentication and authorization mechanisms
-- Token handling, credential forwarding, and OIDC/LDAP interaction
+- Token handling, credential forwarding, and OIDC interaction
 - Configuration injection and secret management
 - Dependency supply chain vulnerabilities
 

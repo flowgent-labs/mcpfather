@@ -9,6 +9,8 @@ BUILD_DATE := $(shell date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || echo "unknown")
 LDFLAGS := -ldflags "-s -w -X main.versionStr=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildDate=$(BUILD_DATE)"
 BUILD_FLAGS := -v -trimpath
 
+GOPROXY ?= https://goproxy.cn,direct
+
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
@@ -32,24 +34,24 @@ help:
 	@echo ""
 
 build:
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) $(CMD_PATH)
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-all:
-	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   $(CMD_PATH)
-	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   $(CMD_PATH)
-	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  $(CMD_PATH)
-	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  $(CMD_PATH)
-	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe $(CMD_PATH)
-	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe $(CMD_PATH)
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe $(CMD_PATH)
 
 test: test-unit
 
 test-unit:
-	go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
+	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
 test-integration:
-	go test -v -count=1 -timeout 600s ./it/...
+	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 600s ./it/...
 
 install:
 	go install $(BUILD_FLAGS) $(LDFLAGS) $(CMD_PATH)
