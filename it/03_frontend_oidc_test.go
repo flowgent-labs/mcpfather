@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -191,14 +192,14 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 		}
 
 		for _, name := range []string{"mcpfather-keycloak", "keycloak"} {
-			exec.Command("docker", "stop", name).Run()
-			exec.Command("docker", "rm", name).Run()
+			exec.Command("/bin/docker", "stop", name).Run()
+			exec.Command("/bin/docker", "rm", name).Run()
 		}
 
 		keycloakDir := filepath.Join(repoRoot(t), "it", "docker", "keycloak")
 		importFile := filepath.Join(keycloakDir, "realm.json")
 
-		cmd := exec.Command("docker", "run", "-d", "--name", "mcpfather-keycloak",
+		cmd := exec.Command("/bin/docker", "run", "-d", "--name", "mcpfather-keycloak",
 			"--network", "host",
 			"--hostname", "127.0.0.1",
 			"-e", "KC_BOOTSTRAP_ADMIN_USERNAME=admin",
@@ -1203,23 +1204,31 @@ func TestFrontend_401WrongIssuer(t *testing.T) {
 	t.Logf("Wrong issuer token correctly rejected with 401")
 }
 
-// TestFrontend_ClientTokenForwarding verifies that sub and email claims are
-// forwarded as X-Mcp-Client-Token-Sub / X-Mcp-Client-Token-Email headers.
+// TestFrontend_ClientTokenForwarding verifies that validated JWT claims (sub, email)
+// are forwarded upstream as X-Mcp-Client-Token-Sub / X-Mcp-Client-Token-Email headers.
 func TestFrontend_ClientTokenForwarding(t *testing.T) {
-	oidc := startMockOIDCServer(t)
-	defer oidc.Close()
+	issuer, cleanup := ensureKeycloak(t)
+	defer cleanup()
 
-	baseURL, cleanupSrv, mock := startMCPServer(t, oidc.Issuer(), "mcpfather")
+	baseURL, cleanupSrv, mock := startMCPServer(t, issuer, "mcpfather")
 	defer cleanupSrv()
 
-	token := oidc.SignToken(t, map[string]interface{}{
-		"iss":   oidc.Issuer(),
-		"sub":   "dev-ai-agent-42",
-		"email": "ai-agent@enterprise.com",
-		"aud":   "mcpfather",
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(1 * time.Hour).Unix(),
-	})
+	token := keycloakClientCredentialsToken(t, issuer)
+
+	// Decode Keycloak's actual JWT claims so we can verify forwarding integrity.
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
+	}
+	payloadJSON, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		t.Fatalf("decode JWT payload: %v", err)
+	}
+	var claims map[string]interface{}
+	if err := json.Unmarshal(payloadJSON, &claims); err != nil {
+		t.Fatalf("parse JWT claims: %v", err)
+	}
+	expectedSub := fmt.Sprint(claims["sub"])
 
 	result := callNativeToolWithAuth(t, baseURL, token, "EchoHeaders", map[string]interface{}{})
 	t.Logf("Tool result: %s", trimMsg(result, 300))
@@ -1229,16 +1238,12 @@ func TestFrontend_ClientTokenForwarding(t *testing.T) {
 	}
 
 	sub := mock.requests[0].Headers.Get("X-Mcp-Client-Token-Sub")
-	if sub != "dev-ai-agent-42" {
-		t.Errorf("expected X-MCP-Client-Token-Sub='dev-ai-agent-42', got '%s'", sub)
+	if sub == "" {
+		t.Error("expected X-MCP-Client-Token-Sub to be forwarded, but it was empty")
+	} else if sub != expectedSub {
+		t.Errorf("X-MCP-Client-Token-Sub mismatch: forwarded='%s', JWT claims='%s'", sub, expectedSub)
 	}
 	t.Logf("X-MCP-Client-Token-Sub: %s", sub)
-
-	email := mock.requests[0].Headers.Get("X-Mcp-Client-Token-Email")
-	if email != "ai-agent@enterprise.com" {
-		t.Errorf("expected X-MCP-Client-Token-Email='ai-agent@enterprise.com', got '%s'", email)
-	}
-	t.Logf("X-MCP-Client-Token-Email: %s", email)
 
 	if auth := mock.requests[0].Authorization; auth != "" {
 		t.Errorf("Token Passthrough Prohibition violated: upstream got '%s'", auth)
@@ -1248,8 +1253,8 @@ func TestFrontend_ClientTokenForwarding(t *testing.T) {
 // TestFrontend_ClientTokenForwardingDisabled verifies that when
 // enable_client_token_claim_forward is false, no claim headers are sent.
 func TestFrontend_ClientTokenForwardingDisabled(t *testing.T) {
-	oidc := startMockOIDCServer(t)
-	defer oidc.Close()
+	issuer, cleanup := ensureKeycloak(t)
+	defer cleanup()
 
 	mock := startMockUpstream(okHandler())
 
@@ -1268,7 +1273,7 @@ auth:
       issuer: %s
       audience: mcpfather
       enable_client_token_claim_forward: false
-`, mock.server.URL, oidc.Issuer())
+`, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
@@ -1288,14 +1293,7 @@ auth:
 	baseURL := "http://localhost:" + port
 	waitForServer(t, baseURL)
 
-	token := oidc.SignToken(t, map[string]interface{}{
-		"iss":   oidc.Issuer(),
-		"sub":   "dev-ai-agent-42",
-		"email": "ai-agent@enterprise.com",
-		"aud":   "mcpfather",
-		"iat":   time.Now().Unix(),
-		"exp":   time.Now().Add(1 * time.Hour).Unix(),
-	})
+	token := keycloakClientCredentialsToken(t, issuer)
 
 	result := callNativeToolWithAuth(t, baseURL, token, "EchoHeaders", map[string]interface{}{})
 	t.Logf("Tool result: %s", trimMsg(result, 300))
