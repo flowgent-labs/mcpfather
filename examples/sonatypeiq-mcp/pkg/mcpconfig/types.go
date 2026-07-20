@@ -39,18 +39,17 @@ type FrontendAuthConfig struct {
 
 // FrontendOIDCConfig configures JWT bearer token validation against an OIDC issuer.
 type FrontendOIDCConfig struct {
-	Enabled                          bool     `yaml:"enabled"`
-	Issuer                           string   `yaml:"issuer"`
-	JWKSURI                          string   `yaml:"jwks_uri"`
-	Audience                         string   `yaml:"audience"`
-	EnableClientTokenClaimForward    bool     `yaml:"enable_client_token_claim_forward"`
+	Enabled                           bool     `yaml:"enabled"`
+	Issuer                            string   `yaml:"issuer"`
+	JWKSURI                           string   `yaml:"jwks_uri"`
+	Audience                          string   `yaml:"audience"`
+	EnableClientTokenClaimForward     bool     `yaml:"enable_client_token_claim_forward"`
 	AdditionalClientTokenClaimForward []string `yaml:"additional_client_token_claim_forward,omitempty"`
 }
 
 // BackendAuthConfig holds authentication settings for upstream API calls.
 type BackendAuthConfig struct {
 	OIDC   BackendOIDCConfig `yaml:"oidc"`
-	LDAP   LDAPConfig        `yaml:"ldap"`
 	Static StaticAuthConfig  `yaml:"static"`
 }
 
@@ -65,17 +64,6 @@ type BackendOIDCConfig struct {
 	TokenURL     string `yaml:"token_url"`
 	Username     string `yaml:"username"`
 	Password     string `yaml:"password"`
-}
-
-// LDAPConfig configures machine-to-machine LDAP service account bind auth.
-type LDAPConfig struct {
-	Enabled            bool   `yaml:"enabled"`
-	URL                string `yaml:"url"`
-	BaseDN             string `yaml:"base_dn"`
-	BindDN             string `yaml:"bind_dn"`
-	BindPassword       string `yaml:"bind_password"`
-	InsecureSkipVerify bool   `yaml:"insecure_skip_verify"`
-	Timeout            int    `yaml:"timeout"`
 }
 
 // StaticAuthConfig holds static credentials for legacy / simple upstream APIs.

@@ -21,7 +21,7 @@ import (
 
 // dockerAvailable checks whether the docker CLI is available.
 func dockerAvailable() bool {
-	_, err := exec.LookPath("docker")
+	_, err := exec.LookPath("/bin/docker")
 	return err == nil
 }
 
@@ -183,30 +183,8 @@ func startMockOIDCServer(t *testing.T) *mockOIDCServer {
 	}
 }
 
-func (p *mockOIDCServer) Close()                        { p.cancel(); p.cmd.Wait() }
-func (p *mockOIDCServer) Issuer() string                 { return p.issuer }
-func (p *mockOIDCServer) TokenURL() string               { return p.issuer + "/token" }
-func (p *mockOIDCServer) Audience() string               { return "mcpfather" }
-
-func (p *mockOIDCServer) Token(t *testing.T) string {
-	t.Helper()
-	body := strings.NewReader("grant_type=client_credentials&client_id=mcpfather-client&client_secret=mcpfather-secret")
-	resp, err := http.Post(p.TokenURL(), "application/x-www-form-urlencoded", body)
-	if err != nil {
-		t.Fatalf("token request failed: %v", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		AccessToken string `json:"access_token"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		t.Fatalf("decode token response: %v", err)
-	}
-	if result.AccessToken == "" {
-		t.Fatal("token response missing access_token")
-	}
-	return result.AccessToken
-}
+func (p *mockOIDCServer) Close()         { p.cancel(); p.cmd.Wait() }
+func (p *mockOIDCServer) Issuer() string { return p.issuer }
 
 func (p *mockOIDCServer) SignToken(t *testing.T, claims map[string]interface{}) string {
 	t.Helper()
@@ -232,28 +210,24 @@ func (p *mockOIDCServer) SignToken(t *testing.T, claims map[string]interface{}) 
 // Backend OIDC: token exchange & E2E tests (mock provider)
 // ---------------------------------------------------------------------------
 
-// TestOIDCTokenExchange verifies the OIDC provider issues tokens via client_credentials.
+// TestOIDCTokenExchange verifies Keycloak client_credentials token exchange.
 func TestOIDCTokenExchange(t *testing.T) {
-	oidc := startMockOIDCServer(t)
-	defer oidc.Close()
+	issuer, cleanup := ensureKeycloak(t)
+	defer cleanup()
 
-	body := strings.NewReader("grant_type=client_credentials&client_id=test-client&client_secret=test-secret&scope=openid")
-	resp, err := http.Post(oidc.TokenURL(), "application/x-www-form-urlencoded", body)
-	if err != nil {
-		t.Fatalf("token request failed: %v", err)
+	token := keycloakClientCredentialsToken(t, issuer)
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
 	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("token endpoint returned %d", resp.StatusCode)
-	}
-	t.Logf("OIDC token exchange OK (client_credentials grant via mock)")
+	t.Logf("OIDC token exchange OK (real Keycloak client_credentials grant)")
 }
 
-// TestOIDCFullE2E runs a full end-to-end test with the mock OIDC provider.
+// TestOIDCFullE2E runs a full end-to-end backend OIDC flow against real Keycloak:
+// MCP server → Keycloak token endpoint → Bearer token forwarded to upstream.
 func TestOIDCFullE2E(t *testing.T) {
-	oidc := startMockOIDCServer(t)
-	defer oidc.Close()
+	issuer, cleanup := ensureKeycloak(t)
+	defer cleanup()
 
 	mock := startMockUpstream(okHandler())
 	defer mock.Close()
@@ -275,7 +249,7 @@ auth:
 
 upstream:
   endpoint: %s
-`, oidc.Issuer(), mock.server.URL)
+`, issuer, mock.server.URL)
 	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
@@ -310,6 +284,6 @@ upstream:
 	} else if !strings.HasPrefix(auth, "Bearer ") {
 		t.Errorf("expected Bearer token, got: %s", auth)
 	} else {
-		t.Logf("Upstream received valid Bearer token from OIDC provider (len=%d)", len(auth))
+		t.Logf("Upstream received valid Bearer token from real Keycloak (len=%d)", len(auth))
 	}
 }

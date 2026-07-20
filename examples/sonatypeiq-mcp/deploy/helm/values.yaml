@@ -81,8 +81,6 @@ secret:
     cookieToken: ""
     # -- OIDC client secret (used with config.auth.backend.oidc).
     oidcClientSecret: ""
-    # -- LDAP bind password (used with config.auth.backend.ldap).
-    ldapBindPassword: ""
   gcp:
     # -- GCP project ID where the Secret Manager secret lives.
     projectId: ""
@@ -122,20 +120,6 @@ config:
         clientId: ""
         scopes: "openid"
         tokenUrl: ""
-      # -- LDAP service account bind auth (machine-to-machine).
-      # Provides Basic auth header for upstream calls using the LDAP bind identity.
-      ldap:
-        enabled: false
-        # -- LDAP server URL (ldap:// or ldaps://).
-        url: ""
-        # -- Base DN for LDAP searches.
-        baseDN: ""
-        # -- Service account DN to bind with.
-        bindDN: ""
-        # -- If true, skip TLS certificate verification (ldaps only).
-        insecureSkipVerify: false
-        # -- Timeout for LDAP operations in seconds.
-        timeout: 10
   tools:
     registerAllByDefault: false
     includes: []
