@@ -143,7 +143,7 @@ Example:
 			proxyURL = os.Getenv("HTTPS_PROXY")
 		}
 		buildEnv := append(os.Environ(),
-			"GOPROXY=https://proxy.golang.org,direct",
+			"GOPROXY=https://goproxy.cn,direct",
 			"GONOSUMCHECK=*",
 			"GOSUMDB=off",
 			"GOTOOLCHAIN=local",

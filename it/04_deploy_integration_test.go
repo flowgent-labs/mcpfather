@@ -108,7 +108,7 @@ func deployPrereqsOK(t *testing.T) (kubectl, helm, docker string) {
 	if err != nil {
 		t.Skipf("helm not found in PATH — skipping deploy test")
 	}
-	docker, err = exec.LookPath("docker")
+	docker, err = exec.LookPath("/bin/docker")
 	if err != nil {
 		t.Skipf("docker not found in PATH — skipping deploy test")
 	}

@@ -37,15 +37,6 @@ data:
           token_url: {{ .Values.config.auth.backend.oidc.tokenUrl | quote }}
           client_secret: ""   # set via MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET env (from Secret)
 
-        ldap:
-          enabled: {{ .Values.config.auth.backend.ldap.enabled }}
-          url: {{ .Values.config.auth.backend.ldap.url | quote }}
-          base_dn: {{ .Values.config.auth.backend.ldap.baseDN | quote }}
-          bind_dn: {{ .Values.config.auth.backend.ldap.bindDN | quote }}
-          bind_password: ""   # set via MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD env (from Secret)
-          insecure_skip_verify: {{ .Values.config.auth.backend.ldap.insecureSkipVerify }}
-          timeout: {{ .Values.config.auth.backend.ldap.timeout }}
-
         static:
           bearer_token: ""    # set via MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN env (from Secret)
           cookie_token: ""    # set via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN env (from Secret)

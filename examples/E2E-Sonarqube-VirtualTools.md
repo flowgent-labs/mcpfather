@@ -265,16 +265,17 @@ The same virtual tools work over the MCP HTTP transport (`StreamableHTTPServer`)
 In one terminal, start the HTTP server:
 
 ```bash
-source .env && examples/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 8080
+source .env && examples/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18888
 ```
 
-Wait for the log line `MCP server listening on :8080/mcp`.
+Wait for the log line `MCP server listening on :18888/mcp`.
 
 #### 4.6.2 Test via mcpclient.sh
 
 In another terminal, call the virtual tool through the MCP HTTP endpoint:
 
 ```bash
+export MCP_SERVER_ENDPOINT=http://localhost:18888/mcp
 source .env && ./examples/sonarqube-mcp/mcpclient.sh call get_overall_issues \
   '{"projectKey":"'$SONARQUBE_PROJECT_KEY'","branch":"'$SONARQUBE_TEST_BRANCH'","component":"'$SONARQUBE_TEST_COMPONENT'"}'
 ```
