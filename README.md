@@ -16,7 +16,7 @@
 
 - **OAS 2.x / 3.x support** — JSON or YAML, one-command generation. Every OpenAPI operation becomes a typed MCP tool with structured input/output schemas.
 - **Virtual Tools** — Declaratively compose native tools into pipelines (e.g `call → jq → foreach → emit → return`). Drastically reduces LLM token consumption for multi-step API workflows.
-- **Enterprise Auth** — Frontend OIDC JWT bearer validation (RFC 9728 Resource Server), plus backend OIDC (client credentials + password grants), and static bearer/cookie tokens for upstream APIs. Frontend and backend credentials are fully decoupled per the MCP Token Passthrough Prohibition.
+- **Enterprise Auth** — Frontend OIDC JWT bearer validation (RFC 9728 Resource Server), plus backend OIDC (client credentials + password grants), and static web/cookie tokens for upstream APIs. Frontend and backend credentials are fully decoupled per the MCP Token Passthrough Prohibition.
 - **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
 - **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
 - **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
@@ -46,11 +46,11 @@ make
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
 
 # Optional 1: setup token from env
-export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=your-token
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
-export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE=/path/to/.credentials
+export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE=/path/to/.credentials
 examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
@@ -84,7 +84,7 @@ Invoke tools directly from the command line — no MCP agent needed. Useful for 
 ```sh
 # Set your upstream endpoint (required for real API calls)
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
-export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=your-token
 
 # First call: list available tools
 examples/confluence-mcp/bin/confluence-mcp -t cli list
@@ -200,8 +200,8 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET` | OIDC client secret for upstream authentication |
 | `MCP__AUTH__BACKEND__OIDC__ISSUER` | OIDC issuer for upstream token acquisition |
 | `MCP__AUTH__BACKEND__OIDC__SCOPES` | OIDC scopes (default: `openid`) |
-| `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN` | Static bearer token for upstream auth |
-| `MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE` | Path to a file containing the bearer token |
+| `MCP__AUTH__BACKEND__STATIC__WEB_TOKEN` | Static web token for upstream auth |
+| `MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE` | Path to a file containing the web token |
 | `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
 | `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the cookie token |
 | ... | ... |
@@ -211,7 +211,7 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 > The server tries to obtain an upstream Bearer token in this order:
 
 1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
-2. **Static** bearer token (`auth.backend.static.bearer_token` or `bearer_token_file`)
+2. **Static** web token (`auth.backend.static.web_token` or `web_token_file`)
 
 The AI agent's own Authorization header is deliberately excluded from upstream forwarding (MCP spec: Token Passthrough Prohibition).
 
@@ -325,8 +325,8 @@ virtualTools:
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -346,8 +346,8 @@ virtualTools:
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -361,7 +361,7 @@ virtualTools:
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
+web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor
@@ -376,8 +376,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -395,8 +395,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "type": "remote",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -414,8 +414,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -429,7 +429,7 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
+web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -443,8 +443,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -464,7 +464,7 @@ helm upgrade --install --create-namespace \
   --set image.tag=v1.0.0 \
   --set config.upstream.endpoint=https://api.example.com \
   --set config.auth.backend.static.create=true \
-  --set config.auth.backend.static.bearerToken=<YOUR_TOKEN>
+  --set config.auth.backend.static.webToken=<YOUR_TOKEN>
 ```
 
 Images are automatically built and pushed to e.g: `ghcr.io/<YOUR_ORG>/my-mcp-server`

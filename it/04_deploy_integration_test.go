@@ -301,7 +301,7 @@ func deployCreateSecret(t *testing.T, kubectl, ns, k8sName, bearerToken, cookieT
 
 	cmd := exec.Command(kubectl, "create", "secret", "generic", secretName,
 		"-n", ns,
-		fmt.Sprintf("--from-literal=bearer_token=%s", bearerToken),
+		fmt.Sprintf("--from-literal=web_token=%s", bearerToken),
 		fmt.Sprintf("--from-literal=cookie_token=%s", cookieToken),
 		fmt.Sprintf("--from-literal=oidc_client_secret=%s", "test-oidc-secret"),
 	)
@@ -424,7 +424,7 @@ func TestDeploy_AuthRequired_401WithoutToken(t *testing.T) {
 	}
 }
 
-func TestDeploy_AuthBearerToken_CorrectlyForwarded(t *testing.T) {
+func TestDeploy_AuthWebToken_CorrectlyForwarded(t *testing.T) {
 	kubectl, helm, docker := deployPrereqsOK(t)
 
 	mockURL, mockClose := startHostMockUpstream(t, func(w http.ResponseWriter, r *http.Request) {
@@ -454,11 +454,11 @@ func TestDeploy_AuthBearerToken_CorrectlyForwarded(t *testing.T) {
 		"op": "add",
 		"path": "/spec/template/spec/containers/0/env/-",
 		"value": {
-			"name": "MCP__AUTH__STATIC__BEARER_TOKEN",
+			"name": "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN",
 			"valueFrom": {
 				"secretKeyRef": {
 					"name": "%s-secret",
-					"key": "bearer_token"
+					"key": "web_token"
 				}
 			}
 		}
@@ -483,7 +483,7 @@ func TestDeploy_AuthBearerToken_CorrectlyForwarded(t *testing.T) {
 	t.Logf("Tool result (with auth): %s", trimMsg(result, 300))
 
 	if !strings.Contains(result, bearerToken) {
-		t.Errorf("expected bearer token %q in response, got: %s", bearerToken, trimMsg(result, 300))
+		t.Errorf("expected web token %q in response, got: %s", bearerToken, trimMsg(result, 300))
 	}
 	if strings.Contains(result, "unauthorized") || strings.Contains(result, "401") {
 		t.Errorf("expected successful auth, got error: %s", trimMsg(result, 300))
@@ -669,7 +669,7 @@ func TestDeploy_SecretStatic_HasSecret(t *testing.T) {
 		"--set", "secret.provider=static",
 		"--set", "secret.static.create=true",
 		"--set", "secret.static.oidcClientSecret=test-oidc-secret",
-		"--set", "secret.static.bearerToken=test-bearer-token",
+		"--set", "secret.static.webToken=test-web-token",
 		"--set", "secret.static.cookieToken=test-cookie-token",
 	)
 	tmplOut, err := tmplCmd.CombinedOutput()
@@ -681,7 +681,7 @@ func TestDeploy_SecretStatic_HasSecret(t *testing.T) {
 	if !strings.Contains(tmplStr, "\nkind: Secret\n") {
 		t.Error("expected Secret when secret.provider=static, secret.static.create=true")
 	}
-	for _, key := range []string{"oidc_client_secret", "bearer_token", "cookie_token"} {
+	for _, key := range []string{"oidc_client_secret", "web_token", "cookie_token"} {
 		if !strings.Contains(tmplStr, key) {
 			t.Errorf("expected key %q in Secret", key)
 		}
