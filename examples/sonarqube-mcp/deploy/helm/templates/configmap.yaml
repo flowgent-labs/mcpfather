@@ -38,7 +38,7 @@ data:
           client_secret: ""   # set via MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET env (from Secret)
 
         static:
-          bearer_token: ""    # set via MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN env (from Secret)
+          web_token: ""    # set via MCP__AUTH__BACKEND__STATIC__WEB_TOKEN env (from Secret)
           cookie_token: ""    # set via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN env (from Secret)
 
     nativeTools:

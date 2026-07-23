@@ -87,12 +87,12 @@ spec:
             {{- end }}
             {{- end }}
             {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
-            {{- if .Values.secret.static.bearerToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
+            {{- if .Values.secret.static.webToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__WEB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "sonatypeiq-mcp.secretName" . }}
-                  key: bearer_token
+                  key: web_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
             - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
@@ -102,12 +102,12 @@ spec:
                   key: cookie_token
             {{- end }}
             {{- else if and (eq .Values.secret.provider "gcp") }}
-            {{- if .Values.secret.static.bearerToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
+            {{- if .Values.secret.static.webToken }}
+            - name: MCP__AUTH__BACKEND__STATIC__WEB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "sonatypeiq-mcp.secretName" . }}
-                  key: bearer_token
+                  key: web_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
             - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
