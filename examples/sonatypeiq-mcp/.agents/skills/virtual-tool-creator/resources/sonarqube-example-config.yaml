@@ -67,8 +67,8 @@ auth:
 
     # Static credentials for legacy / simple APIs
     static:
-      bearer_token: ""       # static Bearer token
-      bearer_token_file: ""   # path to file containing bearer token (K8s secrets)
+      web_token: ""       # static Bearer token
+      web_token_file: ""   # path to file containing bearer token (K8s secrets)
       cookie_token: ""        # static cookie (e.g. JSESSIONID for legacy systems)
       cookie_token_file: ""   # path to file containing cookie token (K8s secrets)
 

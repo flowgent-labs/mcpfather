@@ -26,7 +26,7 @@ make build-with-otel-http   # OTLP HTTP/protobuf exporter
 ```sh
 # Configure your upstream API
 export MCP__UPSTREAM__ENDPOINT=https://api.example.com
-export MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN=your-token
+export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=your-token
 
 ./bin/sonatypeiq-mcp --transport http --port 8080 &
 ```
@@ -81,7 +81,7 @@ bearer validation per RFC 9728 / MCP Authorization spec.
 Token priority (first available wins):
 
 1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
-2. **Static** bearer token (`auth.backend.static.bearer_token`)
+2. **Static** bearer token (`auth.backend.static.web_token`)
 
 The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
 Cookie-based auth is also available via `auth.backend.static.cookie_token`.
@@ -133,7 +133,7 @@ auth:
 
     # Static credentials for legacy / simple APIs
     static:
-      bearer_token: "${MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN}"   # or set cookie_token
+      web_token: "${MCP__AUTH__BACKEND__STATIC__WEB_TOKEN}"   # or set cookie_token
 
 nativeTools:
   expose:
@@ -239,8 +239,8 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -260,8 +260,8 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -275,7 +275,7 @@ Pipeline kinds: `call`, `jq`, `foreach`, `emit`, `return`.
 ```toml
 [mcp_servers.sonatypeiq-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
+web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor
@@ -290,8 +290,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "args": ["--transport", "stdio"],
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -310,8 +310,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -329,8 +329,8 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
       "url": "http://localhost:8080/mcp",
       "env": {
         "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
+        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -344,7 +344,7 @@ bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
 ```toml
 [mcp_servers.sonatypeiq-mcp]
 url = "http://localhost:8080/mcp"
-bearer_token_env_var = "MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN"
+web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -396,7 +396,7 @@ First generate a default config, then mount it when running:
   docker run -d --name sonatypeiq-mcp \
     -p 8080:8080 -p 9991:9991 \
     -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
-    -e MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN="YOUR_BEARER_TOKEN" \
+    -e MCP__AUTH__BACKEND__STATIC__WEB_TOKEN="YOUR_WEB_TOKEN" \
     -v ~/.sonatypeiq-mcp:/home/mcp/.sonatypeiq-mcp \
     ghcr.io/<YOUR_ORG>/sonatypeiq-mcp:latest \
     --transport http --port 8080
@@ -452,7 +452,7 @@ First generate a default config, then mount it when running:
     --set image.repository=ghcr.io/<YOUR_ORG>/sonatypeiq-mcp \
     --set image.tag=latest \
     --set secret.static.create=true \
-    --set secret.static.bearerToken="YOUR_BEARER_TOKEN" \
+    --set secret.static.webToken="YOUR_WEB_TOKEN" \
     --set config.upstream.endpoint="https://api.example.com"
   ```
 

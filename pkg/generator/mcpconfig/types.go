@@ -66,8 +66,8 @@ type BackendOIDCConfig struct {
 
 // StaticAuthConfig holds static credentials for legacy / simple upstream APIs.
 type StaticAuthConfig struct {
-	BearerToken     string `yaml:"bearer_token"`
-	BearerTokenFile string `yaml:"bearer_token_file"`
+	WebToken        string `yaml:"web_token"`
+	WebTokenFile    string `yaml:"web_token_file"`
 	CookieToken     string `yaml:"cookie_token"`
 	CookieTokenFile string `yaml:"cookie_token_file"`
 }

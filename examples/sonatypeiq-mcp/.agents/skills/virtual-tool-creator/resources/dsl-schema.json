@@ -333,10 +333,10 @@
     "StaticAuthConfig": {
       "additionalProperties": false,
       "properties": {
-        "bearer_token": {
+        "web_token": {
           "type": "string"
         },
-        "bearer_token_file": {
+        "web_token_file": {
           "type": "string"
         },
         "cookie_token": {

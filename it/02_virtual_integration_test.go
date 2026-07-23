@@ -3388,7 +3388,7 @@ auth:
     oidc:
       enabled: false
     static:
-      bearer_token: ""
+      web_token: ""
 nativeTools:
   expose:
     register_all_tools_by_default: true
@@ -3506,8 +3506,8 @@ auth:
       scopes: openid profile
       grant_type: client_credentials
     static:
-      bearer_token: my-token
-      bearer_token_file: /path/to/token
+      web_token: my-token
+      web_token_file: /path/to/token
       cookie_token: JSESSIONID=abc
       cookie_token_file: /path/to/cookie
 virtualTools:

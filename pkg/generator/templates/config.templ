@@ -240,9 +240,9 @@ func IsDefaultUpstreamEndpoint() bool {
 	return cfg == nil || cfg.Upstream.Endpoint == "" || cfg.Upstream.Endpoint == defaultUpstreamEndpoint
 }
 
-// GetUpstreamToken returns the appropriate backend (outbound) bearer token:
+// GetUpstreamToken returns the appropriate backend (outbound) web token:
 //  1. OIDC access token (if auth.backend.oidc is enabled)
-//  2. Static bearer token from config (or bearer_token_file)
+//  2. Static web token from config (or web_token_file)
 //
 // This is always the MCP server's own credential — it is never derived from
 // the inbound client token (see the frontend token passthrough prohibition).
@@ -252,11 +252,11 @@ func GetUpstreamToken() string {
 		if cfg.Auth.Backend.OIDC.Enabled {
 			return GetOIDCToken()
 		}
-		if cfg.Auth.Backend.Static.BearerToken != "" {
-			return cfg.Auth.Backend.Static.BearerToken
+		if cfg.Auth.Backend.Static.WebToken != "" {
+			return cfg.Auth.Backend.Static.WebToken
 		}
-		if cfg.Auth.Backend.Static.BearerTokenFile != "" {
-			if data, err := os.ReadFile(cfg.Auth.Backend.Static.BearerTokenFile); err == nil {
+		if cfg.Auth.Backend.Static.WebTokenFile != "" {
+			if data, err := os.ReadFile(cfg.Auth.Backend.Static.WebTokenFile); err == nil {
 				return strings.TrimSpace(string(data))
 			}
 		}

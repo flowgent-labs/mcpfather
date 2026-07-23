@@ -76,7 +76,7 @@ secret:
     externalName: ""
     annotations: {}
     # -- Static bearer token for upstream API auth.
-    bearerToken: ""
+    webToken: ""
     # -- Static cookie for upstream API auth.
     cookieToken: ""
     # -- OIDC client secret (used with config.auth.backend.oidc).

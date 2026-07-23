@@ -102,7 +102,7 @@ deploy: build-image
 		--set image.tag=$(IMAGE_TAG) \
 		--set config.upstream.endpoint=$(MCP_UPSTREAM_ENDPOINT) \
 		--set secret.static.create=true \
-		--set secret.static.bearerToken=$(MCP_UPSTREAM_TOKEN) \
+		--set secret.static.webToken=$(MCP_UPSTREAM_TOKEN) \
 		--set config.auth.backend.oidc.enabled=true \
 		--set config.auth.backend.oidc.issuer=$(MCP_OIDC_ISSUER_URL) \
 		--set config.auth.backend.oidc.clientId=$(MCP_OIDC_CLIENT_ID) \
