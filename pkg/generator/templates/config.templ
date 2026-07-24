@@ -24,7 +24,6 @@ type FrontendAuthConfig = mcpconfig.FrontendAuthConfig
 type FrontendOIDCConfig = mcpconfig.FrontendOIDCConfig
 type BackendAuthConfig = mcpconfig.BackendAuthConfig
 type BackendOIDCConfig = mcpconfig.BackendOIDCConfig
-type LDAPConfig = mcpconfig.LDAPConfig
 type StaticAuthConfig = mcpconfig.StaticAuthConfig
 type ToolsConfig = mcpconfig.ToolsConfig
 type ToolsExposeConfig = mcpconfig.ToolsExposeConfig
@@ -243,8 +242,7 @@ func IsDefaultUpstreamEndpoint() bool {
 
 // GetUpstreamToken returns the appropriate backend (outbound) bearer token:
 //  1. OIDC access token (if auth.backend.oidc is enabled)
-//  2. LDAP bind auth (if auth.backend.ldap is enabled) — Basic header from bind identity
-//  3. Static bearer token from config (or bearer_token_file)
+//  2. Static bearer token from config (or bearer_token_file)
 //
 // This is always the MCP server's own credential — it is never derived from
 // the inbound client token (see the frontend token passthrough prohibition).
@@ -253,9 +251,6 @@ func GetUpstreamToken() string {
 	if cfg != nil {
 		if cfg.Auth.Backend.OIDC.Enabled {
 			return GetOIDCToken()
-		}
-		if cfg.Auth.Backend.LDAP.Enabled {
-			return GetLDAPToken()
 		}
 		if cfg.Auth.Backend.Static.BearerToken != "" {
 			return cfg.Auth.Backend.Static.BearerToken
