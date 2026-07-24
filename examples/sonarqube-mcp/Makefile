@@ -6,6 +6,8 @@ BINARY_NAME := sonarqube-mcp
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -v -trimpath
 
+GOPROXY ?= https://goproxy.cn,direct
+
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
@@ -31,20 +33,20 @@ help:
 	@echo ""
 
 build: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go mod tidy && go build $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go mod tidy && go build $(BUILD_FLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-all: go.sum
-	go mod tidy
-	GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
-	GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
-	GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
-	GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
-	GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
-	GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) go mod tidy
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
 
 go.sum: go.mod
-	go mod tidy
+	GOPROXY=$(GOPROXY) go mod tidy
 
 run: build
 	@bin/$(BINARY_NAME)
@@ -65,11 +67,11 @@ gen-dsl-schema:
 build-with-otel: build-with-otel-grpc
 
 build-with-otel-grpc: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 build-with-otel-http: go.sum
-	GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
 
 # ---- Container & Kubernetes ----

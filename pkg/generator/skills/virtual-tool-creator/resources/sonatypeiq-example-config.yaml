@@ -65,16 +65,6 @@ auth:
       scopes: "openid"       # space-separated scope list
       token_url: ""          # optional override (auto-discovered from issuer if empty)
 
-    # LDAP service account bind (machine-to-machine)
-    ldap:
-      enabled: false
-      url: ""               # ldap:// or ldaps:// server URL
-      base_dn: ""
-      bind_dn: ""
-      bind_password: ""
-      insecure_skip_verify: false
-      timeout: 10            # connection timeout in seconds
-
     # Static credentials for legacy / simple APIs
     static:
       bearer_token: ""       # static Bearer token

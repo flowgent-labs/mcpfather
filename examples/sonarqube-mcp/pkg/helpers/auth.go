@@ -4,8 +4,6 @@ package mcputils
 
 import (
 	"context"
-	"crypto/tls"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/go-ldap/ldap/v3"
 )
 
 // ---- OIDC token manager ----
@@ -230,147 +226,4 @@ type tokenResponse struct {
 
 type oidcDiscovery struct {
 	TokenEndpoint string `json:"token_endpoint"`
-}
-
-// ---- LDAP token manager ----
-
-// ldapToken holds a cached Basic auth token generated from an LDAP bind.
-type ldapToken struct {
-	BasicAuth string    // "Basic base64(bindDN:bindPassword)"
-	ExpiresAt time.Time // token refresh time
-}
-
-// ldapManager handles LDAP service account bind with auto-refresh.
-type ldapManager struct {
-	cfg    LDAPConfig
-	token  *ldapToken
-	mu     sync.Mutex
-	stopCh chan struct{}
-	doneCh chan struct{}
-}
-
-var (
-	ldapOnce     sync.Once
-	ldapInstance *ldapManager
-)
-
-// InitLDAP starts the LDAP token manager. Safe to call multiple times; only the
-// first call has effect. When LDAP is disabled in config, this is a no-op.
-func InitLDAP(cfg LDAPConfig) {
-	ldapOnce.Do(func() {
-		if !cfg.Enabled {
-			return
-		}
-		lm := &ldapManager{
-			cfg:    cfg,
-			stopCh: make(chan struct{}),
-			doneCh: make(chan struct{}),
-		}
-		if err := lm.refresh(context.Background()); err != nil {
-			fmt.Fprintf(os.Stderr, "Warning: initial LDAP bind failed: %v\n", err)
-		}
-		ldapInstance = lm
-		go lm.refreshLoop()
-	})
-}
-
-// GetLDAPToken returns the current LDAP Basic auth token. Returns empty string
-// if LDAP is not configured or the bind failed.
-func GetLDAPToken() string {
-	if ldapInstance == nil {
-		return ""
-	}
-	return ldapInstance.getToken()
-}
-
-// ShutdownLDAP stops the background refresh loop.
-func ShutdownLDAP() {
-	if ldapInstance == nil {
-		return
-	}
-	close(ldapInstance.stopCh)
-	<-ldapInstance.doneCh
-}
-
-func (m *ldapManager) getToken() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.token != nil && time.Now().Add(30*time.Second).Before(m.token.ExpiresAt) {
-		return m.token.BasicAuth
-	}
-	if err := m.refreshLocked(context.Background()); err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: LDAP bind refresh failed: %v\n", err)
-	}
-	if m.token != nil {
-		return m.token.BasicAuth
-	}
-	return ""
-}
-
-func (m *ldapManager) refresh(ctx context.Context) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.refreshLocked(ctx)
-}
-
-func (m *ldapManager) refreshLocked(_ context.Context) error {
-	// Dial LDAP server
-	var conn *ldap.Conn
-	var err error
-
-	if m.cfg.InsecureSkipVerify {
-		conn, err = ldap.DialURL(m.cfg.URL, ldap.DialWithTLSConfig(&tls.Config{
-			InsecureSkipVerify: true,
-		}))
-	} else {
-		conn, err = ldap.DialURL(m.cfg.URL)
-	}
-	if err != nil {
-		return fmt.Errorf("dial LDAP %s: %w", m.cfg.URL, err)
-	}
-	defer conn.Close()
-
-	// Set timeout
-	timeout := time.Duration(m.cfg.Timeout) * time.Second
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	conn.SetTimeout(timeout)
-
-	// Bind with service account
-	if err := conn.Bind(m.cfg.BindDN, m.cfg.BindPassword); err != nil {
-		return fmt.Errorf("LDAP bind as %s: %w", m.cfg.BindDN, err)
-	}
-
-	// Build Basic auth header from bind credentials
-	auth := base64.StdEncoding.EncodeToString([]byte(m.cfg.BindDN + ":" + m.cfg.BindPassword))
-
-	// Default TTL 30 minutes; user can adjust via the background loop
-	ttl := 30 * time.Minute
-	m.token = &ldapToken{
-		BasicAuth: "Basic " + auth,
-		ExpiresAt: time.Now().Add(ttl),
-	}
-	return nil
-}
-
-func (m *ldapManager) refreshLoop() {
-	defer close(m.doneCh)
-
-	// Refresh every 25 minutes (5 minutes before the 30-minute default TTL)
-	ticker := time.NewTicker(25 * time.Minute)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-m.stopCh:
-			return
-		case <-ticker.C:
-			if m.token == nil || time.Now().Add(5*time.Minute).After(m.token.ExpiresAt) {
-				if err := m.refresh(context.Background()); err != nil {
-					fmt.Fprintf(os.Stderr, "Warning: background LDAP refresh failed: %v\n", err)
-				}
-			}
-		}
-	}
 }

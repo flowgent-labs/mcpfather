@@ -7,7 +7,6 @@
 [![Prometheus](https://img.shields.io/badge/metrics-Prometheus-E6522C?logo=prometheus)](https://prometheus.io/)
 [![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
 [![OIDC](https://img.shields.io/badge/auth-OIDC-CB3837?logo=openid)](https://openid.net/connect/)
-[![LDAP](https://img.shields.io/badge/auth-LDAP-FF8300)](https://ldap.com/)
 [![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
 
 > An Enterprise-grade MCP server, specifically designed for AI to call SonarQube Web API APIs, generated from MCPFather — exposes **385 native tools**. Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools, auth forwarding, and observability built-in, and even use as regular CLI.
@@ -72,7 +71,6 @@ Auth is split into two independent layers — neither shares credentials with th
 |---|---|---|---|
 | **Frontend** | `auth.frontend.oidc` | `MCP__AUTH__FRONTEND__OIDC__*` | Validates AI agent bearer tokens (inbound) |
 | **Backend OIDC** | `auth.backend.oidc` | `MCP__AUTH__BACKEND__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
-| **Backend LDAP** | `auth.backend.ldap` | `MCP__AUTH__BACKEND__LDAP__*` | Server's own LDAP service-account bind for upstream APIs |
 | **Backend Static** | `auth.backend.static` | `MCP__AUTH__BACKEND__STATIC__*` | Server's own static token/cookie for upstream APIs |
 
 **Frontend (inbound)** — validates bearer tokens presented by AI agents (MCP clients).
@@ -83,8 +81,7 @@ bearer validation per RFC 9728 / MCP Authorization spec.
 Token priority (first available wins):
 
 1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
-2. **LDAP** service account bind (`auth.backend.ldap.*`)
-3. **Static** bearer token (`auth.backend.static.bearer_token`)
+2. **Static** bearer token (`auth.backend.static.bearer_token`)
 
 The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
 Cookie-based auth is also available via `auth.backend.static.cookie_token`.
@@ -134,13 +131,7 @@ auth:
       scopes: openid
       # token_url: ""   # auto-discovered from issuer /.well-known
 
-    ldap:
-      enabled: false
-      url: ldaps://ldap.example.com
-      base_dn: dc=example,dc=com
-      bind_dn: cn=svc,dc=example,dc=com
-      bind_password: "${MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD}"
-
+    # Static credentials for legacy / simple APIs
     static:
       bearer_token: "${MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN}"   # or set cookie_token
 
@@ -426,29 +417,12 @@ First generate a default config, then mount it when running:
     --transport http --port 8080
   ```
 
-- **LDAP backend auth**
-
-```sh
-  docker run -d --name sonarqube-mcp \
-    -p 8080:8080 -p 9991:9991 \
-    -e MCP__UPSTREAM__ENDPOINT="https://api.example.com" \
-    -e MCP__AUTH__BACKEND__LDAP__ENABLED=true \
-    -e MCP__AUTH__BACKEND__LDAP__URL="ldaps://ldap.example.com" \
-    -e MCP__AUTH__BACKEND__LDAP__BASE_DN="dc=example,dc=com" \
-    -e MCP__AUTH__BACKEND__LDAP__BIND_DN="cn=svc,dc=example,dc=com" \
-    -e MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD="YOUR_BIND_PASSWORD" \
-    -v ~/.sonarqube-mcp:/home/mcp/.sonarqube-mcp \
-    ghcr.io/<YOUR_ORG>/sonarqube-mcp:latest \
-    --transport http --port 8080
-  ```
-
-
 ### Test with mcpclient.sh
 
 After the container starts, use the bundled `mcpclient.sh` to verify.
 
 > **Note:** `mcpclient.sh` only supports **backend static** token auth. If the server requires
-> **frontend OIDC/LDAP** authentication, use a real AI-agent MCP client instead.
+> **frontend OIDC** authentication, use a real AI-agent MCP client instead.
 
 ```sh
 # Point to the mapped host port (include /mcp path)
@@ -493,20 +467,6 @@ First generate a default config, then mount it when running:
     --set config.auth.backend.oidc.enabled=true \
     --set config.auth.backend.oidc.issuer="https://idp.example.com" \
     --set config.auth.backend.oidc.clientId="my-client" \
-    --set config.upstream.endpoint="https://api.example.com"
-  ```
-
-- **LDAP authentication**
-
-```sh
-  helm upgrade -i sonarqube-mcp deploy/helm \
-    --set image.repository=ghcr.io/<YOUR_ORG>/sonarqube-mcp \
-    --set image.tag=latest \
-    --set secret.static.create=true \
-    --set secret.static.ldapBindPassword="YOUR_LDAP_BIND_PASSWORD" \
-    --set config.auth.backend.ldap.enabled=true \
-    --set config.auth.backend.ldap.url="ldaps://ldap.example.com" \
-    --set config.auth.backend.ldap.bindDN="cn=svc,dc=example,dc=com" \
     --set config.upstream.endpoint="https://api.example.com"
   ```
 
