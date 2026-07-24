@@ -3387,8 +3387,6 @@ auth:
   backend:
     oidc:
       enabled: false
-    ldap:
-      enabled: false
     static:
       bearer_token: ""
 nativeTools:
@@ -3507,14 +3505,6 @@ auth:
       client_secret: my-secret
       scopes: openid profile
       grant_type: client_credentials
-    ldap:
-      enabled: true
-      url: ldaps://ldap.example.com
-      base_dn: dc=example,dc=com
-      bind_dn: cn=svc,dc=example,dc=com
-      bind_password: secret
-      insecure_skip_verify: false
-      timeout: 10
     static:
       bearer_token: my-token
       bearer_token_file: /path/to/token

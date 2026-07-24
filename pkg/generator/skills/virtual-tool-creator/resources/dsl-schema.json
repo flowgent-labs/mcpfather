@@ -15,9 +15,6 @@
     "BackendAuthConfig": {
       "additionalProperties": false,
       "properties": {
-        "ldap": {
-          "$ref": "#/$defs/LDAPConfig"
-        },
         "oidc": {
           "$ref": "#/$defs/BackendOIDCConfig"
         },
@@ -201,33 +198,6 @@
       "required": [
         "expr"
       ],
-      "type": "object"
-    },
-    "LDAPConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "base_dn": {
-          "type": "string"
-        },
-        "bind_dn": {
-          "type": "string"
-        },
-        "bind_password": {
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        },
-        "insecure_skip_verify": {
-          "type": "boolean"
-        },
-        "timeout": {
-          "type": "integer"
-        },
-        "url": {
-          "type": "string"
-        }
-      },
       "type": "object"
     },
     "MetricsConfig": {

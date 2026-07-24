@@ -86,31 +86,6 @@ spec:
                   key: oidc_client_secret
             {{- end }}
             {{- end }}
-            {{- if .Values.config.auth.backend.ldap.enabled }}
-            - name: MCP__AUTH__BACKEND__LDAP__ENABLED
-              value: "true"
-            - name: MCP__AUTH__BACKEND__LDAP__URL
-              value: {{ .Values.config.auth.backend.ldap.url | quote }}
-            - name: MCP__AUTH__BACKEND__LDAP__BASE_DN
-              value: {{ .Values.config.auth.backend.ldap.baseDN | quote }}
-            - name: MCP__AUTH__BACKEND__LDAP__BIND_DN
-              value: {{ .Values.config.auth.backend.ldap.bindDN | quote }}
-            {{- if .Values.config.auth.backend.ldap.insecureSkipVerify }}
-            - name: MCP__AUTH__BACKEND__LDAP__INSECURE_SKIP_VERIFY
-              value: "true"
-            {{- end }}
-            {{- if .Values.config.auth.backend.ldap.timeout }}
-            - name: MCP__AUTH__BACKEND__LDAP__TIMEOUT
-              value: {{ .Values.config.auth.backend.ldap.timeout | quote }}
-            {{- end }}
-            {{- if .Values.secret.static.create }}
-            - name: MCP__AUTH__BACKEND__LDAP__BIND_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "sonarqube-mcp.secretName" . }}
-                  key: ldap_bind_password
-            {{- end }}
-            {{- end }}
             {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
             {{- if .Values.secret.static.bearerToken }}
             - name: MCP__AUTH__BACKEND__STATIC__BEARER_TOKEN
