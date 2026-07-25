@@ -986,6 +986,7 @@ func writeVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "config.yaml")
+	logProgress("[config] writing virtual config for %s at %s (%d bytes)", binaryName, configPath, len(yamlContent))
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}

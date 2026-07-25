@@ -1,4 +1,4 @@
-.PHONY: build build-all test test-unit test-integration install clean gen-config-dsl-schema \
+.PHONY: build build-all test-ut test-it install clean gen-config-dsl-schema \
 	build-image push-image help
 
 BINARY_NAME := mcpfather
@@ -25,9 +25,8 @@ help:
 	@echo "  make build-all              Cross-compile for all platforms"
 	@echo "  make build-image            Build Docker image"
 	@echo "  make push-image             Build and push Docker image to ghcr.io"
-	@echo "  make test                   Run unit tests"
-	@echo "  make test-unit              Run unit tests"
-	@echo "  make test-integration       Run integration tests"
+	@echo "  make test-ut                 Run unit tests"
+	@echo "  make test-it                 Run integration tests"
 	@echo "  make install                Install $(BINARY_NAME) to GOPATH/bin"
 	@echo "  make clean                  Remove build artifacts"
 	@echo "  make gen-config-dsl-schema  Regenerate JSON Schema for virtual tool DSL"
@@ -45,12 +44,10 @@ build-all:
 	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe $(CMD_PATH)
 	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe $(CMD_PATH)
 
-test: test-unit
-
-test-unit:
+test-ut:
 	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
-test-integration:
+test-it:
 	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 600s ./it/...
 
 install:
