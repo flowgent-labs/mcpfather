@@ -36,8 +36,8 @@ func TestResolveEnabledTools(t *testing.T) {
 
 	t.Run("register all by default with excludes", func(t *testing.T) {
 		cfg := &mcputils.Config{
-			Tools: mcputils.ToolsConfig{
-				Expose: &mcputils.ToolsExposeConfig{
+			Tools: mcputils.NativeToolsConfig{
+				Expose: &mcputils.NativeToolsExposeConfig{
 					RegisterAllToolsByDefault: true,
 					Excludes:                  []string{"SomeTool"},
 				},
@@ -54,8 +54,8 @@ func TestResolveEnabledTools(t *testing.T) {
 
 	t.Run("whitelist only", func(t *testing.T) {
 		cfg := &mcputils.Config{
-			Tools: mcputils.ToolsConfig{
-				Expose: &mcputils.ToolsExposeConfig{
+			Tools: mcputils.NativeToolsConfig{
+				Expose: &mcputils.NativeToolsExposeConfig{
 					RegisterAllToolsByDefault: false,
 					Includes:                  []string{"ToolA", "ToolB"},
 				},
@@ -75,8 +75,8 @@ func TestResolveEnabledTools(t *testing.T) {
 
 	t.Run("conflict between includes and excludes", func(t *testing.T) {
 		cfg := &mcputils.Config{
-			Tools: mcputils.ToolsConfig{
-				Expose: &mcputils.ToolsExposeConfig{
+			Tools: mcputils.NativeToolsConfig{
+				Expose: &mcputils.NativeToolsExposeConfig{
 					Includes: []string{"ToolA"},
 					Excludes: []string{"ToolA"},
 				},
@@ -90,8 +90,8 @@ func TestResolveEnabledTools(t *testing.T) {
 
 	t.Run("empty includes and excludes", func(t *testing.T) {
 		cfg := &mcputils.Config{
-			Tools: mcputils.ToolsConfig{
-				Expose: &mcputils.ToolsExposeConfig{
+			Tools: mcputils.NativeToolsConfig{
+				Expose: &mcputils.NativeToolsExposeConfig{
 					RegisterAllToolsByDefault: false,
 				},
 			},

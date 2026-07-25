@@ -11,12 +11,13 @@ import (
 
 // Executor runs a pipeline of steps.
 type Executor struct {
-	registry pipeline.ToolRegistry
+	registry   pipeline.ToolRegistry
+	httpClient pipeline.HTTPClient
 }
 
 // NewExecutor creates a pipeline executor.
-func NewExecutor(registry pipeline.ToolRegistry) *Executor {
-	return &Executor{registry: registry}
+func NewExecutor(registry pipeline.ToolRegistry, httpClient pipeline.HTTPClient) *Executor {
+	return &Executor{registry: registry, httpClient: httpClient}
 }
 
 // Execute runs a pipeline and returns the final result.
@@ -50,6 +51,11 @@ func (e *Executor) ExecuteStep(ctx context.Context, step *pipeline.StepConfig, r
 	switch step.Kind {
 	case "call":
 		return node.CallNode(ctx, step, rctx, e.registry)
+	case "http":
+		if e.httpClient == nil {
+			return nil, fmt.Errorf("http step requires an HTTP client (no upstream configured)")
+		}
+		return node.HTTPNode(ctx, step, rctx, e.httpClient)
 	case "jq":
 		return node.JQNode(step, rctx)
 	case "foreach":

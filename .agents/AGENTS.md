@@ -13,7 +13,7 @@
   and device_code (RFC 8628) tests. Mock provider (`it/cmd/mockoidcsvc`) for negative
   test cases (expired token, wrong audience, HS256 forgery) via custom /sign endpoint.
 - **E2E secrets**: `source ~/.wl4gshrc.sec` to load SonarQube/Deeplake tokens.
-- See also: [examples/E2E-Sonarqube-VirtualTools.md](../examples/E2E-Sonarqube-VirtualTools.md)
+- See also: [usecase/E2E-Sonarqube-VirtualTools.md](../usecase/E2E-Sonarqube-VirtualTools.md)
 
 ---
 
@@ -23,7 +23,7 @@
 |-----|---------|
 | [README.md](../README.md) | Project overview, quick start, CLI flags, config, Virtual Tools DSL, agent integration |
 | [CONTRIBUTING.md](../CONTRIBUTING.md) | Contribution guidelines |
-| [examples/E2E-Sonarqube-VirtualTools.md](../examples/E2E-Sonarqube-VirtualTools.md) | Full E2E test walkthrough: virtual tools against real SonarQube, bug discoveries, design lessons |
+| [usecase/E2E-Sonarqube-VirtualTools.md](../usecase/E2E-Sonarqube-VirtualTools.md) | Full E2E test walkthrough: virtual tools against real SonarQube, bug discoveries, design lessons |
 | [.agents/skills/virtual-tool-creator/SKILL.md](skills/virtual-tool-creator/SKILL.md) | Virtual tool pipeline configuration skill for AI agents |
 | [.agents/skills/virtual-tool-creator/references/bash-to-pipeline-mapping.md](skills/virtual-tool-creator/references/bash-to-pipeline-mapping.md) | Bash→DSL translation reference |
 
@@ -39,7 +39,7 @@ pkg/
     mcpvirtual/          Embedded virtual tools runtime
       config/              YAML config loading
       engine/              Pipeline executor, context/variable resolution
-      node/                Step kinds: call, jq, foreach, emit, return
+      node/                Step kinds: call, http, jq, foreach, emit, return
       pipeline/            DSL types, validation, tool registry
     deploy/              Dockerfile + Helm chart (embedded, copied to generated projects)
 cmd/
@@ -49,7 +49,7 @@ it/                    Integration tests + Docker fixtures (keycloak)
   cmd/mockoidcsvc/       Standalone OIDC provider for custom-claims token tests
   testdata/              OpenAPI spec fixtures
   docker/                Keycloak OIDC configs
-examples/              Pre-generated MCP server examples (confluence, jira, sonarqube, sonatypeiq)
+usecase/              Pre-generated MCP server examples (confluence, jira, sonarqube, sonatypeiq)
 .agents/               Claude Code agent skills
 .github/workflows/     CI (build, unit, OIDC/virtual-tools/core-e2e) + CD (release)
 ```
