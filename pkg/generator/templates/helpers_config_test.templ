@@ -82,10 +82,10 @@ func TestIsDefaultUpstreamEndpoint(t *testing.T) {
 }
 
 func TestGetUpstreamToken(t *testing.T) {
-	t.Run("static bearer token", func(t *testing.T) {
+	t.Run("static web token", func(t *testing.T) {
 		SetConfig(&Config{Auth: mcpconfig.AuthConfig{
 			Backend: mcpconfig.BackendAuthConfig{
-				Static: mcpconfig.StaticAuthConfig{BearerToken: "test-token"},
+				Static: mcpconfig.StaticAuthConfig{WebToken: "test-token"},
 			},
 		}})
 		got := GetUpstreamToken()
@@ -93,12 +93,12 @@ func TestGetUpstreamToken(t *testing.T) {
 			t.Errorf("got %q, want %q", got, "test-token")
 		}
 	})
-	t.Run("static bearer token file", func(t *testing.T) {
+	t.Run("static web token file", func(t *testing.T) {
 		tmpFile := filepath.Join(t.TempDir(), "token")
 		os.WriteFile(tmpFile, []byte("file-token"), 0644)
 		SetConfig(&Config{Auth: mcpconfig.AuthConfig{
 			Backend: mcpconfig.BackendAuthConfig{
-				Static: mcpconfig.StaticAuthConfig{BearerTokenFile: tmpFile},
+				Static: mcpconfig.StaticAuthConfig{WebTokenFile: tmpFile},
 			},
 		}})
 		got := GetUpstreamToken()
@@ -111,7 +111,7 @@ func TestGetUpstreamToken(t *testing.T) {
 		os.WriteFile(tmpFile, []byte("  padded-token  \n"), 0644)
 		SetConfig(&Config{Auth: mcpconfig.AuthConfig{
 			Backend: mcpconfig.BackendAuthConfig{
-				Static: mcpconfig.StaticAuthConfig{BearerTokenFile: tmpFile},
+				Static: mcpconfig.StaticAuthConfig{WebTokenFile: tmpFile},
 			},
 		}})
 		got := GetUpstreamToken()
@@ -122,7 +122,7 @@ func TestGetUpstreamToken(t *testing.T) {
 	t.Run("missing token file", func(t *testing.T) {
 		SetConfig(&Config{Auth: mcpconfig.AuthConfig{
 			Backend: mcpconfig.BackendAuthConfig{
-				Static: mcpconfig.StaticAuthConfig{BearerTokenFile: "/nonexistent/token"},
+				Static: mcpconfig.StaticAuthConfig{WebTokenFile: "/nonexistent/token"},
 			},
 		}})
 		got := GetUpstreamToken()
@@ -187,7 +187,7 @@ func TestKeyToEnvSegment(t *testing.T) {
 		{"downloadDir", "DOWNLOAD_DIR"},
 		{"oidc", "OIDC"},
 		{"httpTimeout", "HTTP_TIMEOUT"},
-		{"bearerToken", "BEARER_TOKEN"},
+		{"webToken", "WEB_TOKEN"},
 		{"", ""},
 	}
 	for _, tt := range tests {
