@@ -79,7 +79,7 @@ secret:
     webToken: ""
     # -- Static cookie for upstream API auth.
     cookieToken: ""
-    # -- OIDC client secret (used with config.auth.backend.oidc).
+    # -- OIDC client secret (used with config.upstream.default.auth.oidc).
     oidcClientSecret: ""
   gcp:
     # -- GCP project ID where the Secret Manager secret lives.
@@ -92,11 +92,11 @@ secret:
 
 # -- MCP server configuration (mounted as ConfigMap)
 config:
-  auth:
-    # -- Frontend (inbound): validates bearer tokens presented by MCP clients
-    # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
-    # Only enforced on the http transport.
-    frontend:
+  # -- Server (inbound): validates bearer tokens presented by MCP clients
+  # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
+  # Only enforced on the http transport.
+  server:
+    auth:
       oidc:
         enabled: false
         issuer: ""
@@ -110,16 +110,22 @@ config:
         # -- Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
         additionalClientTokenClaimForward: []
         # e.g. ["given_name", "family_name", "preferred_username"]
-    # -- Backend (outbound): credentials the server uses to call upstream APIs.
-    # Independent from frontend — an inbound token is never reused outbound.
-    backend:
-      # -- OIDC client credentials flow (machine-to-machine).
-      oidc:
-        enabled: false
-        issuer: ""
-        clientId: ""
-        scopes: "openid"
-        tokenUrl: ""
+    # -- Maximum number of concurrent MCP requests from AI agent clients.
+    max_parallel_requests: 100
+  # -- Upstream (outbound): credentials the server uses to call upstream APIs.
+  # Independent from server — an inbound token is never reused outbound.
+  upstream:
+    default:
+      endpoint: ""
+      enableMCPSessionForwarding: true
+      auth:
+        # -- OIDC client credentials flow (machine-to-machine).
+        oidc:
+          enabled: false
+          issuer: ""
+          clientId: ""
+          scopes: "openid"
+          tokenUrl: ""
   tools:
     registerAllByDefault: false
     includes: []
@@ -134,9 +140,6 @@ config:
     metrics:
       enabled: true
       prometheus: true
-  upstream:
-    endpoint: ""
-    enableMCPSessionForwarding: true
   runtime:
     downloadDir: ""
     logAuthorization: false

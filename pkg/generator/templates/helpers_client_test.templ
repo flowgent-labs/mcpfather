@@ -292,7 +292,7 @@ func TestForwardRequest_WithMockUpstream(t *testing.T) {
 	}))
 	defer ts.Close()
 
-	t.Setenv("MCP__UPSTREAM__ENDPOINT", ts.URL)
+	t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
 	LoadConfig("{{.BinaryName}}")
 
 	t.Run("GET request", func(t *testing.T) {

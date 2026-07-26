@@ -23,7 +23,11 @@ func CallNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 	}
 
 	if result.IsError {
-		return nil, fmt.Errorf("tool %q returned error", spec.Tool)
+		msg := extractTextContent(result)
+		if msg == "" {
+			msg = "unknown error"
+		}
+		return nil, fmt.Errorf("tool %q: %s", spec.Tool, msg)
 	}
 
 	text := extractTextContent(result)

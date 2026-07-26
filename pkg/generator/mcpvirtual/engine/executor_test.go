@@ -33,7 +33,7 @@ func TestExecutor_SimplePipeline(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -91,7 +91,7 @@ func TestExecutor_ForeachPipeline(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "process",
@@ -160,7 +160,7 @@ func TestExecutor_RequireField_Present(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -201,7 +201,7 @@ func TestExecutor_RequireField_Missing(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -241,7 +241,7 @@ func TestExecutor_RequireField_DeepPath(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -279,7 +279,7 @@ func TestExecutor_RequireField_DeepMissing(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -314,7 +314,7 @@ func TestExecutor_RequireValidation(t *testing.T) {
 		callCount: make(map[string]int),
 	}
 
-	exec := NewExecutor(reg)
+	exec := NewExecutor(reg, nil)
 	steps := []pipeline.StepConfig{
 		{
 			ID:   "fetch",
@@ -338,5 +338,95 @@ func TestExecutor_RequireValidation(t *testing.T) {
 	_, err := exec.Execute(context.Background(), steps, map[string]interface{}{"id": "123"})
 	if err == nil {
 		t.Fatal("expected require validation error")
+	}
+}
+
+type mockHTTPClient struct {
+	statusCode int
+	body       []byte
+}
+
+func (m *mockHTTPClient) Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (int, []byte, error) {
+	return m.statusCode, m.body, nil
+}
+
+func TestExecutor_HTTPStep(t *testing.T) {
+	client := &mockHTTPClient{
+		statusCode: 200,
+		body:       []byte(`{"components": [{"name": "test"}]}`),
+	}
+
+	exec := NewExecutor(nil, client)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "http",
+			Spec: pipeline.StepSpec{
+				ExtraUpstream: "sonatypeiq",
+				Method:        "GET",
+				Path:          "/api/v2/components",
+			},
+		},
+		{
+			ID:   "done",
+			Kind: "return",
+			Spec: pipeline.StepSpec{From: "$fetch"},
+		},
+	}
+
+	result, err := exec.Execute(context.Background(), steps, nil)
+	if err != nil {
+		t.Fatalf("http step failed: %v", err)
+	}
+	if result.IsError {
+		t.Fatal("http step returned error")
+	}
+	if len(result.Content) == 0 {
+		t.Fatal("http step returned no content")
+	}
+}
+
+func TestExecutor_HTTPStepNilClient(t *testing.T) {
+	exec := NewExecutor(nil, nil)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "http",
+			Spec: pipeline.StepSpec{
+				ExtraUpstream: "sonatypeiq",
+				Method:        "GET",
+				Path:          "/api/v2/components",
+			},
+		},
+	}
+
+	_, err := exec.Execute(context.Background(), steps, nil)
+	if err == nil {
+		t.Fatal("expected error for http step with nil client")
+	}
+}
+
+func TestExecutor_HTTPStepNon2xx(t *testing.T) {
+	client := &mockHTTPClient{
+		statusCode: 404,
+		body:       []byte(`{"error": "not found"}`),
+	}
+
+	exec := NewExecutor(nil, client)
+	steps := []pipeline.StepConfig{
+		{
+			ID:   "fetch",
+			Kind: "http",
+			Spec: pipeline.StepSpec{
+				ExtraUpstream: "sonatypeiq",
+				Method:        "GET",
+				Path:          "/api/v2/components",
+			},
+		},
+	}
+
+	_, err := exec.Execute(context.Background(), steps, nil)
+	if err == nil {
+		t.Fatal("expected error for non-2xx response")
 	}
 }

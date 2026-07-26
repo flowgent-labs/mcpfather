@@ -33,8 +33,8 @@ make
 
 ```sh
 ./bin/mcpfather -v \
-    -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o examples/confluence-mcp \
+    -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o usecase/confluence-mcp \
     --includes "listSpaces,createPage,updatePage,deletePage"
 ```
 
@@ -43,15 +43,15 @@ make
 - The server defaults to httpbin.org which echoes requests — great for quick verification:
 
 ```sh
-export MCP__UPSTREAM__ENDPOINT=https://api.example.com
+export MCP__UPSTREAM__DEFAULT__ENDPOINT=https://api.example.com
 
 # Optional 1: setup token from env
-export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=your-token
-examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
+export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=your-token
+usecase/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
-export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE=/path/to/.credentials
-examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
+export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE=/path/to/.credentials
+usecase/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
 - Test with `mcpclient.sh` (for `HTTP` transport only)
@@ -65,9 +65,9 @@ examples/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 ```bash
 # Start the MCP server with HTTP mode.
-export MCP__AUTH__FRONTEND__OIDC__ENABLED=true
-export MCP__AUTH__FRONTEND__OIDC__ISSUER="https://keycloak.example.com/realms/master"
-export MCP__AUTH__FRONTEND__OIDC__AUDIENCE="confluence-mcp"
+export MCP__SERVER__AUTH__OIDC__ENABLED=true
+export MCP__SERVER__AUTH__OIDC__ISSUER="https://keycloak.example.com/realms/master"
+export MCP__SERVER__AUTH__OIDC__AUDIENCE="confluence-mcp"
 ./bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Obtain the OAuth2.1 metadata.
@@ -83,24 +83,24 @@ Invoke tools directly from the command line — no MCP agent needed. Useful for 
 
 ```sh
 # Set your upstream endpoint (required for real API calls)
-export MCP__UPSTREAM__ENDPOINT=https://api.example.com
-export MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=your-token
+export MCP__UPSTREAM__DEFAULT__ENDPOINT=https://api.example.com
+export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=your-token
 
 # First call: list available tools
-examples/confluence-mcp/bin/confluence-mcp -t cli list
+usecase/confluence-mcp/bin/confluence-mcp -t cli list
 
 # First tool call: fetch a page by ID
-examples/confluence-mcp/bin/confluence-mcp -t cli Getpage --id 123456
+usecase/confluence-mcp/bin/confluence-mcp -t cli Getpage --id 123456
 
 # Show tool-specific help (GNU-style usage)
-examples/confluence-mcp/bin/confluence-mcp -t cli Getpage --help
+usecase/confluence-mcp/bin/confluence-mcp -t cli Getpage --help
 
 # Call a tool with GNU-style --flag arguments
-examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces --limit=5 --type global
-examples/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
+usecase/confluence-mcp/bin/confluence-mcp -t cli ListSpaces --limit=5 --type global
+usecase/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
 
 # Call a tool without arguments (for tools that have no required params)
-examples/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
+usecase/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
 ```
 
 ## Generator Self Configuration
@@ -128,20 +128,20 @@ Use `--includes` and `--excludes` to control which operations generate MCP tools
 
 ```sh
 # Only generate tools for specific operations
-./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o examples/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
+./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o usecase/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
 
 # Generate all tools except health checks
-./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o examples/confluence-mcp --excludes "healthCheck,status"
+./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o usecase/confluence-mcp --excludes "healthCheck,status"
 
 # Generate all tools except a few
-./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o examples/confluence-mcp --excludes "uploadAttachment,removeLabel"
+./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o usecase/confluence-mcp --excludes "uploadAttachment,removeLabel"
 
 # Preview what gets included/excluded
-./bin/mcpfather -i examples/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o examples/confluence-mcp --includes "listSpaces" -v
+./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o usecase/confluence-mcp --includes "listSpaces" -v
 ```
 
 ### Tool name truncation
@@ -176,9 +176,9 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 
 | Layer | Config YAML path | Env var prefix | Role |
 |---|---|---|---|
-| **Frontend** | `auth.frontend.oidc` | `MCP__AUTH__FRONTEND__OIDC__*` | Validates AI agent bearer tokens (inbound) |
-| **Backend OIDC** | `auth.backend.oidc` | `MCP__AUTH__BACKEND__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
-| **Backend Static** | `auth.backend.static` | `MCP__AUTH__BACKEND__STATIC__*` | Server's own static token/cookie for upstream APIs |
+| **Server** | `server.auth.oidc` | `MCP__SERVER__AUTH__OIDC__*` | Validates AI agent bearer tokens (inbound) |
+| **Upstream OIDC** | `upstream.default.auth.oidc` | `MCP__UPSTREAM__DEFAULT__AUTH__OIDC__*` | Server's own OIDC client_credentials for upstream APIs |
+| **Upstream Static** | `upstream.default.auth.static` | `MCP__UPSTREAM__DEFAULT__AUTH__STATIC__*` | Server's own static token/cookie for upstream APIs |
 
 > The AI agent's inbound token is **never** forwarded upstream (MCP spec: Token Passthrough Prohibition).
 
@@ -186,32 +186,32 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 
 | Variable | Description |
 |---|---|
-| `MCP__AUTH__FRONTEND__OIDC__ENABLED` | Enable JWT bearer validation for inbound requests |
-| `MCP__AUTH__FRONTEND__OIDC__ISSUER` | OIDC issuer for agent tokens (used for JWKS discovery) |
-| `MCP__AUTH__FRONTEND__OIDC__JWKS_URI` | JWKS endpoint (auto-discovered from issuer if empty) |
-| `MCP__AUTH__FRONTEND__OIDC__AUDIENCE` | Expected `aud` claim; also the RFC 9728 resource identifier |
+| `MCP__SERVER__AUTH__OIDC__ENABLED` | Enable JWT bearer validation for inbound requests |
+| `MCP__SERVER__AUTH__OIDC__ISSUER` | OIDC issuer for agent tokens (used for JWKS discovery) |
+| `MCP__SERVER__AUTH__OIDC__JWKS_URI` | JWKS endpoint (auto-discovered from issuer if empty) |
+| `MCP__SERVER__AUTH__OIDC__AUDIENCE` | Expected `aud` claim; also the RFC 9728 resource identifier |
 
 **Backend (outbound) env vars:**
 
 | Variable | Description |
 |---|---|
-| `MCP__UPSTREAM__ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
-| `MCP__AUTH__BACKEND__OIDC__CLIENT_ID` | OIDC client ID for upstream authentication |
-| `MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET` | OIDC client secret for upstream authentication |
-| `MCP__AUTH__BACKEND__OIDC__ISSUER` | OIDC issuer for upstream token acquisition |
-| `MCP__AUTH__BACKEND__OIDC__SCOPES` | OIDC scopes (default: `openid`) |
-| `MCP__AUTH__BACKEND__STATIC__WEB_TOKEN` | Static web token for upstream auth |
-| `MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE` | Path to a file containing the web token |
-| `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
-| `MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the cookie token |
+| `MCP__UPSTREAM__DEFAULT__ENDPOINT` | Base URL of the upstream API (default: `https://httpbin.org/anything`) |
+| `MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_ID` | OIDC client ID for upstream authentication |
+| `MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET` | OIDC client secret for upstream authentication |
+| `MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ISSUER` | OIDC issuer for upstream token acquisition |
+| `MCP__UPSTREAM__DEFAULT__AUTH__OIDC__SCOPES` | OIDC scopes (default: `openid`) |
+| `MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN` | Static web token for upstream auth |
+| `MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE` | Path to a file containing the web token |
+| `MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN` | Cookie token for upstream session auth |
+| `MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN_FILE` | Path to a file containing the cookie token |
 | ... | ... |
 
 ### Token retrieval priority (backend / outbound)
 
 > The server tries to obtain an upstream Bearer token in this order:
 
-1. **OIDC** client_credentials grant (`auth.backend.oidc.*`)
-2. **Static** web token (`auth.backend.static.web_token` or `web_token_file`)
+1. **OIDC** client_credentials grant (`upstream.default.auth.oidc.*`)
+2. **Static** web token (`upstream.default.auth.static.web_token` or `web_token_file`)
 
 The AI agent's own Authorization header is deliberately excluded from upstream forwarding (MCP spec: Token Passthrough Prohibition).
 
@@ -225,7 +225,7 @@ The AI agent's own Authorization header is deliberately excluded from upstream f
 
 ```sh
 # Print the default config template
-examples/confluence-mcp/bin/confluence-mcp --print-default-config
+usecase/confluence-mcp/bin/confluence-mcp --print-default-config
 
 # Edit: ~/.confluence-mcp/config.yaml and list only the tools you want
 ```
@@ -308,7 +308,7 @@ virtualTools:
       from: $enrich
 ```
 
-- Pipeline step kinds: `call` (invoke an MCP tool), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
+- Pipeline step kinds: `call` (invoke an MCP tool), `http` (direct HTTP API call on a named extra_upstream), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
 
 ## Generated MCP Server - Agent Integration
 
@@ -324,9 +324,9 @@ virtualTools:
       "command": ["bash", "-c", "/path/to/confluence-mcp"],
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       },
       "enabled": true
     }
@@ -345,9 +345,9 @@ virtualTools:
       "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -361,7 +361,7 @@ virtualTools:
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
+web_token_env_var = "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor
@@ -375,9 +375,9 @@ web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
       "command": "/path/to/confluence-mcp",
       "args": ["--transport", "stdio"],
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -394,9 +394,9 @@ web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
     "confluence-mcp": {
       "type": "remote",
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -413,9 +413,9 @@ web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
     "confluence-mcp": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -429,7 +429,7 @@ web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
 ```toml
 [mcp_servers.confluence-mcp]
 url = "http://localhost:8080/mcp"
-web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
+web_token_env_var = "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN"
 ```
 
 ### Cursor (Remote)
@@ -442,9 +442,9 @@ web_token_env_var = "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN"
     "confluence-mcp": {
       "url": "http://localhost:8080/mcp",
       "env": {
-        "MCP__UPSTREAM__ENDPOINT": "https://api.example.com",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN": "your-token",
-        "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
+        "MCP__UPSTREAM__DEFAULT__ENDPOINT": "https://api.example.com",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN": "your-token",
+        "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE": "/path/to/fallback/.credentials"
       }
     }
   }
@@ -462,9 +462,9 @@ helm upgrade --install --create-namespace \
   my-mcp-server ./deploy/helm \
   --set image.repository=ghcr.io/<YOUR_ORG>/my-mcp-server \
   --set image.tag=v1.0.0 \
-  --set config.upstream.endpoint=https://api.example.com \
-  --set config.auth.backend.static.create=true \
-  --set config.auth.backend.static.webToken=<YOUR_TOKEN>
+  --set config.upstream.default.endpoint=https://api.example.com \
+  --set config.upstream.default.auth.static.create=true \
+  --set config.upstream.default.auth.static.webToken=<YOUR_TOKEN>
 ```
 
 Images are automatically built and pushed to e.g: `ghcr.io/<YOUR_ORG>/my-mcp-server`
@@ -510,7 +510,7 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 ### Sonarqube
 
 - [SonarQube APIs official schema - (*No Native Swagger format*)](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
-    - You can use this tool convert ([sonarqube-convert-to-oas.py](examples/swaggers/sonarqube/sonarqube-convert-to-oas.py)) to OAS format from [Sonarqube official schema](examples/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
+    - You can use this tool convert ([sonarqube-convert-to-oas.py](usecase/swaggers/sonarqube/sonarqube-convert-to-oas.py)) to OAS format from [Sonarqube official schema](usecase/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
 - ~~[SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)~~
 - ~~[SonarQube API (custom schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)~~
 - ~~[sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)~~
@@ -525,7 +525,7 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 ### Telegram
 
 - [Telegram APIs official schema - (*No Native Swagger format*)](https://core.telegram.org/schema/json)
-    - You can use this tool convert ([telegram-convert-to-oas.py](examples/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](examples/swaggers/telegram/telegram-v20260715.schema.json).
+    - You can use this tool convert ([telegram-convert-to-oas.py](usecase/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](usecase/swaggers/telegram/telegram-v20260715.schema.json).
 
 ## License
 
