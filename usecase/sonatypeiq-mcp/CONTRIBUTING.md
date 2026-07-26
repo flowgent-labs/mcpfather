@@ -7,7 +7,7 @@ Thank you for your interest in contributing!
 1. Fork the repository.
 2. Create a new branch for your feature or bugfix.
 3. Make your changes and add tests if applicable.
-4. Run `make test` to ensure all tests pass.
+4. Run `make test-ut` to ensure all tests pass.
 5. Submit a pull request with a clear description.
 
 ## Development
@@ -17,7 +17,7 @@ Thank you for your interest in contributing!
 make build
 
 # Run tests
-make test
+make test-ut
 
 # Build Docker image
 make build-image

@@ -34,10 +34,10 @@ func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 		proxyURL = os.Getenv("HTTPS_PROXY")
 	}
 	if proxyURL == "" {
-		t.Logf("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
+		logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
 		return "", nil
 	}
-	t.Logf("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+	logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
 		os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
 	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
 }
@@ -89,6 +89,7 @@ func genProject(t *testing.T, includes, excludes string) string {
 // genProjectWithSpec runs mcpfather with a custom spec file (relative to its/).
 func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) string {
 	t.Helper()
+	logProgress("[gen] generating MCP project from spec=%s includes=%q excludes=%q", specFile, includes, excludes)
 	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	args := []string{"-i", filepath.Join(repoRoot(t), "it", specFile), "-o", dir}
@@ -98,11 +99,13 @@ func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) strin
 	if excludes != "" {
 		args = append(args, "--excludes", excludes)
 	}
+	logProgress("[gen] running mcpfather: %s %v", bin, args)
 	cmd := exec.Command(bin, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
+	logProgress("[gen] project generated at %s", dir)
 	return dir
 }
 
@@ -118,6 +121,7 @@ func repoRoot(t *testing.T) string {
 // buildServer runs go mod tidy + go build in the generated project dir.
 func buildServer(t *testing.T, projectDir string) string {
 	t.Helper()
+	logProgress("[build] go mod tidy in %s", projectDir)
 	_, proxyEnv := testProxyEnv(t)
 	binName := filepath.Base(projectDir)
 	cmd := exec.Command("go", "mod", "tidy")
@@ -126,12 +130,14 @@ func buildServer(t *testing.T, projectDir string) string {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
 	}
+	logProgress("[build] go mod tidy OK — building binary %s", binName)
 	cmd = exec.Command("go", "build", "-o", filepath.Join("bin", binName), ".")
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), proxyEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
+	logProgress("[build] binary built at %s/bin/%s", projectDir, binName)
 	return filepath.Join(projectDir, "bin", binName)
 }
 
@@ -717,11 +723,16 @@ func mcpHTTPCall(t *testing.T, baseURL string, method string, params map[string]
 // waitForServer polls the MCP endpoint until the server responds or times out.
 func waitForServer(t *testing.T, baseURL string) {
 	t.Helper()
+	logProgress("[wait] polling %s/mcp for server readiness (timeout 5s)", baseURL)
 	for i := 0; i < 100; i++ {
 		resp, err := http.Post(baseURL+"/mcp", "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}`))
 		if err == nil {
 			resp.Body.Close()
+			logProgress("[wait] server ready at %s (attempt %d)", baseURL, i+1)
 			return
+		}
+		if i%20 == 19 {
+			logProgress("[wait] still waiting for %s (attempt %d/100, last error: %v)", baseURL, i+1, err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -2211,6 +2222,8 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 // writeCoreVirtualConfig writes an virtual tools config for core tests.
 func writeCoreVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
 	t.Helper()
+	logProgress("[config] writing config for %s (home=%s)", binaryName, homeDir)
+	t.Helper()
 	configDir := filepath.Join(homeDir, "."+binaryName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -2226,4 +2239,30 @@ func trimMsg(s string, max int) string {
 		return s[:max] + "..."
 	}
 	return s
+}
+
+// logProgress writes a timestamped progress message to stderr for real-time visibility
+// during long-running integration tests. Use this instead of t.Logf for operational
+// steps (building, starting servers, waiting, etc.) so output appears immediately
+// rather than being buffered until the test completes.
+// logProgress writes a timestamped progress message directly to the controlling
+// terminal (/dev/tty) so it appears in real-time during long-running integration
+// tests. go test redirects fd 1 (stdout) and fd 2 (stderr) into internal pipes
+// that are only flushed when the test process exits — meaning fmt.Fprintf(os.Stderr)
+// and os.Stderr.WriteString are invisible until the test completes (or is killed).
+// syscall.Write(2, ...) hits the same pipe and suffers the same fate. /dev/tty is
+// NOT a file descriptor but a kernel device that always points to the real
+// terminal regardless of any fd redirection — same trick used by ssh, sudo, and gpg
+// when they need to read a password while stdin is piped.
+func logProgress(format string, args ...interface{}) {
+	ts := time.Now().Format("15:04:05.000")
+	msg := fmt.Sprintf(format, args...)
+	line := fmt.Sprintf("    --- %s %s\n", ts, msg)
+	// Write directly to the controlling terminal (/dev/tty) to bypass
+	// go test's stderr capture pipe. fd 2 is redirected by go test to a
+	// pipe; /dev/tty always points to the real terminal regardless.
+	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+		tty.WriteString(line)
+		tty.Close()
+	}
 }
