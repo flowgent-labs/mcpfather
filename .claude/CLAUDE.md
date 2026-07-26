@@ -1,11 +1,11 @@
 # Project Conventions
 
 - **All builds use `make` from the repository root.** `make help` for targets.
-  `make build`, `make test-unit`, `make test-integration`, `make build-all`, `make clean`.
+  `make build`, `make test-ut`, `make test-it`, `make build-all`, `make clean`.
 - **Git commit messages must be concise.** Subject under 72 chars. **No `Co-Authored-By` trailers.**
 - **Any code, config, or documentation change must follow high cohesion, low coupling.**
   Structure must be clear and concise. Related dependent modules MUST be updated synchronously.
-- **Code changes MUST pass `make test-unit`.**
+- **Code changes MUST pass `make test-ut`.**
 
 ## Test Architecture (non-obvious from code alone)
 

@@ -110,6 +110,7 @@ func startMockOIDCServer(t *testing.T) *mockOIDCServer {
 
 	binPath := filepath.Join(t.TempDir(), "mockoidcsvc")
 	srcDir := filepath.Join(repoRoot(t), "it", "cmd", "mockoidcsvc")
+	logProgress("[mock-oidc] building mockoidcsvc from %s", srcDir)
 	buildCmd := exec.Command("go", "build", "-o", binPath, srcDir)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("build mockoidcsvc: %v\n%s", err, out)

@@ -16,5 +16,5 @@
 <!-- How was this change tested? -->
 
 - [ ] `make build` passes
-- [ ] `make test` passes
+- [ ] `make test-ut` passes
 - [ ] Manual verification performed
