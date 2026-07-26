@@ -465,9 +465,9 @@ deploy: build-image
 		--set config.upstream.endpoint=$(MCP_UPSTREAM_ENDPOINT) \
 		--set secret.static.create=true \
 		--set secret.static.webToken=$(MCP_UPSTREAM_TOKEN) \
-		--set config.auth.backend.oidc.enabled=true \
-		--set config.auth.backend.oidc.issuer=$(MCP_OIDC_ISSUER_URL) \
-		--set config.auth.backend.oidc.clientId=$(MCP_OIDC_CLIENT_ID) \
+		--set config.upstream.default.auth.oidc.enabled=true \
+		--set config.upstream.default.auth.oidc.issuer=$(MCP_OIDC_ISSUER_URL) \
+		--set config.upstream.default.auth.oidc.clientId=$(MCP_OIDC_CLIENT_ID) \
 		--set secret.static.oidcClientSecret=$(MCP_OIDC_CLIENT_SECRET)
 `, binName)
 
@@ -643,7 +643,7 @@ func (g *Generator) GenerateReadme() error {
 }
 
 // GenerateDotCredentials creates a .credentials file for storing the upstream token.
-// The generated MCP server can read the token from this file via MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE.
+// The generated MCP server can read the token from this file via MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE.
 func (g *Generator) GenerateDotCredentials() error {
 	// Only create if it doesn't already exist (preserve user's token)
 	path := filepath.Join(g.outputDir, ".credentials")

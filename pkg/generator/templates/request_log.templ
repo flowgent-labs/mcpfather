@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -214,3 +215,21 @@ const (
 	httpLogFullHdr = 8 // full header values
 	httpLogBody    = 10 // request body
 )
+
+// ExtractUpstreamStatus scans an error chain for "upstream error: status NNN"
+// and returns NNN if found. Falls back to the default value.
+func ExtractUpstreamStatus(err error, defaultStatus int) int {
+	msg := err.Error()
+	const prefix = "upstream error: status "
+	if idx := strings.Index(msg, prefix); idx >= 0 {
+		start := idx + len(prefix)
+		end := start
+		for end < len(msg) && msg[end] >= '0' && msg[end] <= '9' {
+			end++
+		}
+		if code, convErr := strconv.Atoi(msg[start:end]); convErr == nil {
+			return code
+		}
+	}
+	return defaultStatus
+}

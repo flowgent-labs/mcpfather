@@ -91,7 +91,7 @@ func newScenarioRunner(results map[string]string) *scenarioRunner {
 	}
 	return &scenarioRunner{
 		registry: r,
-		executor: engine.NewExecutor(r),
+		executor: engine.NewExecutor(r, nil),
 	}
 }
 
@@ -432,7 +432,7 @@ func TestScenario_JQ_RemoveSensitiveFields(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"username": "alice", "password": "secret123", "token": "abc", "email": "alice@x.com"})
 	s := &pipeline.StepConfig{ID: "clean", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `del(.password, .token)`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestScenario_JQ_RenameFields(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"first_name": "John", "last_name": "Doe"})
 	s := &pipeline.StepConfig{ID: "rename", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{firstName: .first_name, lastName: .last_name}`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +460,7 @@ func TestScenario_JQ_FlattenNestedStructures(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"name": "report", "metadata": map[string]interface{}{"author": "Alice", "version": 2}, "stats": map[string]interface{}{"views": 100}})
 	s := &pipeline.StepConfig{ID: "flat", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `. + .metadata | del(.metadata)`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestScenario_JQ_DefaultValues(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"name": "existing"})
 	s := &pipeline.StepConfig{ID: "def", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{version: "1.0"} + .`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +774,7 @@ func TestScenario_FullPipeline_MultipleVirtualToolsInEngine(t *testing.T) {
 		},
 	}
 	rec := &callRecorder{results: map[string]string{"nativeA": "A", "nativeB": "B"}, callLog: make([]callEntry, 0), failOn: make(map[string]error)}
-	eng, err := engine.NewFromConfig(cfg, rec)
+	eng, err := engine.NewFromConfig(cfg, rec, nil)
 	if err != nil {
 		t.Fatalf("NewFromConfig: %v", err)
 	}
@@ -1039,7 +1039,7 @@ func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, hom
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
-		"MCP__UPSTREAM__ENDPOINT="+mockURL,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
@@ -2672,7 +2672,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "examples", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp"
 
@@ -3032,7 +3032,7 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "examples", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp"
 
