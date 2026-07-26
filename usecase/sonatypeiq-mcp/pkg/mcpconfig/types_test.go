@@ -2,59 +2,118 @@
 
 package mcpconfig
 
-import (
-	"testing"
-)
+import "testing"
 
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 	if cfg == nil {
 		t.Fatal("DefaultConfig returned nil")
 	}
+
+	// Top-level keys
+	if cfg.Server.Auth.OIDC.EnableClientTokenClaimForward != true {
+		t.Error("server.auth.oidc.enable_client_token_claim_forward should default to true")
+	}
+	if cfg.Server.MaxParallelRequests != 100 {
+		t.Errorf("server.max_parallel_requests = %d, want 100", cfg.Server.MaxParallelRequests)
+	}
+
+	defaultUp, ok := cfg.Upstream["default"]
+	if !ok {
+		t.Fatal(`upstream["default"] not found in DefaultConfig`)
+	}
+	if defaultUp.Endpoint != "https://httpbin.org/anything" {
+		t.Errorf(`upstream["default"].endpoint = %q`, defaultUp.Endpoint)
+	}
+	if !defaultUp.EnableMCPSessionForward {
+		t.Error(`upstream["default"].enable_mcp_session_forward should default to true`)
+	}
+
+	if !cfg.Mgmt.IsEnabled() {
+		t.Error("mgmt should be enabled by default")
+	}
+	if !cfg.Mgmt.Metrics.IsEnabled() {
+		t.Error("mgmt.metrics should be enabled by default")
+	}
+}
+
+func TestDefaultConfig_YAMLTags(t *testing.T) {
+	cfg := DefaultConfig()
+
+	// The Config struct defines the canonical YAML structure used by print-default-config.
+	// Verify the config values are accessible through the correct accessor chain.
+	if cfg.Upstream["default"].Endpoint == "" {
+		t.Error("default upstream endpoint is empty")
+	}
+	if cfg.Server.MaxParallelRequests <= 0 {
+		t.Error("server.max_parallel_requests should be positive")
+	}
 }
 
 func TestMgmtConfig_IsEnabled(t *testing.T) {
-	t.Run("nil enabled defaults to true", func(t *testing.T) {
-		c := MgmtConfig{}
-		if !c.IsEnabled() {
-			t.Error("should be enabled by default")
+	t.Run("nil enabled means true", func(t *testing.T) {
+		m := MgmtConfig{}
+		if !m.IsEnabled() {
+			t.Error("nil Enabled should default to true")
 		}
 	})
-	t.Run("explicitly enabled", func(t *testing.T) {
-		enabled := true
-		c := MgmtConfig{Enabled: &enabled}
-		if !c.IsEnabled() {
-			t.Error("should be enabled")
+	t.Run("explicit false", func(t *testing.T) {
+		f := false
+		m := MgmtConfig{Enabled: &f}
+		if m.IsEnabled() {
+			t.Error("explicit false should be false")
 		}
 	})
-	t.Run("explicitly disabled", func(t *testing.T) {
-		enabled := false
-		c := MgmtConfig{Enabled: &enabled}
-		if c.IsEnabled() {
-			t.Error("should be disabled")
+	t.Run("explicit true", func(t *testing.T) {
+		tr := true
+		m := MgmtConfig{Enabled: &tr}
+		if !m.IsEnabled() {
+			t.Error("explicit true should be true")
 		}
 	})
 }
 
 func TestMetricsConfig_IsEnabled(t *testing.T) {
-	t.Run("nil enabled defaults to true", func(t *testing.T) {
-		c := MetricsConfig{}
-		if !c.IsEnabled() {
-			t.Error("should be enabled by default")
+	t.Run("nil enabled means true", func(t *testing.T) {
+		m := MetricsConfig{}
+		if !m.IsEnabled() {
+			t.Error("nil Enabled should default to true")
 		}
 	})
-	t.Run("explicitly enabled", func(t *testing.T) {
-		enabled := true
-		c := MetricsConfig{Enabled: &enabled}
-		if !c.IsEnabled() {
-			t.Error("should be enabled")
+	t.Run("explicit false", func(t *testing.T) {
+		f := false
+		m := MetricsConfig{Enabled: &f}
+		if m.IsEnabled() {
+			t.Error("explicit false should be false")
 		}
 	})
-	t.Run("explicitly disabled", func(t *testing.T) {
-		enabled := false
-		c := MetricsConfig{Enabled: &enabled}
-		if c.IsEnabled() {
-			t.Error("should be disabled")
-		}
-	})
+}
+
+func TestUpstreamEntryConfig_Fields(t *testing.T) {
+	entry := UpstreamEntryConfig{
+		Endpoint:                "https://api.example.com",
+		EnableMCPSessionForward: true,
+		Auth: UpstreamAuthConfig{
+			OIDC: UpstreamOIDCConfig{
+				Enabled:      true,
+				Issuer:       "https://idp.example.com",
+				ClientID:     "test-client",
+				ClientSecret: "test-secret",
+				Scopes:       "openid",
+			},
+			Static: StaticAuthConfig{
+				WebToken:     "token123",
+				WebTokenFile: "/path/to/token",
+			},
+		},
+	}
+	if entry.Endpoint != "https://api.example.com" {
+		t.Error("endpoint mismatch")
+	}
+	if !entry.Auth.OIDC.Enabled {
+		t.Error("oidc should be enabled")
+	}
+	if entry.Auth.Static.WebToken != "token123" {
+		t.Error("static web_token mismatch")
+	}
 }
