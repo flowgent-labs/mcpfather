@@ -1,7 +1,7 @@
 # CI workflow — triggered on PR lifecycle events (NOT on merge to main).
 #
 # Event matrix:
-#   pull_request (opened, synchronize, reopened) → build + all integration tests
+#   pull_request (opened, synchronize, reopened) → build + all tests
 #   schedule (daily/weekly)                       → same, against main branch
 #
 # Deliberately NOT triggered by:
@@ -25,6 +25,9 @@ concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  IN_CN_GFW: "false"
+
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
@@ -43,7 +46,7 @@ jobs:
       - name: Unit Tests
         run: make test-ut
 
-  integration-core-e2e:
+  integration-it:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,69 +60,5 @@ jobs:
       - name: Build
         run: make build
 
-      - name: Run Core E2E Integration Tests
-        run: go test -v -count=1 -timeout 300s -run "E2E_Core|TestGenerator_|TestAuth_|TestLogging_|TestDownload_|TestCLI_|TestCyclicRef_|TestRegression_|TestConfig_" ./it/...
-
-  integration-virtual-tools:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Build
-        run: make build
-
-      - name: Run Virtual Tools Integration Tests
-        run: go test -v -count=1 -timeout 300s -run "E2E_VirtualTool|E2E_MCP_HeaderForwarding|TestScenario_|E2E_SonatypeIQ" ./it/...
-
-  integration-oidc:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-
-      - name: Start Keycloak OIDC Provider
-        run: |
-          docker run -d --name mcpfather-keycloak \
-            --network host \
-            --hostname 127.0.0.1 \
-            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin \
-            -e KC_BOOTSTRAP_ADMIN_PASSWORD=admin \
-            registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0 \
-            start-dev --hostname=127.0.0.1 --hostname-strict=false
-
-      - name: Wait for Keycloak
-        timeout-minutes: 2
-        run: |
-          for i in $(seq 1 60); do
-            if wget -qO- http://127.0.0.1:8080/realms/master/.well-known/openid-configuration 2>/dev/null; then
-              echo "Keycloak is ready"
-              exit 0
-            fi
-            echo "Waiting for Keycloak... ($i/60)"
-            sleep 2
-          done
-          echo "Keycloak failed to start"
-          docker logs mcpfather-keycloak
-          exit 1
-
-      - name: Build
-        run: make build
-
-      - name: Run OIDC Integration Tests
-        run: go test -v -count=1 -timeout 300s -run "OIDC" ./it/...
-
-      - name: Collect Keycloak Logs (on failure)
-        if: failure()
-        run: docker logs mcpfather-keycloak
-
+      - name: Integration Tests
+        run: make test-it

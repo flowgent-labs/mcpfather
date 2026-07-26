@@ -255,7 +255,13 @@ upstream:
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = append(os.Environ(),
+		"HOME="+homeDir,
+		// Override any MCP__ env from the parent test process (e.g. source .env)
+		// so the YAML config takes precedence.
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET=mcpfather-secret",
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {

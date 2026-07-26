@@ -55,7 +55,7 @@ clean:
 	@rm -f bin/$(BINARY_NAME)*
 
 test-ut:
-	@go test-ut ./...
+	@go test ./...
 
 gen-dsl-schema:
 	@go run ./cmd/gen-dsl-schema --output dsl-schema.json
