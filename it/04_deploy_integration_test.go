@@ -106,6 +106,17 @@ func detectCluster(t *testing.T) (clusterType, string) {
 	return clusterUnknown, "" // unreachable
 }
 
+// requireHelm checks that helm is available (no cluster needed — helm template
+// runs client-side). Use for template-only tests.
+func requireHelm(t *testing.T) string {
+	t.Helper()
+	helmBin, err := exec.LookPath("helm")
+	if err != nil {
+		t.Skipf("helm not found in PATH — skipping template test")
+	}
+	return helmBin
+}
+
 // deployPrereqsOK checks that kubectl, helm, and docker are available and a
 // Kubernetes cluster is reachable via ~/.kube/config (or KUBECONFIG).
 func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
@@ -314,7 +325,7 @@ func deployHelmChart(t *testing.T, helm, kubectl, projectDir, imageRepo, imageTa
 		"--set", fmt.Sprintf("image.repository=%s", imageRepo),
 		"--set", fmt.Sprintf("image.tag=%s", imageTag),
 		"--set", "image.pullPolicy=IfNotPresent",
-		"--set", fmt.Sprintf("config.upstream.endpoint=%s", upstreamURL),
+		"--set", fmt.Sprintf("config.upstream.default.endpoint=%s", upstreamURL),
 		"--set", "config.tools.registerAllByDefault=true",
 		"--set", "config.runtime.logAuthorization=false",
 		"--wait",
@@ -647,7 +658,7 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 		"-n", ns,
 		"--set", fmt.Sprintf("image.repository=%s", imageRepo),
 		"--set", fmt.Sprintf("image.tag=%s", imageVer),
-		"--set", fmt.Sprintf("config.upstream.endpoint=%s", mockURL),
+		"--set", fmt.Sprintf("config.upstream.default.endpoint=%s", mockURL),
 	)
 	tmplOut, err := tmplCmd.CombinedOutput()
 	if err != nil {
@@ -664,7 +675,7 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 }
 
 func TestDeploy_PersistenceEnabled_HasPVC(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -673,7 +684,7 @@ func TestDeploy_PersistenceEnabled_HasPVC(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 		"--set", "persistence.enabled=true",
 		"--set", "persistence.storageClassName=standard-rwo",
 		"--set", "persistence.size=5Gi",
@@ -697,7 +708,7 @@ func TestDeploy_PersistenceEnabled_HasPVC(t *testing.T) {
 }
 
 func TestDeploy_SecretStatic_HasSecret(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -706,7 +717,7 @@ func TestDeploy_SecretStatic_HasSecret(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 		"--set", "secret.provider=static",
 		"--set", "secret.static.create=true",
 		"--set", "secret.static.oidcClientSecret=test-oidc-secret",
@@ -731,7 +742,7 @@ func TestDeploy_SecretStatic_HasSecret(t *testing.T) {
 }
 
 func TestDeploy_SecretGCP_HasSecretProviderClass(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -740,9 +751,9 @@ func TestDeploy_SecretGCP_HasSecretProviderClass(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 		"--set", "secret.provider=gcp",
-		
+
 		"--set", "secret.gcp.projectId=my-gcp-project",
 		"--set", "secret.gcp.secretId=mcp-secrets",
 	)
@@ -768,7 +779,7 @@ func TestDeploy_SecretGCP_HasSecretProviderClass(t *testing.T) {
 }
 
 func TestDeploy_SecretDisabled_NoSecret(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -777,7 +788,7 @@ func TestDeploy_SecretDisabled_NoSecret(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 	)
 	tmplOut, err := tmplCmd.CombinedOutput()
 	if err != nil {
@@ -795,7 +806,7 @@ func TestDeploy_SecretDisabled_NoSecret(t *testing.T) {
 }
 
 func TestDeploy_IngressNginx_HasIngress(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -804,7 +815,7 @@ func TestDeploy_IngressNginx_HasIngress(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 		"--set", "ingress.nginx.enabled=true",
 	)
 	tmplOut, err := tmplCmd.CombinedOutput()
@@ -823,7 +834,7 @@ func TestDeploy_IngressNginx_HasIngress(t *testing.T) {
 }
 
 func TestDeploy_IngressEnvoy_HasGatewayAndRoute(t *testing.T) {
-	_, helm, _ := deployPrereqsOK(t)
+	helm := requireHelm(t)
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binName := filepath.Base(projectDir)
@@ -832,7 +843,7 @@ func TestDeploy_IngressEnvoy_HasGatewayAndRoute(t *testing.T) {
 	tmplCmd := exec.Command(helm, "template", binName, chartDir,
 		"-n", "default",
 		"--set", "image.tag=test",
-		"--set", "config.upstream.endpoint=http://example.com",
+		"--set", "config.upstream.default.endpoint=http://example.com",
 		"--set", "ingress.envoy.enabled=true",
 		"--set", "ingress.envoy.gatewayClassName=envoy-gateway",
 	)
