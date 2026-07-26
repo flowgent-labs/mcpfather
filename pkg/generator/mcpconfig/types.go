@@ -11,32 +11,40 @@ package mcpconfig
 
 // Config is the root configuration for the MCP server.
 type Config struct {
-	Auth     AuthConfig     `yaml:"auth"`
-	Tools    ToolsConfig    `yaml:"nativeTools"`
-	Mgmt     MgmtConfig     `yaml:"mgmt"`
-	Runtime  RuntimeConfig  `yaml:"runtime"`
-	Upstream UpstreamConfig `yaml:"upstream"`
+	Server    ServerConfig                   `yaml:"server"`
+	Upstream map[string]UpstreamEntryConfig `yaml:"upstream"`
+	Tools     NativeToolsConfig              `yaml:"nativeTools"`
+	Mgmt      MgmtConfig                     `yaml:"mgmt"`
+	Runtime   RuntimeConfig                  `yaml:"runtime"`
+}
+
+// ServerConfig holds the inbound-facing (AI agent client MCP request) configuration.
+type ServerConfig struct {
+	Auth                ServerAuthConfig `yaml:"auth"`
+	MaxParallelRequests int              `yaml:"max_parallel_requests"`
+}
+
+// UpstreamEntryConfig configures a named upstream backend for http pipeline nodes
+// and native tool forwarding. The key "default" is the primary upstream.
+type UpstreamEntryConfig struct {
+	Endpoint                string              `yaml:"endpoint"`
+	EnableMCPSessionForward bool                `yaml:"enable_mcp_session_forward"`
+	Auth                    UpstreamAuthConfig  `yaml:"auth"`
 }
 
 // ---- auth ----
 //
-// Naming mirrors reverse-proxy terminology (HAProxy/Envoy): "frontend" is the
-// inbound side facing MCP clients (AI agents), "backend" is the outbound side
+// Naming mirrors reverse-proxy terminology (HAProxy/Envoy): "server" is the
+// inbound side facing MCP clients (AI agents), "upstream" are the outbound side
 // facing upstream APIs. The two are fully decoupled.
 
-// AuthConfig holds both frontend (inbound) and backend (outbound) auth config.
-type AuthConfig struct {
-	Frontend FrontendAuthConfig `yaml:"frontend"`
-	Backend  BackendAuthConfig  `yaml:"backend"`
+// ServerAuthConfig configures inbound OAuth 2.1 bearer token validation.
+type ServerAuthConfig struct {
+	OIDC ServerOIDCConfig `yaml:"oidc"`
 }
 
-// FrontendAuthConfig configures inbound OAuth 2.1 bearer token validation.
-type FrontendAuthConfig struct {
-	OIDC FrontendOIDCConfig `yaml:"oidc"`
-}
-
-// FrontendOIDCConfig configures JWT bearer token validation against an OIDC issuer.
-type FrontendOIDCConfig struct {
+// ServerOIDCConfig configures JWT bearer token validation against an OIDC issuer.
+type ServerOIDCConfig struct {
 	Enabled                           bool     `yaml:"enabled"`
 	Issuer                            string   `yaml:"issuer"`
 	JWKSURI                           string   `yaml:"jwks_uri"`
@@ -45,14 +53,14 @@ type FrontendOIDCConfig struct {
 	AdditionalClientTokenClaimForward []string `yaml:"additional_client_token_claim_forward,omitempty"`
 }
 
-// BackendAuthConfig holds authentication settings for upstream API calls.
-type BackendAuthConfig struct {
-	OIDC   BackendOIDCConfig `yaml:"oidc"`
-	Static StaticAuthConfig  `yaml:"static"`
+// UpstreamAuthConfig holds authentication settings for upstream API calls.
+type UpstreamAuthConfig struct {
+	OIDC   UpstreamOIDCConfig `yaml:"oidc"`
+	Static StaticAuthConfig   `yaml:"static"`
 }
 
-// BackendOIDCConfig configures machine-to-machine OIDC token exchange.
-type BackendOIDCConfig struct {
+// UpstreamOIDCConfig configures machine-to-machine OIDC token exchange.
+type UpstreamOIDCConfig struct {
 	Enabled      bool   `yaml:"enabled"`
 	Issuer       string `yaml:"issuer"`
 	ClientID     string `yaml:"client_id"`
@@ -74,13 +82,13 @@ type StaticAuthConfig struct {
 
 // ---- tools ----
 
-// ToolsConfig controls which native tools are exposed at startup.
-type ToolsConfig struct {
-	Expose *ToolsExposeConfig `yaml:"expose"`
+// NativeToolsConfig controls which native tools are exposed at startup.
+type NativeToolsConfig struct {
+	Expose *NativeToolsExposeConfig `yaml:"expose"`
 }
 
-// ToolsExposeConfig defines which native tools are exposed to external AI agents.
-type ToolsExposeConfig struct {
+// NativeToolsExposeConfig defines which native tools are exposed to external AI agents.
+type NativeToolsExposeConfig struct {
 	RegisterAllToolsByDefault bool     `yaml:"register_all_tools_by_default"`
 	Includes                  []string `yaml:"includes"`
 	Excludes                  []string `yaml:"excludes"`
@@ -138,20 +146,6 @@ func (c MetricsConfig) IsEnabled() bool {
 	return *c.Enabled
 }
 
-// ---- upstream ----
-
-// UpstreamConfig controls how requests are forwarded to upstream APIs.
-type UpstreamConfig struct {
-	Endpoint                string               `yaml:"endpoint"`
-	EnableMCPSessionForward bool                 `yaml:"enable_mcp_session_forward"`
-	Tools                   []UpstreamToolConfig `yaml:"tools,omitempty"`
-}
-
-// UpstreamToolConfig holds per-tool upstream settings.
-type UpstreamToolConfig struct {
-	Name string `yaml:"name"`
-}
-
 // ---- runtime ----
 
 // RuntimeConfig holds operational runtime settings.
@@ -165,17 +159,20 @@ type RuntimeConfig struct {
 // DefaultConfig returns sensible defaults used when no config file exists.
 func DefaultConfig() *Config {
 	t := true
-	return &Config{
-		Auth: AuthConfig{
-			Frontend: FrontendAuthConfig{
-				OIDC: FrontendOIDCConfig{
+	cfg := &Config{
+		Server: ServerConfig{
+			Auth: ServerAuthConfig{
+				OIDC: ServerOIDCConfig{
 					EnableClientTokenClaimForward: true,
 				},
 			},
+			MaxParallelRequests: 100,
 		},
-		Upstream: UpstreamConfig{
-			Endpoint:                "https://httpbin.org/anything",
-			EnableMCPSessionForward: true,
+		Upstream: map[string]UpstreamEntryConfig{
+			"default": {
+				Endpoint:                "https://httpbin.org/anything",
+				EnableMCPSessionForward: true,
+			},
 		},
 		Mgmt: MgmtConfig{
 			Enabled: &t,
@@ -191,4 +188,5 @@ func DefaultConfig() *Config {
 			},
 		},
 	}
+	return cfg
 }

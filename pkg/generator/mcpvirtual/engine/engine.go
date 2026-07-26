@@ -16,22 +16,23 @@ type VirtualToolEntry = pipeline.VirtualToolEntry
 
 // Engine manages virtual tools.
 type Engine struct {
-	config   *config.Config
-	registry ToolRegistry
+	config     *config.Config
+	registry   ToolRegistry
+	httpClient pipeline.HTTPClient
 }
 
 // New creates a new Engine from a config path and tool registry.
-func New(configPath string, registry ToolRegistry) (*Engine, error) {
+func New(configPath string, registry ToolRegistry, httpClient pipeline.HTTPClient) (*Engine, error) {
 	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load virtual tool config: %w", err)
 	}
-	return &Engine{config: cfg, registry: registry}, nil
+	return &Engine{config: cfg, registry: registry, httpClient: httpClient}, nil
 }
 
 // NewFromConfig creates a new Engine from an already-loaded config.
-func NewFromConfig(cfg *config.Config, registry ToolRegistry) (*Engine, error) {
-	return &Engine{config: cfg, registry: registry}, nil
+func NewFromConfig(cfg *config.Config, registry ToolRegistry, httpClient pipeline.HTTPClient) (*Engine, error) {
+	return &Engine{config: cfg, registry: registry, httpClient: httpClient}, nil
 }
 
 // Tools returns all virtual tool entries for registration with an MCP server.
@@ -79,7 +80,7 @@ func (e *Engine) buildHandler(at config.VirtualToolConfig) func(ctx context.Cont
 			args = make(map[string]interface{})
 		}
 		applyDefaults(at.InputSchema, args)
-		executor := NewExecutor(e.registry)
+		executor := NewExecutor(e.registry, e.httpClient)
 		return executor.Execute(ctx, at.Pipeline, args)
 	}
 }

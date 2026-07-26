@@ -454,7 +454,7 @@ func TestDeploy_AuthWebToken_CorrectlyForwarded(t *testing.T) {
 		"op": "add",
 		"path": "/spec/template/spec/containers/0/env/-",
 		"value": {
-			"name": "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN",
+			"name": "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN",
 			"valueFrom": {
 				"secretKeyRef": {
 					"name": "%s-secret",
