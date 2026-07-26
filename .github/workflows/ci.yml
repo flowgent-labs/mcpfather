@@ -41,7 +41,7 @@ jobs:
         run: make build
 
       - name: Unit Tests
-        run: make test-unit
+        run: make test-ut
 
   integration-core-e2e:
     runs-on: ubuntu-latest

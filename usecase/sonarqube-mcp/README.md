@@ -479,7 +479,7 @@ We welcome contributions! Here's how you can help:
 1. **Fork** the repository and create a feature branch
 2. **Make your changes** — add features, fix bugs, or improve documentation
 3. **Add tests** — every new feature or bug fix should include unit tests
-4. **Run the test suite** — `make test` must pass with no regressions
+4. **Run the test suite** — `make test-ut` must pass with no regressions
 5. **Submit a Pull Request** — describe what you changed and why
 
 ### Development Setup
@@ -488,7 +488,7 @@ We welcome contributions! Here's how you can help:
 git clone https://github.com/<YOUR_ORG>/sonarqube-mcp.git
 cd sonarqube-mcp
 make build
-make test
+make test-ut
 ```
 
 ### Code Style

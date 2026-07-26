@@ -39,6 +39,17 @@ import (
 //                    pushed after build and helm uses that repo.
 // ---------------------------------------------------------------------------
 
+// deployKubectl holds the kubectl invocation prefix — normally just {"kubectl"},
+// but if the cluster's kubeconfig is root-owned (k3s default), it becomes
+// {"sudo", "kubectl"} so all kubectl commands go through sudo.
+var deployKubectl []string
+
+// kubectlCmd builds an exec.Cmd for kubectl, respecting the deployKubectl prefix.
+func kubectlCmd(args ...string) *exec.Cmd {
+	a := append(append([]string{}, deployKubectl...), args...)
+	return exec.Command(a[0], a[1:]...)
+}
+
 // clusterType describes how the test should make the image available to k8s.
 type clusterType int
 
@@ -89,18 +100,23 @@ func detectCluster(t *testing.T) (clusterType, string) {
 		return clusterContainerd, ""
 	}
 
-	// 5 — no local tooling => remote
+	// 5 — no local tooling and no remote repo configured; cannot make image
+	// available to the cluster. This is a hard prerequisite — skipping would
+	// silently hide deploy regressions from developers who expect E2E coverage.
 	t.Fatalf("Cannot determine local cluster type and MCPFATHER_TEST_IMAGE_REPO is not set.\n" +
 		"Set MCPFATHER_TEST_IMAGE_REPO=<registry>/<repo> for remote clusters, or install k3s/ctr/crictl/orb.")
 	return clusterUnknown, "" // unreachable
 }
 
 // deployPrereqsOK checks that kubectl, helm, and docker are available and a
-// Kubernetes cluster is reachable.
-func deployPrereqsOK(t *testing.T) (kubectl, helm, docker string) {
+// Kubernetes cluster is reachable. On k3s the default kubeconfig at
+// /etc/rancher/k3s/k3s.yaml has 0600 permissions owned by root, so regular
+// kubectl may fail with "permission denied". The test tries sudo as a fallback
+// and records the prefix globally so all subsequent kubectl calls use it.
+func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 	t.Helper()
 
-	kubectl, err := exec.LookPath("kubectl")
+	kubectlPath, err := exec.LookPath("kubectl")
 	if err != nil {
 		t.Skipf("kubectl not found in PATH — skipping deploy test")
 	}
@@ -113,13 +129,56 @@ func deployPrereqsOK(t *testing.T) (kubectl, helm, docker string) {
 		t.Skipf("docker not found in PATH — skipping deploy test")
 	}
 
-	// Check cluster connectivity
-	cmd := exec.Command(kubectl, "cluster-info")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		t.Skipf("kubectl cannot reach cluster: %v\n%s", err, out)
+	// Check cluster connectivity.
+	cmd := exec.Command(kubectlPath, "cluster-info")
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		deployKubectl = []string{kubectlPath}
+		return kubectlPath, helm, docker
 	}
 
-	return kubectl, helm, docker
+	// kubectl can't reach the cluster. Common causes and remedies:
+	//
+	//   k3s default install → kubeconfig at /etc/rancher/k3s/k3s.yaml is
+	//     root-only (0600). Fix once:
+	//       sudo chmod 644 /etc/rancher/k3s/k3s.yaml
+	//     Or export KUBECONFIG=$HOME/.kube/config and copy it there.
+	//
+	//   k3s without root kubeconfig access → test will auto-retry with sudo
+	//     and use it for all subsequent kubectl commands.
+	//
+	//   no cluster running → start k3s or configure a remote cluster and set
+	//     MCPFATHER_TEST_IMAGE_REPO.
+
+	errStr := strings.TrimSpace(string(out))
+	k3sKubeconfig := "/etc/rancher/k3s/k3s.yaml"
+	if _, statErr := os.Stat(k3sKubeconfig); statErr == nil && strings.Contains(errStr, "permission denied") {
+		t.Logf("⚠  k3s detected but %s is root-only.\n"+
+			"   Fix permanently:  sudo chmod 644 %s\n"+
+			"   Fix this session:  export KUBECONFIG=%s && sudo chmod 644 %s",
+			k3sKubeconfig, k3sKubeconfig, k3sKubeconfig, k3sKubeconfig)
+	}
+
+	// Auto-retry with sudo (k3s default kubeconfig is root-owned).
+	if _, haveSudo := exec.LookPath("sudo"); haveSudo == nil {
+		t.Logf("→ retrying with sudo kubectl cluster-info …")
+		sudoCmd := exec.Command("sudo", kubectlPath, "cluster-info")
+		out, err = sudoCmd.CombinedOutput()
+		if err == nil {
+			deployKubectl = []string{"sudo", kubectlPath}
+			t.Logf("✓  sudo kubectl works — all kubectl commands will use sudo.\n"+
+				"   To avoid this, run:  sudo chmod 644 %s", k3sKubeconfig)
+			return kubectlPath, helm, docker
+		}
+		t.Logf("✗  sudo kubectl also failed: %s", strings.TrimSpace(string(out)))
+	}
+
+	t.Skipf("kubectl cannot reach cluster: %v\n%s\n"+
+		"Ensure a Kubernetes cluster is running and kubectl is configured correctly.\n"+
+		"For k3s:  curl -sfL https://get.k3s.io | sh -\n"+
+		"After install: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && sudo chmod 644 /etc/rancher/k3s/k3s.yaml",
+		err, out)
+	return
 }
 
 // deployNamespace creates a unique test namespace and returns its name.
@@ -128,23 +187,23 @@ func deployNamespace(t *testing.T, kubectl string) string {
 	ns := fmt.Sprintf("mcpfather-deploy-test-%d", time.Now().UnixNano()%100000)
 
 	// Clean up any leftover namespace from prior runs (ignore errors).
-	exec.Command(kubectl, "delete", "namespace", ns, "--ignore-not-found", "--timeout=30s").Run()
+	kubectlCmd("delete", "namespace", ns, "--ignore-not-found", "--timeout=30s").Run()
 
 	// Wait for any previous instance to be fully deleted.
 	for i := 0; i < 30; i++ {
-		out, _ := exec.Command(kubectl, "get", "namespace", ns, "-o", "jsonpath={.status.phase}").CombinedOutput()
+		out, _ := kubectlCmd("get", "namespace", ns, "-o", "jsonpath={.status.phase}").CombinedOutput()
 		if strings.TrimSpace(string(out)) != "Terminating" {
 			break
 		}
 		time.Sleep(2 * time.Second)
 	}
 
-	cmd := exec.Command(kubectl, "create", "namespace", ns)
+	cmd := kubectlCmd("create", "namespace", ns)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("create namespace %s: %v\n%s", ns, err, out)
 	}
 	t.Cleanup(func() {
-		exec.Command(kubectl, "delete", "namespace", ns, "--ignore-not-found", "--timeout=60s").Run()
+		kubectlCmd("delete", "namespace", ns, "--ignore-not-found", "--timeout=60s").Run()
 	})
 	return ns
 }
@@ -297,9 +356,9 @@ func deployCreateSecret(t *testing.T, kubectl, ns, k8sName, bearerToken, cookieT
 	t.Helper()
 	secretName := k8sName + "-secret"
 
-	exec.Command(kubectl, "delete", "secret", secretName, "-n", ns, "--ignore-not-found").Run()
+	kubectlCmd("delete", "secret", secretName, "-n", ns, "--ignore-not-found").Run()
 
-	cmd := exec.Command(kubectl, "create", "secret", "generic", secretName,
+	cmd := kubectlCmd("create", "secret", "generic", secretName,
 		"-n", ns,
 		fmt.Sprintf("--from-literal=web_token=%s", bearerToken),
 		fmt.Sprintf("--from-literal=cookie_token=%s", cookieToken),
@@ -315,7 +374,7 @@ func deployCreateSecret(t *testing.T, kubectl, ns, k8sName, bearerToken, cookieT
 func deployPortForward(t *testing.T, kubectl, ns, k8sName string, remotePort int) (localPort int, cancel func()) {
 	t.Helper()
 
-	cmd := exec.Command(kubectl, "get", "pods", "-n", ns,
+	cmd := kubectlCmd("get", "pods", "-n", ns,
 		"-l", fmt.Sprintf("app.kubernetes.io/name=%s", k8sName),
 		"-o", "jsonpath={.items[0].metadata.name}",
 	)
@@ -463,13 +522,13 @@ func TestDeploy_AuthWebToken_CorrectlyForwarded(t *testing.T) {
 			}
 		}
 	}]`, k8sFullname)
-	patchCmd := exec.Command(kubectl, "patch", "deployment", k8sFullname,
+	patchCmd := kubectlCmd("patch", "deployment", k8sFullname,
 		"-n", ns, "--type=json", "-p", patchJSON,
 	)
 	if out, err := patchCmd.CombinedOutput(); err != nil {
 		t.Fatalf("patch deployment: %v\n%s", err, out)
 	}
-	exec.Command(kubectl, "rollout", "status", "deployment", k8sFullname,
+	kubectlCmd("rollout", "status", "deployment", k8sFullname,
 		"-n", ns, "--timeout=60s").Run()
 	time.Sleep(3 * time.Second)
 
@@ -541,7 +600,7 @@ virtualTools:
 `
 	writeCoreVirtualConfig(t, homeDir, binName, virtConfig)
 	virtConfigPath := filepath.Join(homeDir, "."+binName, "config.yaml")
-	exec.Command(kubectl, "create", "configmap", k8sFullname+"-virtual-config",
+	kubectlCmd("create", "configmap", k8sFullname+"-virtual-config",
 		"-n", ns,
 		fmt.Sprintf("--from-file=config.yaml=%s", virtConfigPath),
 		"--dry-run=client", "-o", "yaml",
