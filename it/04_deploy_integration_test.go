@@ -39,9 +39,7 @@ import (
 //                    pushed after build and helm uses that repo.
 // ---------------------------------------------------------------------------
 
-// deployKubectl holds the kubectl invocation prefix — normally just {"kubectl"},
-// but if the cluster's kubeconfig is root-owned (k3s default), it becomes
-// {"sudo", "kubectl"} so all kubectl commands go through sudo.
+// deployKubectl holds the kubectl invocation prefix (e.g. {"kubectl"}).
 var deployKubectl []string
 
 // kubectlCmd builds an exec.Cmd for kubectl, respecting the deployKubectl prefix.
@@ -109,10 +107,7 @@ func detectCluster(t *testing.T) (clusterType, string) {
 }
 
 // deployPrereqsOK checks that kubectl, helm, and docker are available and a
-// Kubernetes cluster is reachable. On k3s the default kubeconfig at
-// /etc/rancher/k3s/k3s.yaml has 0600 permissions owned by root, so regular
-// kubectl may fail with "permission denied". The test tries sudo as a fallback
-// and records the prefix globally so all subsequent kubectl calls use it.
+// Kubernetes cluster is reachable via ~/.kube/config (or KUBECONFIG).
 func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 	t.Helper()
 
@@ -129,7 +124,7 @@ func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 		t.Skipf("docker not found in PATH — skipping deploy test")
 	}
 
-	// Check cluster connectivity.
+	// Check cluster connectivity via default kubeconfig (~/.kube/config).
 	cmd := exec.Command(kubectlPath, "cluster-info")
 	out, err := cmd.CombinedOutput()
 	if err == nil {
@@ -137,46 +132,20 @@ func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 		return kubectlPath, helm, docker
 	}
 
-	// kubectl can't reach the cluster. Common causes and remedies:
-	//
-	//   k3s default install → kubeconfig at /etc/rancher/k3s/k3s.yaml is
-	//     root-only (0600). Fix once:
-	//       sudo chmod 644 /etc/rancher/k3s/k3s.yaml
-	//     Or export KUBECONFIG=$HOME/.kube/config and copy it there.
-	//
-	//   k3s without root kubeconfig access → test will auto-retry with sudo
-	//     and use it for all subsequent kubectl commands.
-	//
-	//   no cluster running → start k3s or configure a remote cluster and set
-	//     MCPFATHER_TEST_IMAGE_REPO.
-
+	// kubectl can't reach the cluster. Give actionable advice.
 	errStr := strings.TrimSpace(string(out))
-	k3sKubeconfig := "/etc/rancher/k3s/k3s.yaml"
-	if _, statErr := os.Stat(k3sKubeconfig); statErr == nil && strings.Contains(errStr, "permission denied") {
-		t.Logf("⚠  k3s detected but %s is root-only.\n"+
-			"   Fix permanently:  sudo chmod 644 %s\n"+
-			"   Fix this session:  export KUBECONFIG=%s && sudo chmod 644 %s",
-			k3sKubeconfig, k3sKubeconfig, k3sKubeconfig, k3sKubeconfig)
-	}
-
-	// Auto-retry with sudo (k3s default kubeconfig is root-owned).
-	if _, haveSudo := exec.LookPath("sudo"); haveSudo == nil {
-		t.Logf("→ retrying with sudo kubectl cluster-info …")
-		sudoCmd := exec.Command("sudo", kubectlPath, "cluster-info")
-		out, err = sudoCmd.CombinedOutput()
-		if err == nil {
-			deployKubectl = []string{"sudo", kubectlPath}
-			t.Logf("✓  sudo kubectl works — all kubectl commands will use sudo.\n"+
-				"   To avoid this, run:  sudo chmod 644 %s", k3sKubeconfig)
-			return kubectlPath, helm, docker
-		}
-		t.Logf("✗  sudo kubectl also failed: %s", strings.TrimSpace(string(out)))
+	k3sCfg := "/etc/rancher/k3s/k3s.yaml"
+	if _, statErr := os.Stat(k3sCfg); statErr == nil {
+		home, _ := os.UserHomeDir()
+		t.Skipf("k3s kubeconfig found at %s but not accessible.\n"+
+			"Fix:  mkdir -p %s/.kube && sudo cp %s %s/.kube/config && chmod 600 %s/.kube/config\n"+
+			"(kubectl error was: %v\n%s)",
+			k3sCfg, home, k3sCfg, home, home, err, errStr)
 	}
 
 	t.Skipf("kubectl cannot reach cluster: %v\n%s\n"+
 		"Ensure a Kubernetes cluster is running and kubectl is configured correctly.\n"+
-		"For k3s:  curl -sfL https://get.k3s.io | sh -\n"+
-		"After install: export KUBECONFIG=/etc/rancher/k3s/k3s.yaml && sudo chmod 644 /etc/rancher/k3s/k3s.yaml",
+		"Check:  kubectl cluster-info  and  ls -la ~/.kube/config",
 		err, out)
 	return
 }
@@ -220,7 +189,20 @@ func deployBuildImage(t *testing.T, docker, projectDir string) string {
 		t.Fatalf("Dockerfile not found at %s", dockerfile)
 	}
 
-	cmd := exec.Command(docker, "build", "--network", "host", "-t", imageTag, "-f", dockerfile, projectDir)
+	// Build args: behind GFW, route Go module traffic through goproxy.cn
+	// (a public CDN in China) and disable sumdb checks so `go mod download`
+	// inside the container does not hang. podman-remote --network host does
+	// NOT map 127.0.0.1 to the host, so a localhost proxy is invisible here.
+	buildArgs := []string{"build", "--network", "host", "-t", imageTag, "-f", dockerfile}
+	if os.Getenv("IN_CN_GFW") == "true" {
+		buildArgs = append(buildArgs,
+			"--build-arg", "GOPROXY=https://goproxy.cn,direct",
+			"--build-arg", "GONOSUMDB=*",
+			"--build-arg", "GONOSUMCHECK=*",
+		)
+	}
+	buildArgs = append(buildArgs, projectDir)
+	cmd := exec.Command(docker, buildArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("docker build failed: %v\n%s", err, out)
 	}
