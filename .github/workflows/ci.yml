@@ -1,7 +1,7 @@
 # CI workflow — triggered on PR lifecycle events (NOT on merge to main).
 #
 # Event matrix:
-#   pull_request (opened, synchronize, reopened) → build + all tests
+#   pull_request (opened, synchronize, reopened) → build + all integration tests
 #   schedule (daily/weekly)                       → same, against main branch
 #
 # Deliberately NOT triggered by:
@@ -48,6 +48,7 @@ jobs:
 
   integration-it:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
