@@ -199,6 +199,7 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 		keycloakDir := filepath.Join(repoRoot(t), "it", "docker", "keycloak")
 		importFile := filepath.Join(keycloakDir, "realm.json")
 
+		logProgress("[keycloak] starting Docker container mcpfather-keycloak (image: 26.7.0)...")
 		cmd := exec.Command("/bin/docker", "run", "-d", "--name", "mcpfather-keycloak",
 			"--network", "host",
 			"--hostname", "127.0.0.1",
@@ -234,13 +235,18 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 
 func waitForURL(t *testing.T, u string, maxSec int) bool {
 	t.Helper()
+	logProgress("[wait] polling %s (timeout %ds)", u, maxSec)
 	for i := 0; i < maxSec*2; i++ {
 		resp, err := http.Get(u)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
+				logProgress("[wait] %s ready (attempt %d)", u, i+1)
 				return true
 			}
+		}
+		if i%20 == 19 {
+			logProgress("[wait] still waiting for %s (attempt %d/%d)", u, i+1, maxSec*2)
 		}
 		time.Sleep(500 * time.Millisecond)
 	}
@@ -644,6 +650,7 @@ func keycloakInitDeviceAuth(t *testing.T, issuer string) (deviceCode, userCode s
 // MCP server process in HTTP mode, returning the base URL and a cleanup func.
 func startMCPServer(t *testing.T, issuer, audience string) (baseURL string, cleanup func(), mock *mockUpstream) {
 	t.Helper()
+	logProgress("[mcp-server] starting server with issuer=%s audience=%s", issuer, audience)
 
 	mock = startMockUpstream(okHandler())
 
@@ -666,6 +673,7 @@ server:
 	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	logProgress("[mcp-server] launching %s on port %s", binaryName, port)
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	var stderrBuf strings.Builder
