@@ -364,7 +364,7 @@ func TestExecutor_HTTPStep(t *testing.T) {
 			ID:   "fetch",
 			Kind: "http",
 			Spec: pipeline.StepSpec{
-				ExtraUpstream: "sonatypeiq",
+				Upstream: "sonatypeiq",
 				Method:        "GET",
 				Path:          "/api/v2/components",
 			},
@@ -395,7 +395,7 @@ func TestExecutor_HTTPStepNilClient(t *testing.T) {
 			ID:   "fetch",
 			Kind: "http",
 			Spec: pipeline.StepSpec{
-				ExtraUpstream: "sonatypeiq",
+				Upstream: "sonatypeiq",
 				Method:        "GET",
 				Path:          "/api/v2/components",
 			},
@@ -420,7 +420,7 @@ func TestExecutor_HTTPStepNon2xx(t *testing.T) {
 			ID:   "fetch",
 			Kind: "http",
 			Spec: pipeline.StepSpec{
-				ExtraUpstream: "sonatypeiq",
+				Upstream: "sonatypeiq",
 				Method:        "GET",
 				Path:          "/api/v2/components",
 			},

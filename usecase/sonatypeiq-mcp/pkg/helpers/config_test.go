@@ -34,7 +34,7 @@ func TestSetGetConfig(t *testing.T) {
 	})
 }
 
-func TestGetUpstreamEndpoint(t *testing.T) {
+func TestGetNamedUpstreamEndpoint(t *testing.T) {
 	t.Run("configured", func(t *testing.T) {
 		SetConfig(&Config{Backend: map[string]mcpconfig.UpstreamEntryConfig{"default": {Endpoint: "https://custom.example.com"}}})
 		got := GetUpstreamEndpoint()
@@ -85,7 +85,7 @@ func TestIsDefaultUpstreamEndpoint(t *testing.T) {
 	})
 }
 
-func TestGetUpstreamToken(t *testing.T) {
+func TestGetNamedUpstreamToken(t *testing.T) {
 	t.Run("static web token", func(t *testing.T) {
 		SetConfig(&Config{Backend: map[string]mcpconfig.UpstreamEntryConfig{"default": {
 			Auth: mcpconfig.UpstreamAuthConfig{
@@ -143,7 +143,7 @@ func TestGetUpstreamToken(t *testing.T) {
 	})
 }
 
-func TestGetUpstreamCookie(t *testing.T) {
+func TestGetNamedUpstreamCookie(t *testing.T) {
 	t.Run("cookie token", func(t *testing.T) {
 		SetConfig(&Config{Backend: map[string]mcpconfig.UpstreamEntryConfig{"default": {
 			Auth: mcpconfig.UpstreamAuthConfig{

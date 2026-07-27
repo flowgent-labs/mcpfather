@@ -48,7 +48,7 @@ test-ut:
 	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
 test-it:
-	go test -v -count=1 -timeout 900s ./it/
+	go test -v -count=1 -timeout 600s ./it/
 
 install:
 	go install $(BUILD_FLAGS) $(LDFLAGS) $(CMD_PATH)

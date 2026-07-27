@@ -110,18 +110,18 @@ func TestValidate_ForeachNoReturn(t *testing.T) {
 	}
 }
 
-func TestValidate_HTTPMissingExtraUpstream(t *testing.T) {
+func TestValidate_HTTPMissingUpstream(t *testing.T) {
 	steps := []StepConfig{
 		{ID: "step1", Kind: "http", Spec: StepSpec{Method: "GET", Path: "/api"}},
 	}
 	if err := Validate(steps); err == nil {
-		t.Fatal("expected error for http without extra_upstream")
+		t.Fatal("expected error for http without upstream")
 	}
 }
 
 func TestValidate_HTTPMissingMethod(t *testing.T) {
 	steps := []StepConfig{
-		{ID: "step1", Kind: "http", Spec: StepSpec{ExtraUpstream: "iq", Path: "/api"}},
+		{ID: "step1", Kind: "http", Spec: StepSpec{Upstream: "iq", Path: "/api"}},
 	}
 	if err := Validate(steps); err == nil {
 		t.Fatal("expected error for http without method")
@@ -130,7 +130,7 @@ func TestValidate_HTTPMissingMethod(t *testing.T) {
 
 func TestValidate_HTTPMissingPath(t *testing.T) {
 	steps := []StepConfig{
-		{ID: "step1", Kind: "http", Spec: StepSpec{ExtraUpstream: "iq", Method: "GET"}},
+		{ID: "step1", Kind: "http", Spec: StepSpec{Upstream: "iq", Method: "GET"}},
 	}
 	if err := Validate(steps); err == nil {
 		t.Fatal("expected error for http without path")
@@ -139,7 +139,7 @@ func TestValidate_HTTPMissingPath(t *testing.T) {
 
 func TestValidate_HTTPValid(t *testing.T) {
 	steps := []StepConfig{
-		{ID: "fetch", Kind: "http", Spec: StepSpec{ExtraUpstream: "iq", Method: "GET", Path: "/api/v2/components"}},
+		{ID: "fetch", Kind: "http", Spec: StepSpec{Upstream: "iq", Method: "GET", Path: "/api/v2/components"}},
 		{ID: "done", Kind: "return", Spec: StepSpec{From: "$fetch"}},
 	}
 	if err := Validate(steps); err != nil {

@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -133,82 +134,118 @@ func applyEnvOverrides(v *viper.Viper, cfg *Config) {
 	}
 }
 
-// applyEnvToConfig directly sets env var overrides on cfg fields without going
-// through viper, so map-entry defaults (e.g. upstream.default.enable_mcp_session_forward)
-// are preserved. Only handles string fields on known config paths.
+// applyEnvToConfig sets MCP__ env vars directly on cfg fields via reflection,
+// using the same env-to-dotted-path mapping as applyEnvOverrides. This avoids
+// viper Unmarshal which zeroes defaults in map entries like
+// upstream.default.enable_mcp_session_forward.
+//
+// Works generically for any field in the Config tree — structs, maps, strings,
+// bools, ints. Map entries (upstream.*) are discovered by iterating the
+// runtime map keys of cfg.Upstream.
 func applyEnvToConfig(cfg *Config) {
+	envToKey := make(map[string]string)
+	collectEnvKeys(reflect.TypeOf(cfg).Elem(), nil, envToKey)
+	for name := range cfg.Upstream {
+		collectEnvKeys(reflect.TypeOf(UpstreamEntryConfig{}), []string{"upstream", name}, envToKey)
+	}
+
 	for _, e := range os.Environ() {
 		name, val, ok := strings.Cut(e, "=")
 		if !ok {
 			continue
 		}
-		switch {
-		// upstream.<name>.endpoint
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__ENDPOINT"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 4 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.Endpoint = val
-					cfg.Upstream[upstreamName] = u
-				}
+		dotted, found := envToKey[name]
+		if !found {
+			continue
+		}
+		setByPath(reflect.ValueOf(cfg).Elem(), strings.Split(dotted, "."), val)
+	}
+}
+
+// setByPath walks v along segs (dotted path segments) via reflection and
+// sets the leaf field to val. Struct fields are matched by yaml tag (via
+// matchConfigKey). Map segments: the next seg is the map key (case-folded);
+// the value is read, modified, and written back (Go maps hold non-pointer
+// values for struct entries, so copy-modify-reinsert is necessary).
+func setByPath(v reflect.Value, segs []string, val string) {
+	for len(segs) > 0 {
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		seg := segs[0]
+		segs = segs[1:]
+
+		if v.Kind() == reflect.Map {
+			key := findMapKey(v, seg)
+			if !key.IsValid() {
+				return
 			}
-		// upstream.<name>.enable_mcp_session_forward
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__ENABLE_MCP_SESSION_FORWARD"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 4 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.EnableMCPSessionForward = strings.EqualFold(val, "true") || val == "1"
-					cfg.Upstream[upstreamName] = u
-				}
+			entry := v.MapIndex(key)
+			if len(segs) == 0 {
+				setLeafValue(entry, val)
+			} else {
+				// Map values are non-addressable for struct types → copy.
+				cp := reflect.New(entry.Type()).Elem()
+				cp.Set(entry)
+				setByPath(cp, segs, val)
+				v.SetMapIndex(key, cp)
 			}
-		// upstream.<name>.auth.static.web_token
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__WEB_TOKEN"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 6 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.Auth.Static.WebToken = val
-					cfg.Upstream[upstreamName] = u
-				}
-			}
-		// upstream.<name>.auth.static.cookie_token
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__COOKIE_TOKEN"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 6 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.Auth.Static.CookieToken = val
-					cfg.Upstream[upstreamName] = u
-				}
-			}
-		// upstream.<name>.auth.static.web_token_file
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__WEB_TOKEN_FILE"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 6 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.Auth.Static.WebTokenFile = val
-					cfg.Upstream[upstreamName] = u
-				}
-			}
-		// upstream.<name>.auth.static.cookie_token_file
-		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__COOKIE_TOKEN_FILE"):
-			parts := strings.Split(name, "__")
-			if len(parts) >= 6 {
-				upstreamName := strings.ToLower(parts[2])
-				if u, ok := cfg.Upstream[upstreamName]; ok {
-					u.Auth.Static.CookieTokenFile = val
-					cfg.Upstream[upstreamName] = u
-				}
-			}
-		// runtime.log_authorization
-		case name == "MCP__RUNTIME__LOG_AUTHORIZATION":
-			cfg.Runtime.LogAuthorization = strings.EqualFold(val, "true") || val == "1"
-		// runtime.download_dir
-		case name == "MCP__RUNTIME__DOWNLOAD_DIR":
-			cfg.Runtime.DownloadDir = val
+			return
+		}
+
+		if v.Kind() != reflect.Struct {
+			return
+		}
+		f := fieldByYAML(v, seg)
+		if !f.IsValid() {
+			return
+		}
+		if len(segs) == 0 {
+			setLeafValue(f, val)
+			return
+		}
+		v = f
+	}
+}
+
+// findMapKey looks up key (case-folded) in a string-keyed reflect.Map.
+func findMapKey(v reflect.Value, key string) reflect.Value {
+	kl := strings.ToLower(key)
+	for _, k := range v.MapKeys() {
+		if strings.ToLower(k.String()) == kl {
+			return k
+		}
+	}
+	return reflect.Value{}
+}
+
+// fieldByYAML finds a struct field whose yaml tag matches name (case and
+// separator insensitive, per matchConfigKey).
+func fieldByYAML(v reflect.Value, name string) reflect.Value {
+	t := v.Type()
+	for i := 0; i < t.NumField(); i++ {
+		tag := strings.Split(t.Field(i).Tag.Get("yaml"), ",")[0]
+		if matchConfigKey(name, tag) {
+			return v.Field(i)
+		}
+	}
+	return reflect.Value{}
+}
+
+// setLeafValue sets a scalar field to the given string value.
+func setLeafValue(f reflect.Value, val string) {
+	switch f.Kind() {
+	case reflect.String:
+		f.SetString(val)
+	case reflect.Bool:
+		f.SetBool(strings.EqualFold(val, "true") || val == "1")
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		if n, err := strconv.ParseInt(val, 10, 64); err == nil {
+			f.SetInt(n)
+		}
+	case reflect.Float32, reflect.Float64:
+		if n, err := strconv.ParseFloat(val, 64); err == nil {
+			f.SetFloat(n)
 		}
 	}
 }

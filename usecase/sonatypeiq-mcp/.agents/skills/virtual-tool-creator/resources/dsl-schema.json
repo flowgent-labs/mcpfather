@@ -95,7 +95,7 @@
       "additionalProperties": false,
       "properties": {
         "body": {},
-        "extra_upstream": {
+        "upstream": {
           "type": "string"
         },
         "headers": {
@@ -117,7 +117,7 @@
         }
       },
       "required": [
-        "extra_upstream",
+        "upstream",
         "method",
         "path"
       ],
