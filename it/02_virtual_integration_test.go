@@ -3966,7 +3966,7 @@ virtualTools:
       - id: iqEval
         kind: http
         spec:
-          extra_upstream: sonatypeiq
+          upstream: sonatypeiq
           method: POST
           path: $iqPath
           parse: json
@@ -4205,7 +4205,7 @@ virtualTools:
       - id: call_http
         kind: http
         spec:
-          extra_upstream: testbackend
+          upstream: testbackend
           method: POST
           path: /api/echo
           parse: json
@@ -4302,7 +4302,7 @@ virtualTools:
       - id: call
         kind: http
         spec:
-          extra_upstream: sonatypeiq
+          upstream: sonatypeiq
           method: POST
           path: /api/v2/firewall/components/nexus/maven-central/evaluate
           parse: json
@@ -4512,7 +4512,7 @@ virtualTools:
       - id: iqEval
         kind: http
         spec:
-          extra_upstream: sonatypeiq
+          upstream: sonatypeiq
           method: POST
           path: $iqPath
           parse: json

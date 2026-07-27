@@ -300,8 +300,8 @@ func GetUpstreamCookie() string {
 	return ""
 }
 
-// GetExtraUpstreamEndpoint returns the endpoint for a named backend upstream.
-func GetExtraUpstreamEndpoint(name string) string {
+// GetUpstreamEndpoint returns the endpoint for a named backend upstream.
+func GetNamedUpstreamEndpoint(name string) string {
 	cfg := GetConfig()
 	if cfg != nil {
 		if u, ok := cfg.Upstream[name]; ok {
@@ -311,9 +311,9 @@ func GetExtraUpstreamEndpoint(name string) string {
 	return ""
 }
 
-// GetExtraUpstreamToken returns the bearer token for a named backend upstream.
+// GetUpstreamToken returns the bearer token for a named backend upstream.
 // Falls back to the default backend auth if the named entry has no auth configured.
-func GetExtraUpstreamToken(name string) string {
+func GetNamedUpstreamToken(name string) string {
 	cfg := GetConfig()
 	if cfg == nil {
 		return ""
@@ -334,8 +334,8 @@ func GetExtraUpstreamToken(name string) string {
 	return GetUpstreamToken()
 }
 
-// GetExtraUpstreamCookie returns the static cookie for a named backend upstream.
-func GetExtraUpstreamCookie(name string) string {
+// GetUpstreamCookie returns the static cookie for a named backend upstream.
+func GetNamedUpstreamCookie(name string) string {
 	cfg := GetConfig()
 	if cfg == nil {
 		return ""
@@ -353,9 +353,9 @@ func GetExtraUpstreamCookie(name string) string {
 	return GetUpstreamCookie()
 }
 
-// IsExtraUpstreamSessionForwardEnabled returns whether session forwarding is enabled
+// IsUpstreamSessionForwardEnabled returns whether session forwarding is enabled
 // for a named backend upstream.
-func IsExtraUpstreamSessionForwardEnabled(name string) bool {
+func IsNamedUpstreamSessionForwardEnabled(name string) bool {
 	cfg := GetConfig()
 	if cfg != nil {
 		if u, ok := cfg.Upstream[name]; ok {

@@ -175,13 +175,13 @@ func FormatAuthorizationHeader(token string) string {
 	return "Bearer " + token
 }
 
-// ExtraUpstreamHTTPClient implements pipeline.HTTPClient for extra_upstream endpoints.
-type ExtraUpstreamHTTPClient struct{}
+// NamedUpstreamHTTPClient implements pipeline.HTTPClient for named upstream endpoints.
+type NamedUpstreamHTTPClient struct{}
 
-func (c *ExtraUpstreamHTTPClient) Call(ctx context.Context, upstream, method, path string, queryParams, headers map[string]string, body interface{}) (int, []byte, error) {
-	endpoint := GetExtraUpstreamEndpoint(upstream)
+func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, path string, queryParams, headers map[string]string, body interface{}) (int, []byte, error) {
+	endpoint := GetNamedUpstreamEndpoint(upstream)
 	if endpoint == "" {
-		return 0, nil, fmt.Errorf("extra_upstream %q not found in config", upstream)
+		return 0, nil, fmt.Errorf("upstream %q not found in config", upstream)
 	}
 
 	fullURL := strings.TrimSuffix(endpoint, "/") + path
@@ -233,13 +233,13 @@ func (c *ExtraUpstreamHTTPClient) Call(ctx context.Context, upstream, method, pa
 		}
 	}
 
-	if token := GetExtraUpstreamToken(upstream); token != "" {
+	if token := GetNamedUpstreamToken(upstream); token != "" {
 		req.Header.Set("Authorization", FormatAuthorizationHeader(token))
 	}
-	if cookie := GetExtraUpstreamCookie(upstream); cookie != "" {
+	if cookie := GetNamedUpstreamCookie(upstream); cookie != "" {
 		req.Header.Set("Cookie", cookie)
 	}
-	if IsExtraUpstreamSessionForwardEnabled(upstream) {
+	if IsNamedUpstreamSessionForwardEnabled(upstream) {
 		if sid := GetSessionID(ctx); sid != "" {
 			req.Header.Set("X-MCP-Session-ID", sid)
 		}

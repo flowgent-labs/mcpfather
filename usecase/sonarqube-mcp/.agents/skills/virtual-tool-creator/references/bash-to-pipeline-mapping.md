@@ -49,7 +49,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v2/components"
 - id: fetchComponents
   kind: http
   spec:
-    # extra upstream (added as keys under upstream above "default"): sonatypeiq
+    # named upstream key (added under upstream map): sonatypeiq
     method: GET
     path: /api/v2/components
     parse: json
