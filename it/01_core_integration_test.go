@@ -80,24 +80,22 @@ func findRepoRoot() (string, error) {
 	return "", fmt.Errorf("go.mod not found")
 }
 
-// ─── build cache: go build ONCE per go.mod fingerprint ──────
-// go.mod content is a stable hash of the generated project (spec + includes +
-// excludes). Once the first test builds the binary, all subsequent tests with
-// the same go.mod get a copy in <1ms instead of 3–5 s.
+// ─── build cache: go build ONCE per generated project identity ──
+// Stores binary bytes (not paths) so cached binaries survive t.TempDir()
+// cleanup. Key includes go.mod content (which embeds the module name =
+// output dir basename, varying per-test by TempDir call order) plus the
+// mcpfather invocation args, so projects with different includes/excludes
+// never collide.
 
 var (
 	buildCacheMu sync.Mutex
-	buildCache   = map[string]string{} // go.mod content → cached binary path
+	buildCache   = map[string][]byte{} // key → cached binary bytes
 )
 
-func copyFile(t *testing.T, src, dst string) {
+func writeCachedBinary(t *testing.T, dst string, data []byte) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
 		t.Fatalf("mkdir for cached binary: %v", err)
-	}
-	data, err := os.ReadFile(src)
-	if err != nil {
-		t.Fatalf("read cached binary: %v", err)
 	}
 	if err := os.WriteFile(dst, data, 0755); err != nil {
 		t.Fatalf("write cached binary: %v", err)
@@ -109,6 +107,11 @@ func genProject(t *testing.T, includes, excludes string) string {
 	t.Helper()
 	return genProjectWithSpec(t, specFixture, includes, excludes)
 }
+
+var (
+	projectKeyMu sync.Mutex
+	projectKey   = map[string]string{} // projectDir → cache key
+)
 
 // genProjectWithSpec runs mcpfather with a custom spec file (relative to its/).
 func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) string {
@@ -130,6 +133,18 @@ func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) strin
 		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
 	logProgress("[gen] project generated at %s", dir)
+
+	// Compute cache key from go.mod + generation params.
+	modFile := filepath.Join(dir, "go.mod")
+	modData, err := os.ReadFile(modFile)
+	if err != nil {
+		t.Fatalf("read go.mod for cache key: %v", err)
+	}
+	key := string(modData) + "\x00" + specFile + "\x00" + includes + "\x00" + excludes
+	projectKeyMu.Lock()
+	projectKey[dir] = key
+	projectKeyMu.Unlock()
+
 	return dir
 }
 
@@ -143,29 +158,39 @@ func repoRoot(t *testing.T) string {
 }
 
 // buildServer runs go mod tidy + go build in the generated project dir.
-// Subsequent calls with a projectDir whose go.mod has identical content to a
-// previously built one will skip compilation and return a copy of the cached
-// binary — turning ~50 × 5s builds into 1 × 5s + 49 × 0.01s copies.
+// Key combines go.mod content + mcpfather args so different includes/excludes
+// never collide on the cache.
 func buildServer(t *testing.T, projectDir string) string {
 	t.Helper()
 	binName := filepath.Base(projectDir)
 	dst := filepath.Join(projectDir, "bin", binName)
 
-	// Compute cache key from go.mod content (fast, no I/O skip).
-	modFile := filepath.Join(projectDir, "go.mod")
-	data, err := os.ReadFile(modFile)
-	if err != nil {
-		t.Fatalf("read go.mod for cache key: %v", err)
+	projectKeyMu.Lock()
+	key, ok := projectKey[projectDir]
+	projectKeyMu.Unlock()
+	if !ok {
+		modFile := filepath.Join(projectDir, "go.mod")
+		data, err := os.ReadFile(modFile)
+		if err != nil {
+			t.Fatalf("read go.mod for cache key: %v", err)
+		}
+		key = string(data)
 	}
-	key := string(data)
 
 	buildCacheMu.Lock()
 	cached, exists := buildCache[key]
 	buildCacheMu.Unlock()
 
 	if exists {
-		copyFile(t, cached, dst)
-		logProgress("[build] reused cached binary (go.mod hash match)")
+		// If binary already exists (e.g. buildServer called twice on same
+		// projectDir while the server is running), skip the write to avoid
+		// ETXTBUSY on Linux.
+		if _, err := os.Stat(dst); err == nil {
+			logProgress("[build] binary already exists at %s, skipping cache write", dst)
+			return dst
+		}
+		writeCachedBinary(t, dst, cached)
+		logProgress("[build] reused cached binary")
 		return dst
 	}
 
@@ -187,7 +212,8 @@ func buildServer(t *testing.T, projectDir string) string {
 	logProgress("[build] binary built at %s/bin/%s", projectDir, binName)
 
 	buildCacheMu.Lock()
-	buildCache[key] = dst
+	binData, _ := os.ReadFile(dst)
+	buildCache[key] = binData
 	buildCacheMu.Unlock()
 
 	return dst
@@ -221,6 +247,8 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 			Body:          body,
 		})
 		m.mu.Unlock()
+		// Restore the body so inner handlers can read it.
+		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		handler(w, r)
 	}))
 	return m

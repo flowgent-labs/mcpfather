@@ -1,7 +1,7 @@
 # CI workflow — triggered on PR lifecycle events (NOT on merge to main).
 #
 # Event matrix:
-#   pull_request (opened, synchronize, reopened) → build + all integration tests
+#   pull_request (opened, synchronize, reopened) → build + unit + integration tests
 #   schedule (daily/weekly)                       → same, against main branch
 #
 # Deliberately NOT triggered by:
@@ -9,6 +9,20 @@
 #   - pull_request:closed (merged → release.yml; closed-without-merge is no-op)
 #
 # Concurrency: same PR/branch cancels the previous in-progress run.
+#   group = ci-<pr-number> for PRs, ci-<ref> for scheduled runs.
+#
+# Integration tests (integration-it job):
+#   The IT probe (00_prereqs_test.go, TestMain → autoSetup) auto-installs
+#   kubectl + helm + k3s into ~/.local/mcpfather-it/ (cached via
+#   actions/cache@v4, key: it-tools-${{ runner.os }}-v2) and starts a
+#   lightweight k3s cluster if none is reachable. Deploy E2E tests run real
+#   `helm install` + `kubectl get` assertions against that cluster. OIDC
+#   tests (`TestServer_*`, `TestOIDC*`) auto-start a Keycloak Docker
+#   container (ensureKeycloak). Tests skip gracefully when essential
+#   infrastructure cannot be provisioned (no Docker, no sudo, etc.).
+#
+# IN_CN_GFW controls whether Docker builds route Go module traffic through
+# goproxy.cn (China CDN) — false on CI runners (direct network).
 
 name: Build & Test
 
@@ -48,7 +62,7 @@ jobs:
 
   integration-it:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,6 +74,12 @@ jobs:
 
       - name: Build
         run: make build
+
+      - name: Cache IT tools (kubectl, helm, k3s)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/mcpfather-it
+          key: it-tools-${{ runner.os }}-v2
 
       - name: Integration Tests
         run: make test-it
