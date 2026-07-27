@@ -7,7 +7,7 @@
 # Architecture:
 #   Nexus Repository API  — ListSearch (native MCP tool, "call" step)
 #   Sonatype IQ Firewall   — POST /api/v2/firewall/components/{rmId}/{repoId}/evaluate
-#                            via "http" step (extra_upstream: sonatypeiq)
+#                            via "http" step (upstream: sonatypeiq)
 #   Nexus ≠ IQ: Nexus API has no firewall/quarantine fields. That data lives
 #   only in IQ, so a cross-service pipeline is required.
 #
@@ -328,7 +328,7 @@ virtualTools:
       - id: iqEval
         kind: http
         spec:
-          extra_upstream: sonatypeiq
+          upstream: sonatypeiq
           method: POST
           path: $iqPath
           parse: json

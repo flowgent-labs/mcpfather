@@ -308,7 +308,7 @@ virtualTools:
       from: $enrich
 ```
 
-- Pipeline step kinds: `call` (invoke an MCP tool), `http` (direct HTTP API call on a named extra_upstream), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
+- Pipeline step kinds: `call` (invoke an MCP tool), `http` (direct HTTP API call on a named upstream), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
 
 ## Generated MCP Server - Agent Integration
 

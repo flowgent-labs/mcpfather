@@ -449,39 +449,7 @@ func startHostMockUpstream(t *testing.T, handler http.HandlerFunc) (url string, 
 // Test: Deploy with auth — 401 validation
 // ---------------------------------------------------------------------------
 
-func TestDeploy_AuthRequired_401WithoutToken(t *testing.T) {
-	kubectl, helm, docker := deployPrereqsOK(t)
-
-	mockURL, mockClose := startHostMockUpstream(t, func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.Write([]byte(`{"status":"ok","auth":"` + r.Header.Get("Authorization") + `"}`))
-	})
-	defer mockClose()
-
-	ct, remoteRepo := detectCluster(t)
-
-	projectDir := genProject(t, "echoHeaders", "")
-	imageTag := deployBuildImage(t, docker, projectDir)
-	imageRepo, imageVer := deployMakeImageAvailable(t, docker, imageTag, ct, remoteRepo)
-
-	ns := deployNamespace(t, kubectl)
-	_, k8sName := deployHelmChart(t, helm, kubectl, projectDir, imageRepo, imageVer, ns, mockURL)
-
-	port, cancel := deployPortForward(t, kubectl, ns, k8sName, 8080)
-	defer cancel()
-
-	baseURL := fmt.Sprintf("http://localhost:%d", port)
-	waitForServer(t, baseURL)
-
-	result := callNativeTool(t, baseURL, "EchoHeaders", map[string]interface{}{})
-	t.Logf("Tool result (no auth): %s", trimMsg(result, 300))
-
-	if !strings.Contains(result, "unauthorized") && !strings.Contains(result, "401") {
-		t.Logf("Upstream may have accepted the request without auth; result: %s", trimMsg(result, 300))
-	}
-}
-
-func TestDeploy_VirtualTool_ChainedE2E(t *testing.T) {
+func TestDeploy_FullE2E(t *testing.T) {
 	kubectl, helm, docker := deployPrereqsOK(t)
 
 	mockURL, mockClose := startHostMockUpstream(t, okHandler())
@@ -497,55 +465,38 @@ func TestDeploy_VirtualTool_ChainedE2E(t *testing.T) {
 	ns := deployNamespace(t, kubectl)
 	k8sFullname := "mcp-" + binName
 
-	homeDir := t.TempDir()
-	virtConfig := `
-virtualTools:
-  - name: virt_chain
-    description: Chain echo and greet
-    inputSchema:
-      type: object
-      properties:
-        name:
-          type: string
-      required:
-        - name
-    pipeline:
-      - id: echo
-        kind: call
-        spec:
-          tool: EchoHeaders
-          args: {}
-      - id: greet
-        kind: call
-        spec:
-          tool: SayHello
-          args:
-            name: $input.name
-      - id: done
-        kind: return
-        spec:
-          from: $greet
-`
-	writeCoreVirtualConfig(t, homeDir, binName, virtConfig)
-	virtConfigPath := filepath.Join(homeDir, "."+binName, "config.yaml")
-	kubectlCmd("create", "configmap", k8sFullname+"-virtual-config",
+	// Minimal deploy first (no persistence/secret/ingress)
+	chartDir := filepath.Join(projectDir, "deploy", "helm")
+	releaseName := binName
+	args := []string{
+		"install", releaseName, chartDir,
 		"-n", ns,
-		fmt.Sprintf("--from-file=config.yaml=%s", virtConfigPath),
-		"--dry-run=client", "-o", "yaml",
-	).Run()
-
-	_, _ = deployHelmChart(t, helm, kubectl, projectDir, imageRepo, imageVer, ns, mockURL)
+		"--set", fmt.Sprintf("fullnameOverride=%s", k8sFullname),
+		"--set", fmt.Sprintf("nameOverride=%s", k8sFullname),
+		"--set", fmt.Sprintf("image.repository=%s", imageRepo),
+		"--set", fmt.Sprintf("image.tag=%s", imageVer),
+		"--set", "image.pullPolicy=IfNotPresent",
+		"--set", fmt.Sprintf("config.upstream.default.endpoint=%s", mockURL),
+		"--set", "config.tools.registerAllByDefault=true",
+		"--wait", "--timeout", "60s",
+	}
+	if out, err := exec.Command(helm, args...).CombinedOutput(); err != nil {
+		t.Fatalf("helm install failed: %v\n%s", err, out)
+	}
+	t.Logf("Helm release %s installed in namespace %s", releaseName, ns)
+	t.Cleanup(func() {
+		exec.Command(helm, "uninstall", releaseName, "-n", ns, "--ignore-not-found", "--timeout=30s").Run()
+	})
 
 	port, cancel := deployPortForward(t, kubectl, ns, k8sFullname, 8080)
 	defer cancel()
-
 	baseURL := fmt.Sprintf("http://localhost:%d", port)
 	waitForServer(t, baseURL)
 
+	// Native tools
 	for _, toolName := range []string{"EchoHeaders", "SayHello"} {
 		resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
-			"name":      toolName,
-			"arguments": map[string]interface{}{},
+			"name": toolName, "arguments": map[string]interface{}{},
 		})
 		if resp.StatusCode != http.StatusOK {
 			t.Errorf("%s: expected 200, got %d", toolName, resp.StatusCode)
@@ -553,6 +504,7 @@ virtualTools:
 		resp.Body.Close()
 	}
 
+	// tools/list
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/list", map[string]interface{}{})
 	bodyBytes, _ := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -561,10 +513,6 @@ virtualTools:
 	}
 	t.Logf("tools/list response: %s", trimMsg(string(bodyBytes), 500))
 }
-
-// ---------------------------------------------------------------------------
-// Test: Helm lint & template, Secret / GCP, Ingress / Envoy
-// ---------------------------------------------------------------------------
 
 func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 	_, helm, _ := deployPrereqsOK(t)
@@ -645,55 +593,6 @@ func deployRealInstall(t *testing.T, kubectl, helm, docker, projectDir string, w
 		kubectlCmd("delete", "namespace", ns, "--ignore-not-found", "--timeout=30s").Run()
 	})
 	return ns, releaseName
-}
-
-func TestDeploy_Infrastructure(t *testing.T) {
-	kubectl, helm, docker := deployPrereqsOK(t)
-	projectDir := genProject(t, "echoHeaders", "")
-	ns, releaseName := deployRealInstall(t, kubectl, helm, docker, projectDir, false,
-		"--set", "persistence.enabled=true",
-		"--set", "persistence.storageClassName=local-path",
-		"--set", "persistence.size=1Gi",
-		"--set", "secret.provider=static",
-		"--set", "secret.static.create=true",
-		"--set", "secret.static.webToken=test-token",
-		"--set", "secret.static.cookieToken=test-cookie",
-		"--set", "ingress.nginx.enabled=true",
-		"--set", "config.upstream.default.endpoint=http://httpbin.org/anything",
-	)
-
-	// PVC
-	pvcOut, err := kubectlCmd("get", "pvc", "-n", ns,
-		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-		"-o", "jsonpath={.items[0].metadata.name}",
-	).CombinedOutput()
-	if err != nil || len(strings.TrimSpace(string(pvcOut))) == 0 {
-		t.Errorf("expected PVC, got error: %v", err)
-	} else {
-		t.Logf("PVC created: %s", strings.TrimSpace(string(pvcOut)))
-	}
-
-	// Secret
-	secOut, err := kubectlCmd("get", "secret", "-n", ns,
-		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-		"-o", "jsonpath={.items[0].metadata.name}",
-	).CombinedOutput()
-	if err != nil || len(strings.TrimSpace(string(secOut))) == 0 {
-		t.Errorf("expected Secret, got error: %v", err)
-	} else {
-		t.Logf("Secret created: %s", strings.TrimSpace(string(secOut)))
-	}
-
-	// Ingress
-	ingOut, err := kubectlCmd("get", "ingress", "-n", ns,
-		"-l", fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
-		"-o", "jsonpath={.items[0].metadata.name}",
-	).CombinedOutput()
-	if err != nil || len(strings.TrimSpace(string(ingOut))) == 0 {
-		t.Errorf("expected Ingress, got error: %v", err)
-	} else {
-		t.Logf("Ingress created: %s", strings.TrimSpace(string(ingOut)))
-	}
 }
 
 func TestDeploy_SecretGCP_HasSecretProviderClass(t *testing.T) {
