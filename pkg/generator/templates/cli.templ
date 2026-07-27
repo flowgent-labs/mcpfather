@@ -153,10 +153,13 @@ func Call(binName, toolName string, args []string) error {
 
 func callNative(binName, toolName string, args []string, entry mcptools.ToolEntry) error {
 	cfg, _ := mcputils.LoadConfig("{{.BinaryName}}")
-	if cfg != nil && cfg.Tools.Expose != nil {
-		enabled := resolveEnabledTools(cfg)
-		if enabled != nil && !enabled[toolName] {
-			return fmt.Errorf("tool %q is not enabled in config.yaml", toolName)
+	if cfg != nil {
+		mcputils.SetConfig(cfg)
+		if cfg.Tools.Expose != nil {
+			enabled := resolveEnabledTools(cfg)
+			if enabled != nil && !enabled[toolName] {
+				return fmt.Errorf("tool %q is not enabled in config.yaml", toolName)
+			}
 		}
 	}
 

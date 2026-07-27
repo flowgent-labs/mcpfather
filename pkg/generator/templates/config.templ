@@ -81,10 +81,7 @@ func LoadConfig(name string) (*Config, error) {
 	if err := v.ReadInConfig(); err != nil {
 		if os.IsNotExist(err) {
 			cfg := mcpconfig.DefaultConfig()
-			applyEnvOverrides(v, cfg)
-			if err := v.Unmarshal(cfg, viperDecoderOpts()); err != nil {
-				return nil, fmt.Errorf("parse config after env override: %w", err)
-			}
+			applyEnvToConfig(cfg)
 			return cfg, nil
 		}
 		return nil, fmt.Errorf("read config %s: %w", configPath, err)
@@ -132,6 +129,86 @@ func applyEnvOverrides(v *viper.Viper, cfg *Config) {
 		}
 		if key, found := envToKey[name]; found {
 			v.Set(key, val)
+		}
+	}
+}
+
+// applyEnvToConfig directly sets env var overrides on cfg fields without going
+// through viper, so map-entry defaults (e.g. upstream.default.enable_mcp_session_forward)
+// are preserved. Only handles string fields on known config paths.
+func applyEnvToConfig(cfg *Config) {
+	for _, e := range os.Environ() {
+		name, val, ok := strings.Cut(e, "=")
+		if !ok {
+			continue
+		}
+		switch {
+		// upstream.<name>.endpoint
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__ENDPOINT"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 4 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.Endpoint = val
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// upstream.<name>.enable_mcp_session_forward
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__ENABLE_MCP_SESSION_FORWARD"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 4 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.EnableMCPSessionForward = strings.EqualFold(val, "true") || val == "1"
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// upstream.<name>.auth.static.web_token
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__WEB_TOKEN"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 6 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.Auth.Static.WebToken = val
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// upstream.<name>.auth.static.cookie_token
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__COOKIE_TOKEN"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 6 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.Auth.Static.CookieToken = val
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// upstream.<name>.auth.static.web_token_file
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__WEB_TOKEN_FILE"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 6 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.Auth.Static.WebTokenFile = val
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// upstream.<name>.auth.static.cookie_token_file
+		case strings.HasPrefix(name, "MCP__UPSTREAM__") && strings.HasSuffix(name, "__AUTH__STATIC__COOKIE_TOKEN_FILE"):
+			parts := strings.Split(name, "__")
+			if len(parts) >= 6 {
+				upstreamName := strings.ToLower(parts[2])
+				if u, ok := cfg.Upstream[upstreamName]; ok {
+					u.Auth.Static.CookieTokenFile = val
+					cfg.Upstream[upstreamName] = u
+				}
+			}
+		// runtime.log_authorization
+		case name == "MCP__RUNTIME__LOG_AUTHORIZATION":
+			cfg.Runtime.LogAuthorization = strings.EqualFold(val, "true") || val == "1"
+		// runtime.download_dir
+		case name == "MCP__RUNTIME__DOWNLOAD_DIR":
+			cfg.Runtime.DownloadDir = val
 		}
 	}
 }
