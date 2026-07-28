@@ -49,7 +49,7 @@ func (r *virtualRegistry) CallTool(ctx context.Context, name string, args map[st
 // loadVirtualTools loads virtual tools from config and returns a name→entry map.
 func loadVirtualTools() map[string]pipeline.VirtualToolEntry {
 	cfgPath := mcputils.VirtualConfigPath("nexus-mcp")
-	aggEngine, err := engine.New(cfgPath, &virtualRegistry{}, nil)
+	aggEngine, err := engine.New(cfgPath, &virtualRegistry{}, &mcputils.NamedUpstreamHTTPClient{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
 		return nil
