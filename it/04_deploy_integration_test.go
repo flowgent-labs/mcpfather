@@ -228,8 +228,14 @@ func deployMakeImageAvailable(t *testing.T, docker, imageTag string, ct clusterT
 	switch ct {
 
 	case clusterK3s:
+		// Re-tag the image as localhost/<name>:<ver> so that the
+		// saved tar carries the correct reference. Otherwise
+		// docker save produces docker.io/library/<name>:<ver>
+		// and k3s containerd won't find localhost/<name>:<ver>.
+		localTag := fmt.Sprintf("localhost/%s:%s", name, ver)
+		exec.Command(docker, "tag", imageTag, localTag).Run()
 		tarPath := filepath.Join(t.TempDir(), "image.tar")
-		saveCmd := exec.Command(docker, "save", "-o", tarPath, imageTag)
+		saveCmd := exec.Command(docker, "save", "-o", tarPath, localTag)
 		if out, err := saveCmd.CombinedOutput(); err != nil {
 			t.Fatalf("docker save for k3s: %v\n%s", err, out)
 		}
@@ -238,8 +244,8 @@ func deployMakeImageAvailable(t *testing.T, docker, imageTag string, ct clusterT
 		if out, err := importCmd.CombinedOutput(); err != nil {
 			t.Fatalf("k3s ctr images import: %v\n%s", err, out)
 		}
+		exec.Command(docker, "rmi", "-f", localTag).Run()
 		t.Logf("Loaded image into k3s cluster")
-		// k3s sees it as localhost/<name>:<ver>
 		return fmt.Sprintf("localhost/%s", name), ver
 
 	case clusterContainerd:
