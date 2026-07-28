@@ -91,7 +91,7 @@ func newScenarioRunner(results map[string]string) *scenarioRunner {
 	}
 	return &scenarioRunner{
 		registry: r,
-		executor: engine.NewExecutor(r),
+		executor: engine.NewExecutor(r, nil),
 	}
 }
 
@@ -432,7 +432,7 @@ func TestScenario_JQ_RemoveSensitiveFields(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"username": "alice", "password": "secret123", "token": "abc", "email": "alice@x.com"})
 	s := &pipeline.StepConfig{ID: "clean", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `del(.password, .token)`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -446,7 +446,7 @@ func TestScenario_JQ_RenameFields(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"first_name": "John", "last_name": "Doe"})
 	s := &pipeline.StepConfig{ID: "rename", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{firstName: .first_name, lastName: .last_name}`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -460,7 +460,7 @@ func TestScenario_JQ_FlattenNestedStructures(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"name": "report", "metadata": map[string]interface{}{"author": "Alice", "version": 2}, "stats": map[string]interface{}{"views": 100}})
 	s := &pipeline.StepConfig{ID: "flat", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `. + .metadata | del(.metadata)`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -477,7 +477,7 @@ func TestScenario_JQ_DefaultValues(t *testing.T) {
 	ctx := engine.NewContext(nil)
 	ctx.SetOutput("data", map[string]interface{}{"name": "existing"})
 	s := &pipeline.StepConfig{ID: "def", Kind: "jq", Spec: pipeline.StepSpec{From: "$data", Expr: `{version: "1.0"} + .`}}
-	result, err := engine.NewExecutor(nil).ExecuteStep(context.Background(), s, ctx)
+	result, err := engine.NewExecutor(nil, nil).ExecuteStep(context.Background(), s, ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -774,7 +774,7 @@ func TestScenario_FullPipeline_MultipleVirtualToolsInEngine(t *testing.T) {
 		},
 	}
 	rec := &callRecorder{results: map[string]string{"nativeA": "A", "nativeB": "B"}, callLog: make([]callEntry, 0), failOn: make(map[string]error)}
-	eng, err := engine.NewFromConfig(cfg, rec)
+	eng, err := engine.NewFromConfig(cfg, rec, nil)
 	if err != nil {
 		t.Fatalf("NewFromConfig: %v", err)
 	}
@@ -986,6 +986,7 @@ func writeVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "config.yaml")
+	logProgress("[config] writing virtual config for %s at %s (%d bytes)", binaryName, configPath, len(yamlContent))
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
@@ -1039,7 +1040,7 @@ func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, hom
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
-		"MCP__UPSTREAM__ENDPOINT="+mockURL,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
@@ -2074,7 +2075,8 @@ func TestE2E_MCP_HeaderForwarding_ExplicitlyDisabled(t *testing.T) {
 	// and a simple virtual tool so the server registers virtual tools path.
 	cfg := `
 upstream:
-    enable_mcp_session_forward: false
+    default:
+        enable_mcp_session_forward: false
 runtime:
 virtualTools:
   - name: simple_passthrough
@@ -2132,7 +2134,8 @@ func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 
 	cfg := `
 upstream:
-    enable_mcp_session_forward: true
+    default:
+        enable_mcp_session_forward: true
 runtime:
 virtualTools:
   - name: simple_passthrough
@@ -2187,8 +2190,11 @@ func TestE2E_MCP_HeaderForwarding_DefaultsToEnabled(t *testing.T) {
 	homeDir := t.TempDir()
 	binaryName := filepath.Base(dir)
 
-	// Config without any upstream section — session ID IS forwarded (defaults to true)
+	// enable_mcp_session_forward defaults to true
 	cfg := `
+upstream:
+    default:
+        enable_mcp_session_forward: true
 virtualTools:
   - name: simple_passthrough
     description: Simple passthrough
@@ -2672,7 +2678,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "examples", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp"
 
@@ -3032,7 +3038,7 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "examples", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	binaryName := "sonatypeiq-mcp"
 
@@ -3354,9 +3360,22 @@ func TestDSLSchema_SchemaFileIsCurrent(t *testing.T) {
 // TestDSLSchema_FullConfig_Valid validates a complete config with all sections.
 func TestDSLSchema_FullConfig_Valid(t *testing.T) {
 	configYAML := `
+server:
+  auth:
+    oidc:
+      enabled: false
+      issuer: ""
+      jwks_uri: ""
+      audience: ""
 upstream:
-  endpoint: https://api.example.com
-  enable_mcp_session_forward: true
+  default:
+    endpoint: https://api.example.com
+    enable_mcp_session_forward: true
+    auth:
+      oidc:
+        enabled: false
+      static:
+        web_token: ""
 runtime:
   download_dir: /tmp/downloads
   log_authorization: false
@@ -3377,18 +3396,6 @@ mgmt:
     enabled: true
     prometheus: true
     export_interval: 30s
-auth:
-  frontend:
-    oidc:
-      enabled: false
-      issuer: ""
-      jwks_uri: ""
-      audience: ""
-  backend:
-    oidc:
-      enabled: false
-    static:
-      web_token: ""
 nativeTools:
   expose:
     register_all_tools_by_default: true
@@ -3414,8 +3421,9 @@ virtualTools:
 func TestDSLSchema_RuntimeConfig(t *testing.T) {
 	configYAML := `
 upstream:
-  endpoint: https://api.example.com
-  enable_mcp_session_forward: false
+  default:
+    endpoint: https://api.example.com
+    enable_mcp_session_forward: false
 runtime:
   download_dir: ""
   log_authorization: true
@@ -3490,26 +3498,29 @@ virtualTools:
 // TestDSLSchema_AuthConfig validates the auth section with all backends.
 func TestDSLSchema_AuthConfig(t *testing.T) {
 	configYAML := `
-auth:
-  frontend:
+server:
+  auth:
     oidc:
       enabled: true
       issuer: https://idp.example.com
       jwks_uri: https://idp.example.com/keys
       audience: mcp-server
-  backend:
-    oidc:
-      enabled: true
-      issuer: https://idp.example.com
-      client_id: my-client
-      client_secret: my-secret
-      scopes: openid profile
-      grant_type: client_credentials
-    static:
-      web_token: my-token
-      web_token_file: /path/to/token
-      cookie_token: JSESSIONID=abc
-      cookie_token_file: /path/to/cookie
+upstream:
+  default:
+    endpoint: https://api.example.com
+    auth:
+      oidc:
+        enabled: true
+        issuer: https://idp.example.com
+        client_id: my-client
+        client_secret: my-secret
+        scopes: openid profile
+        grant_type: client_credentials
+      static:
+        web_token: my-token
+        web_token_file: /path/to/token
+        cookie_token: JSESSIONID=abc
+        cookie_token_file: /path/to/cookie
 virtualTools:
   - name: t1
     inputSchema: {type: object}
@@ -3619,4 +3630,995 @@ func validateAgainstSchema(schemaBytes []byte, instanceBytes []byte) error {
 	}
 
 	return sch.Validate(instance)
+}
+
+// ===========================================================================
+// SECTION 12: Nexus/IQ Firewall HTTP Step E2E Tests
+// ===========================================================================
+// Tests the `kind: http` pipeline step via the maven_top5_versions_safe virtual
+// tool against a real nexus-mcp server with two upstreams:
+//   - default   → mock Nexus Repository (ListSearch → ComponentXO/PageComponentXO)
+//   - sonatypeiq → mock IQ Firewall (POST /api/v2/firewall/components/{rmId}/{repoId}/evaluate)
+//
+// This is the FIRST and only IT test covering the http pipeline step kind.
+// All other virtual tool tests use call/jq/foreach/emit/return only.
+
+// startNexusMultiUpstreamServer builds the nexus-mcp binary and starts it in
+// HTTP mode. Unlike startVirtualTestServer, this function writes the full
+// config (including sonatypeiq upstream) to disk rather than relying on a
+// single env var override. The env var MCP__UPSTREAM__DEFAULT__ENDPOINT is
+// deliberately NOT set — the config YAML provides both endpoints.
+func startNexusMultiUpstreamServer(t *testing.T, projectDir, homeDir, configYAML string) (cleanup func(), baseURL string) {
+	t.Helper()
+
+	// Write config to $HOME/.nexus-mcp/config.yaml
+	configDir := filepath.Join(homeDir, ".nexus-mcp")
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		t.Fatalf("mkdir config dir: %v", err)
+	}
+	configPath := filepath.Join(configDir, "config.yaml")
+	logProgress("[config] writing nexus-mcp config (%d bytes)", len(configYAML))
+	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	binPath := buildServer(t, projectDir)
+	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
+	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	var stderrBuf strings.Builder
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("start server: %v", err)
+	}
+
+	cleanup = func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}
+	baseURL = "http://localhost:" + port
+	waitForServer(t, baseURL)
+	return
+}
+
+func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
+	// ── Mock Nexus Repository (default upstream) ──
+	// Returns 4 Maven component versions with checksums:
+	//   2.18.0-rce   → will trigger quarantined in IQ
+	//   2.17.1-old   → will trigger threat 3 (below default minThreat=1 → deny)
+	//   2.16.0-mid   → will trigger threat 5 but one violation is waived
+	//   2.15.3       → clean (no violations)
+	nexusMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+  "items": [
+    {
+      "id": "a1b2",
+      "repository": "maven-central",
+      "format": "maven2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.18.0-rce",
+      "assets": [{
+        "downloadUrl": "https://nexus.example.com/repository/maven-central/com/fasterxml/jackson/core/jackson-databind/2.18.0-rce/jackson-databind-2.18.0-rce.jar",
+        "checksum": {"sha1": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"}
+      }]
+    },
+    {
+      "id": "b2c3",
+      "repository": "maven-central",
+      "format": "maven2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.17.1-old",
+      "assets": [{
+        "downloadUrl": "https://nexus.example.com/repository/maven-central/com/fasterxml/jackson/core/jackson-databind/2.17.1-old/jackson-databind-2.17.1-old.jar",
+        "checksum": {"sha1": "b2c3d4e5f6a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7"}
+      }]
+    },
+    {
+      "id": "c3d4",
+      "repository": "maven-central",
+      "format": "maven2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.16.0-mid",
+      "assets": [{
+        "downloadUrl": "https://nexus.example.com/repository/maven-central/com/fasterxml/jackson/core/jackson-databind/2.16.0-mid/jackson-databind-2.16.0-mid.jar",
+        "checksum": {"sha1": "c3d4e5f6a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f"}
+      }]
+    },
+    {
+      "id": "d4e5",
+      "repository": "maven-central",
+      "format": "maven2",
+      "group": "com.fasterxml.jackson.core",
+      "name": "jackson-databind",
+      "version": "2.15.3",
+      "assets": [{
+        "downloadUrl": "https://nexus.example.com/repository/maven-central/com/fasterxml/jackson/core/jackson-databind/2.15.3/jackson-databind-2.15.3.jar",
+        "checksum": {"sha1": "d4e5f6a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1"}
+      }]
+    }
+  ],
+  "continuationToken": null
+}`))
+	})
+	defer nexusMock.Close()
+
+	// ── Mock Sonatype IQ Firewall (sonatypeiq upstream) ──
+	// Uses the mock IQ service's deterministic logic:
+	//   "rce" in version → quarantined + threat 9
+	//   "old" in version → active violation threat 3
+	//   "mid" in version → active violation threat 5 + waived license (threat 5)
+	//   no keyword       → clean
+	iqMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if !strings.Contains(r.URL.Path, "/evaluate") {
+			logProgress("[iqMock] unexpected path: %s %s", r.Method, r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		logProgress("[iqMock] received %s %s, body bytes: %d", r.Method, r.URL.Path, r.ContentLength)
+
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Format     string `json:"format"`
+			Components []struct {
+				PackageURL string `json:"packageUrl"`
+				Hash       string `json:"hash"`
+			} `json:"components"`
+		}
+		json.Unmarshal(body, &req)
+
+		results := make([]map[string]interface{}, 0, len(req.Components))
+		for i, comp := range req.Components {
+			if comp.PackageURL == "" || comp.Hash == "" {
+				continue
+			}
+			result := map[string]interface{}{
+				"quarantined":     false,
+				"catalogDate":     "2025-01-01T00:00:00Z",
+				"component":       comp,
+				"policyViolations": []map[string]interface{}{},
+			}
+			ver := comp.PackageURL
+			if idx := strings.LastIndex(ver, "@"); idx >= 0 {
+				ver = ver[idx+1:]
+			}
+
+			if strings.Contains(ver, "rce") || strings.Contains(ver, "vuln") || strings.Contains(ver, "bad") {
+				result["quarantined"] = true
+				result["quarantineDate"] = "2025-06-01T10:00:00Z"
+				result["policyViolations"] = []map[string]interface{}{
+					{
+						"policyId":            "POL-CRIT",
+						"policyName":          "Security-Critical-CVE",
+						"policyViolationId":   "pv-crit-" + fmt.Sprint(i),
+						"openTime":            "2025-06-01T10:00:00Z",
+						"waiveTime":           nil, "fixTime": nil, "legacyViolationTime": nil,
+						"threatLevel":         9,
+						"constraintViolations": []map[string]interface{}{},
+					},
+				}
+			} else if strings.Contains(ver, "old") || strings.Contains(ver, "risk") {
+				result["policyViolations"] = []map[string]interface{}{
+					{
+						"policyId":          "POL-AGE",
+						"policyName":        "Age-Old-Component",
+						"policyViolationId": "pv-age-" + fmt.Sprint(i),
+						"openTime":          "2024-12-01T00:00:00Z",
+						"waiveTime":         nil, "fixTime": nil, "legacyViolationTime": nil,
+						"threatLevel":       3,
+					},
+				}
+			} else if strings.Contains(ver, "mid") {
+				result["policyViolations"] = []map[string]interface{}{
+					{
+						"policyId":          "POL-SEC-MOD",
+						"policyName":        "Moderate Security Advisory",
+						"policyViolationId": "pv-mod-" + fmt.Sprint(i),
+						"openTime":          "2025-03-01T00:00:00Z",
+						"waiveTime":         nil, "fixTime": nil, "legacyViolationTime": nil,
+						"threatLevel":       5,
+					},
+					{
+						"policyId":          "POL-LIC",
+						"policyName":        "License-Non-Compliant",
+						"policyViolationId": "pv-lic-" + fmt.Sprint(i),
+						"openTime":          "2025-02-01T00:00:00Z",
+						"waiveTime":         "2025-02-15T00:00:00Z", "fixTime": nil, "legacyViolationTime": nil,
+						"threatLevel":       5,
+					},
+				}
+			}
+			results = append(results, result)
+		}
+
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"repositoryManagerId": "nexus",
+			"repositoryId":        "maven-central",
+				"repositoryPublicId":  "nexus-maven-central",
+				"repositoryType":      "maven",
+			"results":             results,
+		})
+	})
+	defer iqMock.Close()
+
+	// ── Config ──
+	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	homeDir := t.TempDir()
+
+	// Build the complete config with both upstreams
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc:
+        enabled: false
+      static:
+        web_token: ""
+  sonatypeiq:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc:
+        enabled: false
+      static:
+        web_token: ""
+nativeTools:
+  expose:
+    register_all_tools_by_default: false
+    includes:
+      - ListSearch
+virtualTools:
+  - name: maven_top5_versions_safe
+    description: Top N firewall-safe Maven versions
+    inputSchema:
+      type: object
+      required:
+        - mavenGroupId
+        - mavenArtifactId
+        - repository
+        - repositoryManagerId
+      properties:
+        mavenGroupId:
+          type: string
+        mavenArtifactId:
+          type: string
+        repository:
+          type: string
+        repositoryManagerId:
+          type: string
+        limit:
+          type: integer
+          default: 5
+        fetchLimit:
+          type: integer
+          default: 20
+        minThreatLevel:
+          type: integer
+          default: 1
+    pipeline:
+      - id: search
+        kind: call
+        spec:
+          tool: ListSearch
+          parse: json
+          args:
+            maven.groupId: $input.mavenGroupId
+            maven.artifactId: $input.mavenArtifactId
+            format: maven2
+            sort: version
+            direction: desc
+            repository: $input.repository
+        require:
+          nonEmpty: true
+          message: "No matching components found."
+
+      - id: candidates
+        kind: jq
+        spec:
+          from: $search
+          vars:
+            fetchLimit: $input.fetchLimit
+          expr: |
+            [.items[:($fetchLimit // 20)] | .[] | {
+              group,
+              name,
+              version,
+              repository,
+              downloadUrl: (.assets[0].downloadUrl // null),
+              packageUrl:
+                "pkg:maven/\(.group | gsub("\\."; "/"))/\(.name)@\(.version)",
+              hash: (
+                if (.assets[0].checksum.sha1 // "" | length > 0)
+                then "sha1:\(.assets[0].checksum.sha1)"
+                else null
+                end
+              )
+            }]
+        require:
+          nonEmpty: true
+
+      - id: iqBody
+        kind: jq
+        spec:
+          from: $candidates
+          expr: |
+            {
+              format: "maven2",
+              components: [.[] | { packageUrl, hash } | select(.hash != null)]
+            }
+
+      - id: iqPath
+        kind: jq
+        spec:
+          vars:
+            repoMgrId: $input.repositoryManagerId
+            repoId: $input.repository
+          expr: |
+            "/api/v2/firewall/components/\($repoMgrId)/\($repoId)/evaluate"
+
+      - id: iqEval
+        kind: http
+        spec:
+          upstream: sonatypeiq
+          method: POST
+          path: $iqPath
+          parse: json
+          body: $iqBody
+
+      - id: iqIndex
+        kind: jq
+        spec:
+          from: $iqEval
+          expr: |
+            [.results[]?
+            | select(.component.packageUrl != null)
+            | {
+                packageUrl: .component.packageUrl,
+                quarantined,
+                maxThreat: (
+                  [.policyViolations[]? | select(.waiveTime == null) | .threatLevel]
+                  | max // 0
+                ),
+                activeViolationCount: (
+                  [.policyViolations[]? | select(.waiveTime == null)] | length
+                ),
+                violations: [
+                  .policyViolations[]? | select(.waiveTime == null)
+                  | { policyName, threatLevel, policyViolationId }
+                ]
+              }
+            ]
+
+      - id: result
+        kind: return
+        spec:
+          from: $candidates
+          vars:
+            groupId: $input.mavenGroupId
+            artifactId: $input.mavenArtifactId
+            repo: $input.repository
+            repoMgrId: $input.repositoryManagerId
+            limit: $input.limit
+            minThreat: $input.minThreatLevel
+            iqIndex: $iqIndex
+          expr: |
+            ([.[]
+            | . as $c
+            | (
+                ($iqIndex[] | select(.packageUrl == $c.packageUrl))
+                // { quarantined: false, maxThreat: 0, violations: [], activeViolationCount: 0 }
+              ) as $iq
+            | $c + {
+                quarantined: $iq.quarantined,
+                maxPolicyThreat: $iq.maxThreat,
+                activeViolationCount: $iq.activeViolationCount,
+                violations: $iq.violations,
+                firewallStatus: (
+                  if $iq.quarantined or ($iq.maxThreat >= ($minThreat // 1))
+                  then "deny"
+                  else "allow"
+                  end
+                )
+              }
+            ]) as $annotated
+            | {
+                coordinate: "\($groupId):\($artifactId)",
+                repository: $repo,
+                repositoryManagerId: $repoMgrId,
+                minThreatLevel: ($minThreat // 1),
+                summary: {
+                  totalCandidates: ($annotated | length),
+                  iqEvaluated: ($iqIndex | length),
+                  safeCount:
+                    ([$annotated[] | select(.firewallStatus == "allow")] | length),
+                  blockedCount:
+                    ([$annotated[] | select(.firewallStatus == "deny")] | length)
+                },
+                safeVersions:
+                  [$annotated[] | select(.firewallStatus == "allow")
+                  | { group, name, version, repository, downloadUrl, firewallStatus,
+                      quarantined, maxPolicyThreat, activeViolationCount }
+                  ]
+                  | .[:($limit // 5)],
+                blockedVersions:
+                  [$annotated[] | select(.firewallStatus == "deny")
+                  | { version, firewallStatus, quarantined, maxPolicyThreat,
+                      activeViolationCount, violations }
+                  ]
+              }
+`, nexusMock.server.URL, iqMock.server.URL)
+
+	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	defer cleanup()
+
+	// ── Call the virtual tool ──
+	result := mcpCallVirtualTool(t, baseURL, "maven_top5_versions_safe", map[string]interface{}{
+		"mavenGroupId":         "com.fasterxml.jackson.core",
+		"mavenArtifactId":      "jackson-databind",
+		"repository":           "maven-central",
+		"repositoryManagerId":  "nexus",
+		"limit":                float64(5),
+		"fetchLimit":           float64(20),
+		"minThreatLevel":       float64(1),
+	})
+
+	data := mustJSON(t, result)
+
+	// ── Debug: show what came back ──
+	t.Logf("nexusMock requests: %d, iqMock requests: %d", nexusMock.requestCount(), iqMock.requestCount())
+
+	// ── Verify structure ──
+	if data["coordinate"] != "com.fasterxml.jackson.core:jackson-databind" {
+		t.Errorf("coordinate = %v", data["coordinate"])
+	}
+
+	summary, ok := data["summary"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("summary should be object, got %T", data["summary"])
+	}
+
+	totalCandidates, _ := summary["totalCandidates"].(float64)
+	if totalCandidates != 4 {
+		t.Errorf("totalCandidates = %v, want 4", totalCandidates)
+	}
+
+	// 4 candidates, all 4 have hash → 4 sent to IQ → 4 evaluated
+	iqEval, _ := summary["iqEvaluated"].(float64)
+	if iqEval != 4 {
+		t.Errorf("iqEvaluated = %v, want 4", iqEval)
+	}
+
+	// ── Verify safe versions ──
+	safeVersions, ok := data["safeVersions"].([]interface{})
+	if !ok {
+		t.Fatalf("safeVersions should be array, got %T", data["safeVersions"])
+	}
+
+	// With minThreatLevel=1:
+	//   2.18.0-rce  → quarantined=true     → deny (blocked by firewall)
+	//   2.17.1-old  → threat 3 >= 1        → deny
+	//   2.16.0-mid  → threat 5 >= 1        → deny
+	//   2.15.3      → no IQ result         → allow (default)
+	// Expected: 1 safe (2.15.3), 3 blocked
+	safeCount, _ := summary["safeCount"].(float64)
+	if safeCount != 1 {
+		t.Errorf("safeCount = %v, want 1 (only 2.15.3 clean)", safeCount)
+	}
+	blockedCount, _ := summary["blockedCount"].(float64)
+	if blockedCount != 3 {
+		t.Errorf("blockedCount = %v, want 3 (rce+old+mid), got %v", blockedCount, data["blockedVersions"])
+	}
+
+	// Verify the safe version is 2.15.3
+	if len(safeVersions) == 1 {
+		sv := safeVersions[0].(map[string]interface{})
+		if sv["version"] != "2.15.3" {
+			t.Errorf("safe version = %v, want 2.15.3", sv["version"])
+		}
+		if sv["firewallStatus"] != "allow" {
+			t.Errorf("firewallStatus = %v, want allow", sv["firewallStatus"])
+		}
+	}
+
+	// Verify blocked versions include the expected ones
+	blockedVersions, ok := data["blockedVersions"].([]interface{})
+	if !ok {
+		t.Fatalf("blockedVersions should be array")
+	}
+	if len(blockedVersions) != 3 {
+		t.Fatalf("expected 3 blocked versions, got %d", len(blockedVersions))
+	}
+
+	// 2.18.0-rce should be quarantined
+	blockedMap := mapBlockedByVersion(blockedVersions)
+	bv := blockedMap["2.18.0-rce"]
+	if bv == nil {
+		t.Error("2.18.0-rce should be in blocked versions")
+	} else {
+		if bv["firewallStatus"] != "deny" {
+			t.Errorf("2.18.0-rce firewallStatus = %v", bv["firewallStatus"])
+		}
+		if q, ok := bv["quarantined"].(bool); !ok || q != true {
+			t.Errorf("2.18.0-rce quarantined = %v, want true", bv["quarantined"])
+		}
+	}
+
+	// Verify upstream request counts
+	if nexusMock.requestCount() < 1 {
+		t.Error("expected at least 1 request to Nexus upstream (ListSearch)")
+	}
+	if iqMock.requestCount() < 1 {
+		t.Error("expected at least 1 request to IQ upstream (firewall evaluate)")
+	}
+}
+
+// TestE2E_HTTPStep_Minimal tests the kind: http pipeline step in isolation.
+// A simple echo upstream returns a fixed JSON body; the virtual tool does
+// http(POST) → jq(extract) → return.
+func TestE2E_HTTPStep_Minimal(t *testing.T) {
+	echoMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		// Return a simple JSON response that jq can parse
+		w.Write([]byte(`{"status":"ok","results":[{"name":"alice","score":100},{"name":"bob","score":85}]}`))
+	})
+	defer echoMock.Close()
+
+	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	homeDir := t.TempDir()
+
+	configYAML := fmt.Sprintf(`
+server:
+  max_parallel_requests: 100
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+  testbackend:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+nativeTools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtualTools:
+  - name: virt_http_test
+    description: Minimal http step test
+    inputSchema:
+      type: object
+      properties:
+        payload:
+          type: string
+    pipeline:
+      - id: call_http
+        kind: http
+        spec:
+          upstream: testbackend
+          method: POST
+          path: /api/echo
+          parse: json
+          body: $input.payload
+      - id: extract
+        kind: jq
+        spec:
+          from: $call_http
+          expr: '{status, count: (.results | length), first: .results[0].name}'
+      - id: done
+        kind: return
+        spec:
+          from: $extract
+`, echoMock.server.URL, echoMock.server.URL)
+
+	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	defer cleanup()
+
+	result := mcpCallVirtualTool(t, baseURL, "virt_http_test", map[string]interface{}{
+		"payload": "hello-world",
+	})
+
+	data := mustJSON(t, result)
+	t.Logf("result: %s", result)
+
+	if data["status"] != "ok" {
+		t.Errorf("status = %v, want ok", data["status"])
+	}
+	count, _ := data["count"].(float64)
+	if count != 2 {
+		t.Errorf("count = %v, want 2", count)
+	}
+	if data["first"] != "alice" {
+		t.Errorf("first = %v, want alice", data["first"])
+	}
+	if echoMock.requestCount() < 1 {
+		t.Error("expected at least 1 request to echo mock")
+	}
+	// Verify the http step sent the payload as the body
+	if len(echoMock.requests) > 0 {
+		got := string(echoMock.requests[0].Body)
+		if !strings.Contains(got, "hello-world") {
+			t.Errorf("mock received body %q, want it to contain 'hello-world'", got)
+		}
+	}
+}
+
+// TestE2E_HTTPStep_WithJSONBody verifies the http step sends and parses JSON
+// with a map body (the maven_top5_versions_safe pattern). Uses hardcoded data
+// to eliminate ListSearch as a variable.
+func TestE2E_HTTPStep_WithJSONBody(t *testing.T) {
+	var receivedBody []byte
+	echoMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		receivedBody, _ = io.ReadAll(r.Body)
+		r.Body = io.NopCloser(strings.NewReader(string(receivedBody)))
+		// Echo back the same response format the IQ firewall evaluate API uses
+		w.Write([]byte(`{"repositoryManagerId":"nexus","repositoryId":"maven-central","repositoryPublicId":"nexus-maven-central","repositoryType":"maven","results":[{"quarantined":false,"quarantineDate":null,"catalogDate":"2025-01-01T00:00:00Z","component":{"pathname":null,"packageUrl":"pkg:maven/com.example/lib@1.0","hash":"sha1:abc123"},"policyViolations":[]},{"quarantined":true,"quarantineDate":"2025-06-01T10:00:00Z","catalogDate":"2025-01-01T00:00:00Z","component":{"pathname":null,"packageUrl":"pkg:maven/com.example/lib@2.0-rce","hash":"sha1:def456"},"policyViolations":[{"policyName":"Critical CVE","threatLevel":9,"waiveTime":null,"fixTime":null,"legacyViolationTime":null,"openTime":"2025-06-01T10:00:00Z","policyViolationId":"pv-1","policyId":"POL-CRIT","constraintViolations":[]}]}]}`))
+	})
+	defer echoMock.Close()
+
+	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	homeDir := t.TempDir()
+
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+  sonatypeiq:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+nativeTools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtualTools:
+  - name: virt_http_json_body
+    description: Test http step with JSON map body
+    inputSchema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: body
+        kind: jq
+        spec:
+          expr: '{format: "maven2", components: [{packageUrl: "pkg:maven/com.example/lib@1.0", hash: "sha1:abc123"}, {packageUrl: "pkg:maven/com.example/lib@2.0-rce", hash: "sha1:def456"}]}'
+      - id: call
+        kind: http
+        spec:
+          upstream: sonatypeiq
+          method: POST
+          path: /api/v2/firewall/components/nexus/maven-central/evaluate
+          parse: json
+          body: $body
+      - id: index
+        kind: jq
+        spec:
+          from: $call
+          expr: |
+            [.results[]?
+            | select(.component.packageUrl != null)
+            | {
+                packageUrl: .component.packageUrl,
+                quarantined,
+                maxThreat:
+                  ([.policyViolations[]? | select(.waiveTime == null) | .threatLevel] | max // 0)
+              }]
+      - id: done
+        kind: return
+        spec:
+          from: $index
+          expr: '{count: length, items: .}'
+`, echoMock.server.URL, echoMock.server.URL)
+
+	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	defer cleanup()
+
+	result := mcpCallVirtualTool(t, baseURL, "virt_http_json_body", map[string]interface{}{})
+
+	data := mustJSON(t, result)
+	t.Logf("result: %s", result)
+
+	cnt, _ := data["count"].(float64)
+	if cnt != 2 {
+		t.Errorf("count = %v, want 2", cnt)
+	}
+	items, _ := data["items"].([]interface{})
+	if len(items) != 2 {
+		t.Fatalf("expected 2 items, got %d", len(items))
+	}
+
+	// Item 0: lib@1.0 — clean (no violations)
+	item0 := items[0].(map[string]interface{})
+	if item0["quarantined"] != false {
+		t.Errorf("item0 quarantined = %v", item0["quarantined"])
+	}
+	// Item 1: lib@2.0-rce — quarantined
+	item1 := items[1].(map[string]interface{})
+	if item1["quarantined"] != true {
+		t.Errorf("item1 quarantined = %v", item1["quarantined"])
+	}
+	if mt, _ := item1["maxThreat"].(float64); mt != 9 {
+		t.Errorf("item1 maxThreat = %v, want 9", mt)
+	}
+}
+
+// TestE2E_NexusFirewall_MinThreatLevelFiltering tests that the minThreatLevel
+// parameter correctly adjusts the blocking threshold.
+func TestE2E_NexusFirewall_MinThreatLevelFiltering(t *testing.T) {
+	nexusMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+  "items": [
+    {
+      "group": "com.example", "name": "lib", "version": "1.0.0-vuln",
+      "repository": "maven-central", "format": "maven2",
+      "assets": [{"downloadUrl": "https://nexus.example.com/repo/lib-1.0.0.jar", "checksum": {"sha1": "eee00112233445566778899001122334455667788"}}]
+    },
+    {
+      "group": "com.example", "name": "lib", "version": "2.0.0-old",
+      "repository": "maven-central", "format": "maven2",
+      "assets": [{"downloadUrl": "https://nexus.example.com/repo/lib-2.0.0.jar", "checksum": {"sha1": "11122334455667788990011223344556677889900"}}]
+    },
+    {
+      "group": "com.example", "name": "lib", "version": "3.0.0",
+      "repository": "maven-central", "format": "maven2",
+      "assets": [{"downloadUrl": "https://nexus.example.com/repo/lib-3.0.0.jar", "checksum": {"sha1": "22233445566778899001122334455667788990011"}}]
+    }
+  ],
+  "continuationToken": null
+}`))
+	})
+	defer nexusMock.Close()
+
+	iqMock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		body, _ := io.ReadAll(r.Body)
+		var req struct {
+			Components []struct {
+				PackageURL string `json:"packageUrl"`
+				Hash       string `json:"hash"`
+			} `json:"components"`
+		}
+		json.Unmarshal(body, &req)
+
+		results := make([]map[string]interface{}, 0, len(req.Components))
+		for i, comp := range req.Components {
+			result := map[string]interface{}{
+				"quarantined":     false,
+				"catalogDate":     "2025-01-01T00:00:00Z",
+				"component":       comp,
+				"policyViolations": []map[string]interface{}{},
+			}
+			ver := comp.PackageURL
+			if idx := strings.LastIndex(ver, "@"); idx >= 0 {
+				ver = ver[idx+1:]
+			}
+
+			if strings.Contains(ver, "vuln") {
+				result["quarantined"] = true
+				result["quarantineDate"] = "2025-06-01T10:00:00Z"
+				result["policyViolations"] = []map[string]interface{}{
+					{"policyId": "POL-CRIT", "policyName": "Critical CVE", "policyViolationId": "pv-" + fmt.Sprint(i),
+						"openTime": "2025-06-01T10:00:00Z", "waiveTime": nil, "fixTime": nil, "legacyViolationTime": nil, "threatLevel": 9, "constraintViolations": []map[string]interface{}{}},
+				}
+			} else if strings.Contains(ver, "old") {
+				result["policyViolations"] = []map[string]interface{}{
+					{"policyId": "POL-AGE", "policyName": "Age-Old", "policyViolationId": "pv-" + fmt.Sprint(i),
+						"openTime": "2024-12-01T00:00:00Z", "waiveTime": nil, "fixTime": nil, "legacyViolationTime": nil, "threatLevel": 3, "constraintViolations": []map[string]interface{}{}},
+				}
+			}
+			results = append(results, result)
+		}
+		json.NewEncoder(w).Encode(map[string]interface{}{"results": results})
+	})
+	defer iqMock.Close()
+
+	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+
+	baseVTConfig := `
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+  sonatypeiq:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+nativeTools:
+  expose:
+    register_all_tools_by_default: false
+    includes:
+      - ListSearch
+virtualTools:
+  - name: maven_top5_versions_safe
+    description: Firewall-safe versions
+    inputSchema:
+      type: object
+      required:
+        - mavenGroupId
+        - mavenArtifactId
+        - repository
+        - repositoryManagerId
+      properties:
+        mavenGroupId: {type: string}
+        mavenArtifactId: {type: string}
+        repository: {type: string}
+        repositoryManagerId: {type: string}
+        limit: {type: integer, default: 5}
+        fetchLimit: {type: integer, default: 20}
+        minThreatLevel: {type: integer, default: 1}
+    pipeline:
+      - id: search
+        kind: call
+        spec:
+          tool: ListSearch
+          parse: json
+          args:
+            maven.groupId: $input.mavenGroupId
+            maven.artifactId: $input.mavenArtifactId
+            format: maven2
+            sort: version
+            direction: desc
+            repository: $input.repository
+        require: {nonEmpty: true, message: "No matches"}
+      - id: candidates
+        kind: jq
+        spec:
+          from: $search
+          vars:
+            fetchLimit: $input.fetchLimit
+          expr: |
+            [.items[:($fetchLimit // 20)] | .[] | {
+              group, name, version, repository,
+              downloadUrl: (.assets[0].downloadUrl // null),
+              packageUrl: "pkg:maven/\(.group | gsub("\\."; "/"))/\(.name)@\(.version)",
+              hash: (if (.assets[0].checksum.sha1 // "" | length > 0) then "sha1:\(.assets[0].checksum.sha1)" else null end)
+            }]
+        require: {nonEmpty: true}
+      - id: iqBody
+        kind: jq
+        spec:
+          from: $candidates
+          expr: '{format: "maven2", components: [.[] | {packageUrl, hash} | select(.hash != null)]}'
+      - id: iqPath
+        kind: jq
+        spec:
+          vars:
+            repoMgrId: $input.repositoryManagerId
+            repoId: $input.repository
+          expr: '"/api/v2/firewall/components/\($repoMgrId)/\($repoId)/evaluate"'
+      - id: iqEval
+        kind: http
+        spec:
+          upstream: sonatypeiq
+          method: POST
+          path: $iqPath
+          parse: json
+          body: $iqBody
+      - id: iqIndex
+        kind: jq
+        spec:
+          from: $iqEval
+          expr: |
+            [.results[]?
+            | select(.component.packageUrl != null)
+            | {
+                packageUrl: .component.packageUrl, quarantined,
+                maxThreat: ([.policyViolations[]? | select(.waiveTime == null) | .threatLevel] | max // 0),
+                activeViolationCount: ([.policyViolations[]? | select(.waiveTime == null)] | length),
+                violations: [.policyViolations[]? | select(.waiveTime == null) | {policyName, threatLevel}]
+              }]
+      - id: result
+        kind: return
+        spec:
+          from: $candidates
+          vars:
+            groupId: $input.mavenGroupId
+            artifactId: $input.mavenArtifactId
+            repo: $input.repository
+            repoMgrId: $input.repositoryManagerId
+            limit: $input.limit
+            minThreat: $input.minThreatLevel
+            iqIndex: $iqIndex
+          expr: |
+            ([.[] | . as $c | (($iqIndex[] | select(.packageUrl == $c.packageUrl)) // {quarantined: false, maxThreat: 0, violations: [], activeViolationCount: 0}) as $iq
+            | $c + {quarantined: $iq.quarantined, maxPolicyThreat: $iq.maxThreat, activeViolationCount: $iq.activeViolationCount, firewallStatus: (if $iq.quarantined or ($iq.maxThreat >= ($minThreat // 1)) then "deny" else "allow" end)}])
+            | {minThreatLevel: ($minThreat // 1), summary: {totalCandidates: length, safeCount: ([.[] | select(.firewallStatus == "allow")] | length), blockedCount: ([.[] | select(.firewallStatus == "deny")] | length)}, safeVersions: [.[] | select(.firewallStatus == "allow") | {version, firewallStatus}], blockedVersions: [.[] | select(.firewallStatus == "deny") | {version, firewallStatus}]}
+`
+
+	// ── Test with minThreatLevel=1 (default strict) ──
+	config1 := fmt.Sprintf(baseVTConfig, nexusMock.server.URL, iqMock.server.URL)
+	homeDir1 := t.TempDir()
+	cleanup1, baseURL1 := startNexusMultiUpstreamServer(t, projectDir, homeDir1, config1)
+
+	result1 := mcpCallVirtualTool(t, baseURL1, "maven_top5_versions_safe", map[string]interface{}{
+		"mavenGroupId":        "com.example",
+		"mavenArtifactId":     "lib",
+		"repository":          "maven-central",
+		"repositoryManagerId": "nexus",
+		"minThreatLevel":      float64(1),
+	})
+	cleanup1()
+
+	data1 := mustJSON(t, result1)
+	summary1 := data1["summary"].(map[string]interface{})
+	safe1, _ := summary1["safeCount"].(float64)
+	blocked1, _ := summary1["blockedCount"].(float64)
+
+	// 1.0.0-vuln → quarantined → deny
+	// 2.0.0-old → threat 3 >= 1 → deny
+	// 3.0.0    → clean → allow
+	if safe1 != 1 || blocked1 != 2 {
+		t.Errorf("minThreat=1: safeCount=%v blockedCount=%v, want safe=1 blocked=2", safe1, blocked1)
+	}
+
+	// ── Test with minThreatLevel=5 (only critical threats block) ──
+	config5 := fmt.Sprintf(baseVTConfig, nexusMock.server.URL, iqMock.server.URL)
+	homeDir5 := t.TempDir()
+	cleanup5, baseURL5 := startNexusMultiUpstreamServer(t, projectDir, homeDir5, config5)
+
+	result5 := mcpCallVirtualTool(t, baseURL5, "maven_top5_versions_safe", map[string]interface{}{
+		"mavenGroupId":        "com.example",
+		"mavenArtifactId":     "lib",
+		"repository":          "maven-central",
+		"repositoryManagerId": "nexus",
+		"minThreatLevel":      float64(5),
+	})
+	cleanup5()
+
+	data5 := mustJSON(t, result5)
+	summary5 := data5["summary"].(map[string]interface{})
+	safe5, _ := summary5["safeCount"].(float64)
+	blocked5, _ := summary5["blockedCount"].(float64)
+
+	// 1.0.0-vuln → quarantined=true → deny (always blocked, regardless of threat)
+	// 2.0.0-old → threat 3 < 5  → allow (below threshold)
+	// 3.0.0    → clean → allow
+	if safe5 != 2 || blocked5 != 1 {
+		t.Errorf("minThreat=5: safeCount=%v blockedCount=%v, want safe=2 blocked=1", safe5, blocked5)
+	}
+
+	// Verify the blocked version at threshold 5 is vuln (quarantined), not old
+	blocked5Versions := data5["blockedVersions"].([]interface{})
+	if len(blocked5Versions) == 1 {
+		bv := blocked5Versions[0].(map[string]interface{})
+		if bv["version"] != "1.0.0-vuln" {
+			t.Errorf("minThreat=5: blocked version = %v, want 1.0.0-vuln (only quarantined blocks)", bv["version"])
+		}
+	}
+}
+
+// mapBlockedByVersion indexes blocked versions by version string.
+func mapBlockedByVersion(blocked []interface{}) map[string]map[string]interface{} {
+	out := make(map[string]map[string]interface{}, len(blocked))
+	for _, v := range blocked {
+		if m, ok := v.(map[string]interface{}); ok {
+			if ver, ok := m["version"].(string); ok {
+				out[ver] = m
+			}
+		}
+	}
+	return out
 }

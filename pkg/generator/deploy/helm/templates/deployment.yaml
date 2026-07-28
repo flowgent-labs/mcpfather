@@ -45,41 +45,41 @@ spec:
               containerPort: {{ .Values.service.mgmtPort }}
               protocol: TCP
           env:
-            - name: MCP__UPSTREAM__ENDPOINT
-              value: {{ .Values.config.upstream.endpoint | quote }}
-            {{- if .Values.config.auth.frontend.oidc.enabled }}
-            - name: MCP__AUTH__FRONTEND__OIDC__ENABLED
+            - name: MCP__UPSTREAM__DEFAULT__ENDPOINT
+              value: {{ .Values.config.upstream.default.endpoint | quote }}
+            {{- if .Values.config.server.auth.oidc.enabled }}
+            - name: MCP__SERVER__AUTH__OIDC__ENABLED
               value: "true"
-            - name: MCP__AUTH__FRONTEND__OIDC__ISSUER
-              value: {{ .Values.config.auth.frontend.oidc.issuer | quote }}
-            {{- if .Values.config.auth.frontend.oidc.jwksUri }}
-            - name: MCP__AUTH__FRONTEND__OIDC__JWKS_URI
-              value: {{ .Values.config.auth.frontend.oidc.jwksUri | quote }}
+            - name: MCP__SERVER__AUTH__OIDC__ISSUER
+              value: {{ .Values.config.server.auth.oidc.issuer | quote }}
+            {{- if .Values.config.server.auth.oidc.jwksUri }}
+            - name: MCP__SERVER__AUTH__OIDC__JWKS_URI
+              value: {{ .Values.config.server.auth.oidc.jwksUri | quote }}
             {{- end }}
-            - name: MCP__AUTH__FRONTEND__OIDC__AUDIENCE
-              value: {{ .Values.config.auth.frontend.oidc.audience | quote }}
-            - name: MCP__AUTH__FRONTEND__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD
-              value: {{ .Values.config.auth.frontend.oidc.enableClientTokenClaimForward | quote }}
-            {{- if .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward }}
-            - name: MCP__AUTH__FRONTEND__OIDC__ADDITIONAL_CLIENT_TOKEN_CLAIM_FORWARD
-              value: {{ join "," .Values.config.auth.frontend.oidc.additionalClientTokenClaimForward | quote }}
+            - name: MCP__SERVER__AUTH__OIDC__AUDIENCE
+              value: {{ .Values.config.server.auth.oidc.audience | quote }}
+            - name: MCP__SERVER__AUTH__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ .Values.config.server.auth.oidc.enableClientTokenClaimForward | quote }}
+            {{- if .Values.config.server.auth.oidc.additionalClientTokenClaimForward }}
+            - name: MCP__SERVER__AUTH__OIDC__ADDITIONAL_CLIENT_TOKEN_CLAIM_FORWARD
+              value: {{ join "," .Values.config.server.auth.oidc.additionalClientTokenClaimForward | quote }}
             {{- end }}
             {{- end }}
-            {{- if .Values.config.auth.backend.oidc.enabled }}
-            - name: MCP__AUTH__BACKEND__OIDC__ENABLED
+            {{- if .Values.config.upstream.default.auth.oidc.enabled }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ENABLED
               value: "true"
-            - name: MCP__AUTH__BACKEND__OIDC__ISSUER
-              value: {{ .Values.config.auth.backend.oidc.issuer | quote }}
-            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_ID
-              value: {{ .Values.config.auth.backend.oidc.clientId | quote }}
-            - name: MCP__AUTH__BACKEND__OIDC__SCOPES
-              value: {{ .Values.config.auth.backend.oidc.scopes | quote }}
-            {{- if .Values.config.auth.backend.oidc.tokenUrl }}
-            - name: MCP__AUTH__BACKEND__OIDC__TOKEN_URL
-              value: {{ .Values.config.auth.backend.oidc.tokenUrl | quote }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ISSUER
+              value: {{ .Values.config.upstream.default.auth.oidc.issuer | quote }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_ID
+              value: {{ .Values.config.upstream.default.auth.oidc.clientId | quote }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__SCOPES
+              value: {{ .Values.config.upstream.default.auth.oidc.scopes | quote }}
+            {{- if .Values.config.upstream.default.auth.oidc.tokenUrl }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__TOKEN_URL
+              value: {{ .Values.config.upstream.default.auth.oidc.tokenUrl | quote }}
             {{- end }}
             {{- if .Values.secret.static.create }}
-            - name: MCP__AUTH__BACKEND__OIDC__CLIENT_SECRET
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
                   name: {{ include "__BINARY_NAME__.secretName" . }}
@@ -88,14 +88,14 @@ spec:
             {{- end }}
             {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
             {{- if .Values.secret.static.webToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__WEB_TOKEN
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "__BINARY_NAME__.secretName" . }}
                   key: web_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "__BINARY_NAME__.secretName" . }}
@@ -103,14 +103,14 @@ spec:
             {{- end }}
             {{- else if and (eq .Values.secret.provider "gcp") }}
             {{- if .Values.secret.static.webToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__WEB_TOKEN
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "__BINARY_NAME__.secretName" . }}
                   key: web_token
             {{- end }}
             {{- if .Values.secret.static.cookieToken }}
-            - name: MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ include "__BINARY_NAME__.secretName" . }}

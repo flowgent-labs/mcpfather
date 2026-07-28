@@ -34,6 +34,16 @@ func validateStep(step StepConfig) error {
 		if step.Spec.Args == nil {
 			return fmt.Errorf("Kind 'call' requires spec.args")
 		}
+	case "http":
+		if step.Spec.Upstream == "" {
+			return fmt.Errorf("Kind 'http' requires spec.upstream")
+		}
+		if step.Spec.Method == "" {
+			return fmt.Errorf("Kind 'http' requires spec.method")
+		}
+		if step.Spec.Path == "" {
+			return fmt.Errorf("Kind 'http' requires spec.path")
+		}
 	case "jq":
 		if step.Spec.Expr == "" {
 			return fmt.Errorf("Kind 'jq' requires spec.expr")
@@ -165,6 +175,18 @@ func extractRefs(step StepConfig) []string {
 	if s, ok := step.Spec.Concurrency.(string); ok {
 		refs = append(refs, extractDollarRefs(s)...)
 	}
+
+	// Extract from http step fields
+	refs = append(refs, extractDollarRefs(step.Spec.Upstream)...)
+	refs = append(refs, extractDollarRefs(step.Spec.Method)...)
+	refs = append(refs, extractDollarRefs(step.Spec.Path)...)
+	for _, v := range step.Spec.Query {
+		refs = append(refs, extractStringRefs(v)...)
+	}
+	for _, v := range step.Spec.Headers {
+		refs = append(refs, extractStringRefs(v)...)
+	}
+	refs = append(refs, extractStringRefs(step.Spec.Body)...)
 
 	return refs
 }

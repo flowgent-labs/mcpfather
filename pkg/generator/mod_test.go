@@ -164,4 +164,7 @@ func TestGenerateGoMod(t *testing.T) {
 	if !strings.Contains(goModContent, "github.com/mark3labs/mcp-go") {
 		t.Errorf("Expected 'github.com/mark3labs/mcp-go' in go.mod, got:\n%s", goModContent)
 	}
+	if !strings.Contains(goModContent, "replace google.golang.org/grpc => github.com/grpc/grpc-go v1.81.1") {
+		t.Errorf("Expected grpc replace directive in go.mod, got:\n%s", goModContent)
+	}
 }

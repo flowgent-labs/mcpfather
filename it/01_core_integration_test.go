@@ -34,10 +34,10 @@ func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 		proxyURL = os.Getenv("HTTPS_PROXY")
 	}
 	if proxyURL == "" {
-		t.Logf("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
+		logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
 		return "", nil
 	}
-	t.Logf("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+	logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
 		os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
 	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
 }
@@ -80,15 +80,43 @@ func findRepoRoot() (string, error) {
 	return "", fmt.Errorf("go.mod not found")
 }
 
+// ─── build cache: go build ONCE per generated project identity ──
+// Stores binary bytes (not paths) so cached binaries survive t.TempDir()
+// cleanup. Key includes go.mod content (which embeds the module name =
+// output dir basename, varying per-test by TempDir call order) plus the
+// mcpfather invocation args, so projects with different includes/excludes
+// never collide.
+
+var (
+	buildCacheMu sync.Mutex
+	buildCache   = map[string][]byte{} // key → cached binary bytes
+)
+
+func writeCachedBinary(t *testing.T, dst string, data []byte) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		t.Fatalf("mkdir for cached binary: %v", err)
+	}
+	if err := os.WriteFile(dst, data, 0755); err != nil {
+		t.Fatalf("write cached binary: %v", err)
+	}
+}
+
 // genProject runs mcpfather and returns the output directory path.
 func genProject(t *testing.T, includes, excludes string) string {
 	t.Helper()
 	return genProjectWithSpec(t, specFixture, includes, excludes)
 }
 
+var (
+	projectKeyMu sync.Mutex
+	projectKey   = map[string]string{} // projectDir → cache key
+)
+
 // genProjectWithSpec runs mcpfather with a custom spec file (relative to its/).
 func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) string {
 	t.Helper()
+	logProgress("[gen] generating MCP project from spec=%s includes=%q excludes=%q", specFile, includes, excludes)
 	bin := mcpfatherBin(t)
 	dir := t.TempDir()
 	args := []string{"-i", filepath.Join(repoRoot(t), "it", specFile), "-o", dir}
@@ -98,11 +126,25 @@ func genProjectWithSpec(t *testing.T, specFile, includes, excludes string) strin
 	if excludes != "" {
 		args = append(args, "--excludes", excludes)
 	}
+	logProgress("[gen] running mcpfather: %s %v", bin, args)
 	cmd := exec.Command(bin, args...)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("mcpfather failed: %v\n%s", err, out)
 	}
+	logProgress("[gen] project generated at %s", dir)
+
+	// Compute cache key from go.mod + generation params.
+	modFile := filepath.Join(dir, "go.mod")
+	modData, err := os.ReadFile(modFile)
+	if err != nil {
+		t.Fatalf("read go.mod for cache key: %v", err)
+	}
+	key := string(modData) + "\x00" + specFile + "\x00" + includes + "\x00" + excludes
+	projectKeyMu.Lock()
+	projectKey[dir] = key
+	projectKeyMu.Unlock()
+
 	return dir
 }
 
@@ -116,23 +158,65 @@ func repoRoot(t *testing.T) string {
 }
 
 // buildServer runs go mod tidy + go build in the generated project dir.
+// Key combines go.mod content + mcpfather args so different includes/excludes
+// never collide on the cache.
 func buildServer(t *testing.T, projectDir string) string {
 	t.Helper()
-	_, proxyEnv := testProxyEnv(t)
 	binName := filepath.Base(projectDir)
+	dst := filepath.Join(projectDir, "bin", binName)
+
+	projectKeyMu.Lock()
+	key, ok := projectKey[projectDir]
+	projectKeyMu.Unlock()
+	if !ok {
+		modFile := filepath.Join(projectDir, "go.mod")
+		data, err := os.ReadFile(modFile)
+		if err != nil {
+			t.Fatalf("read go.mod for cache key: %v", err)
+		}
+		key = string(data)
+	}
+
+	buildCacheMu.Lock()
+	cached, exists := buildCache[key]
+	buildCacheMu.Unlock()
+
+	if exists {
+		// If binary already exists (e.g. buildServer called twice on same
+		// projectDir while the server is running), skip the write to avoid
+		// ETXTBUSY on Linux.
+		if _, err := os.Stat(dst); err == nil {
+			logProgress("[build] binary already exists at %s, skipping cache write", dst)
+			return dst
+		}
+		writeCachedBinary(t, dst, cached)
+		logProgress("[build] reused cached binary")
+		return dst
+	}
+
+	logProgress("[build] go mod tidy + go build in %s", projectDir)
+	_, proxyEnv := testProxyEnv(t)
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), proxyEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
 	}
+	logProgress("[build] go mod tidy OK — building binary %s", binName)
 	cmd = exec.Command("go", "build", "-o", filepath.Join("bin", binName), ".")
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), proxyEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
-	return filepath.Join(projectDir, "bin", binName)
+	logProgress("[build] binary built at %s/bin/%s", projectDir, binName)
+
+	buildCacheMu.Lock()
+	binData, _ := os.ReadFile(dst)
+	buildCache[key] = binData
+	buildCacheMu.Unlock()
+
+	return dst
 }
 
 // mockUpstream starts an httptest server that records requests.
@@ -163,6 +247,8 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 			Body:          body,
 		})
 		m.mu.Unlock()
+		// Restore the body so inner handlers can read it.
+		r.Body = io.NopCloser(strings.NewReader(string(body)))
 		handler(w, r)
 	}))
 	return m
@@ -317,8 +403,8 @@ func TestGenerator_VeryLongOperationId_Succeeds(t *testing.T) {
 
 	stdout, _ := runCLI(t, binPath,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=test-token",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=test-token",
 		},
 		"-t", "cli", toolName, "--id=12345",
 	)
@@ -342,8 +428,8 @@ func TestAuth_BasicPrefixPreserved(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=Basic myCredential123",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Basic myCredential123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -363,8 +449,8 @@ func TestAuth_BearerPrefixPreserved(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=Bearer secretToken999",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Bearer secretToken999",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -384,8 +470,8 @@ func TestAuth_NoPrefixDefaultsToBearer(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=plainToken",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=plainToken",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -410,9 +496,9 @@ func TestAuth_TokenFileFallback(t *testing.T) {
 
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=",
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE=" + tokenFile,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=",
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE=" + tokenFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -437,9 +523,9 @@ func TestAuth_TokenFileWithBasicPrefix(t *testing.T) {
 
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=",
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN_FILE=" + tokenFile,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=",
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE=" + tokenFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -459,8 +545,8 @@ func TestAuth_CookieFromEnv(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -485,9 +571,9 @@ func TestAuth_CookieFileFallback(t *testing.T) {
 
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=",
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN_FILE=" + cookieFile,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN=",
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN_FILE=" + cookieFile,
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -507,9 +593,9 @@ func TestAuth_CookieAndTokenBothSet(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, _ = runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=Bearer secretToken999",
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Bearer secretToken999",
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=abc123",
 		},
 		"-t", "cli", "EchoHeaders",
 	)
@@ -539,8 +625,8 @@ func TestLogging_AuthHeaderRedactedByDefault(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, stderr := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=secretSauce",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=secretSauce",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -565,8 +651,8 @@ func TestLogging_AuthHeaderPrintedWhenEnvSet(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, stderr := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=visibleToken",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=visibleToken",
 			"MCP__RUNTIME__LOG_AUTHORIZATION=true",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
@@ -587,8 +673,8 @@ func TestLogging_CookieRedactedByDefault(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, stderr := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=secretSession",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=secretSession",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -612,8 +698,8 @@ func TestLogging_CookiePrintedWhenEnvSet(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, stderr := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN=JSESSIONID=visibleSession",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN=JSESSIONID=visibleSession",
 			"MCP__RUNTIME__LOG_AUTHORIZATION=true",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
@@ -635,8 +721,8 @@ func TestLogging_NonAuthHeadersPrinted(t *testing.T) {
 	bin := buildServer(t, genProject(t, "echoHeaders", ""))
 	_, stderr := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
-			"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=someToken",
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=someToken",
 		},
 		"-t", "cli", "-v", "10", "EchoHeaders",
 	)
@@ -717,11 +803,16 @@ func mcpHTTPCall(t *testing.T, baseURL string, method string, params map[string]
 // waitForServer polls the MCP endpoint until the server responds or times out.
 func waitForServer(t *testing.T, baseURL string) {
 	t.Helper()
+	logProgress("[wait] polling %s/mcp for server readiness (timeout 5s)", baseURL)
 	for i := 0; i < 100; i++ {
 		resp, err := http.Post(baseURL+"/mcp", "application/json", strings.NewReader(`{"jsonrpc":"2.0","id":0,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"probe","version":"1"}}}`))
 		if err == nil {
 			resp.Body.Close()
+			logProgress("[wait] server ready at %s (attempt %d)", baseURL, i+1)
 			return
+		}
+		if i%20 == 19 {
+			logProgress("[wait] still waiting for %s (attempt %d/100, last error: %v)", baseURL, i+1, err)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
@@ -729,7 +820,7 @@ func waitForServer(t *testing.T, baseURL string) {
 }
 
 // TestAuth_HTTPTransportMatchesCLI verifies that the HTTP transport sends the
-// same Authorization header as CLI mode when using MCP__AUTH__BACKEND__STATIC__WEB_TOKEN.
+// same Authorization header as CLI mode when using MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN.
 func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 	mock := startMockUpstream(okHandler())
 	defer mock.Close()
@@ -739,8 +830,8 @@ func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
-		"MCP__UPSTREAM__ENDPOINT="+mock.server.URL,
-		"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=Basic httpToken456",
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Basic httpToken456",
 	)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -782,8 +873,8 @@ func TestLogging_HTTPTransportRedactsAuthByDefault(t *testing.T) {
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "10")
 	cmd.Env = append(os.Environ(),
-		"MCP__UPSTREAM__ENDPOINT="+mock.server.URL,
-		"MCP__AUTH__BACKEND__STATIC__WEB_TOKEN=shouldBeHidden",
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=shouldBeHidden",
 	)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -835,7 +926,7 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 			"MCP__RUNTIME__DOWNLOAD_DIR=" + downloadDir,
 		},
 		"-t", "cli", "DownloadReport",
@@ -882,7 +973,7 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 			"MCP__RUNTIME__DOWNLOAD_DIR=" + downloadDir,
 		},
 		"-t", "cli", "DownloadReport",
@@ -946,7 +1037,7 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 			"MCP__RUNTIME__DOWNLOAD_DIR=" + downloadDir,
 		},
 		"-t", "cli", "DownloadBytes",
@@ -1006,7 +1097,7 @@ func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 		},
 		"-t", "cli", "UploadFile", "--file_name=test-upload.bin",
 	)
@@ -1057,7 +1148,7 @@ func TestCLI_QueryParamsPassedToUpstream(t *testing.T) {
 
 	bin := buildServer(t, genProject(t, "sayHello", ""))
 	_, _ = runCLI(t, bin,
-		[]string{"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL},
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL},
 		"-t", "cli", "SayHello", "--name=World",
 	)
 
@@ -1181,7 +1272,7 @@ func TestCyclicRef_BuildsAndRuns(t *testing.T) {
 
 	binPath := buildServer(t, genProjectWithSpec(t, cyclicSpecFixture, "", ""))
 	stdout, _ := runCLI(t, binPath,
-		[]string{"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL},
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL},
 		"-t", "cli", "HealthCheck",
 	)
 
@@ -1255,7 +1346,7 @@ func TestRegression_FullBuildAndCLI(t *testing.T) {
 
 	bin := buildServer(t, genProject(t, "echoHeaders,sayHello", ""))
 	stdout, _ := runCLI(t, bin,
-		[]string{"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL},
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL},
 		"-t", "cli", "SayHello", "--name=RegressionTest",
 	)
 
@@ -1326,7 +1417,7 @@ func TestE2E_Core_AuthNoDoublePrefix(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Core Test 3: Cookie forwarding via MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN
+// Core Test 3: Cookie forwarding via MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN
 // ---------------------------------------------------------------------------
 
 func TestE2E_Core_CookieForwarding(t *testing.T) {
@@ -1649,7 +1740,7 @@ func TestConfig_NoConfigFile_AllToolsEnabled(t *testing.T) {
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 		},
 		"-t", "cli", "list",
 	)
@@ -1711,7 +1802,7 @@ nativeTools:
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 		},
 		"-t", "cli", "list",
 	)
@@ -1799,7 +1890,7 @@ nativeTools:
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 		},
 		"-t", "cli", "list",
 	)
@@ -1844,7 +1935,7 @@ nativeTools:
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
-		"MCP__UPSTREAM__ENDPOINT="+mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
 	var stderrBuf bytes.Buffer
 	cmd.Stderr = &stderrBuf
@@ -2014,7 +2105,7 @@ nativeTools:
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 		},
 		"-t", "cli", "list",
 	)
@@ -2055,7 +2146,7 @@ nativeTools:
 	binPath := buildServer(t, dir)
 	env := []string{
 		"HOME=" + homeDir,
-		"MCP__UPSTREAM__ENDPOINT=" + mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
 	}
 
 	// EchoHeaders is enabled, should succeed
@@ -2184,13 +2275,13 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
 		"HOME="+homeDir,
-		"MCP__UPSTREAM__ENDPOINT="+mockURL,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
 	if token != "" {
-		cmd.Env = append(cmd.Env, "MCP__AUTH__BACKEND__STATIC__WEB_TOKEN="+token)
+		cmd.Env = append(cmd.Env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN="+token)
 	}
 	if cookie != "" {
-		cmd.Env = append(cmd.Env, "MCP__AUTH__BACKEND__STATIC__COOKIE_TOKEN="+cookie)
+		cmd.Env = append(cmd.Env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN="+cookie)
 	}
 
 	var stderrBuf strings.Builder
@@ -2211,6 +2302,8 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 // writeCoreVirtualConfig writes an virtual tools config for core tests.
 func writeCoreVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
 	t.Helper()
+	logProgress("[config] writing config for %s (home=%s)", binaryName, homeDir)
+	t.Helper()
 	configDir := filepath.Join(homeDir, "."+binaryName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
@@ -2226,4 +2319,30 @@ func trimMsg(s string, max int) string {
 		return s[:max] + "..."
 	}
 	return s
+}
+
+// logProgress writes a timestamped progress message to stderr for real-time visibility
+// during long-running integration tests. Use this instead of t.Logf for operational
+// steps (building, starting servers, waiting, etc.) so output appears immediately
+// rather than being buffered until the test completes.
+// logProgress writes a timestamped progress message directly to the controlling
+// terminal (/dev/tty) so it appears in real-time during long-running integration
+// tests. go test redirects fd 1 (stdout) and fd 2 (stderr) into internal pipes
+// that are only flushed when the test process exits — meaning fmt.Fprintf(os.Stderr)
+// and os.Stderr.WriteString are invisible until the test completes (or is killed).
+// syscall.Write(2, ...) hits the same pipe and suffers the same fate. /dev/tty is
+// NOT a file descriptor but a kernel device that always points to the real
+// terminal regardless of any fd redirection — same trick used by ssh, sudo, and gpg
+// when they need to read a password while stdin is piped.
+func logProgress(format string, args ...interface{}) {
+	ts := time.Now().Format("15:04:05.000")
+	msg := fmt.Sprintf(format, args...)
+	line := fmt.Sprintf("    --- %s %s\n", ts, msg)
+	// Write directly to the controlling terminal (/dev/tty) to bypass
+	// go test's stderr capture pipe. fd 2 is redirected by go test to a
+	// pipe; /dev/tty always points to the real terminal regardless.
+	if tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0); err == nil {
+		tty.WriteString(line)
+		tty.Close()
+	}
 }
