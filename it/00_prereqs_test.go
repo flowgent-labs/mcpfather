@@ -161,8 +161,14 @@ func autoSetup() {
 		ttyPrintf("\n  … auto-setup: starting k3s server …\n")
 		k3sPath := k3sBinary()
 		cmd := exec.Command("sudo", k3sPath, "server", "--write-kubeconfig-mode=644")
-		cmd.Stderr = os.Stderr
-		cmd.Stdout = os.Stderr
+		// Redirect stdout/stderr to /dev/null so go test does not
+		// hang at exit waiting for the long-lived k3s process to
+		// close inherited I/O pipes (WaitDelay expired).
+		dn, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
+		if dn != nil {
+			cmd.Stderr = dn
+			cmd.Stdout = dn
+		}
 		cmd.Start()
 
 		for i := 0; i < 30; i++ {
@@ -182,7 +188,12 @@ func autoSetup() {
 			out, _ := exec.Command("kubectl", "get", "nodes", "-o", "name").CombinedOutput()
 			if strings.TrimSpace(string(out)) != "" {
 				exec.Command("kubectl", "wait", "--for=condition=Ready", "node", "--all", "--timeout=60s").Run()
-				ttyPrintf("\n  … auto-setup: k3s cluster ready\n")
+				// Print namespaces so CI logs confirm cluster readiness.
+				if nsOut, err := exec.Command("kubectl", "get", "ns").CombinedOutput(); err == nil {
+					ttyPrintf("\n  … auto-setup: k3s cluster ready, namespaces:\n%s", string(nsOut))
+				} else {
+					ttyPrintf("\n  … auto-setup: k3s cluster ready\n")
+				}
 				return
 			}
 			time.Sleep(2 * time.Second)
