@@ -132,7 +132,8 @@ jobs:
         if: steps.bump.outputs.should_release == 'true'
         run: |
           if git rev-parse "${{ steps.bump.outputs.new_tag }}" >/dev/null 2>&1; then
-            echo "Tag ${{ steps.bump.outputs.new_tag }} already exists, skipping tag creation."
+            echo "Tag ${{ steps.bump.outputs.new_tag }} already exists, skipping release."
+            echo "new_tag=" >> $GITHUB_OUTPUT
           else
             git config user.name "github-actions[bot]"
             git config user.email "github-actions[bot]@users.noreply.github.com"
