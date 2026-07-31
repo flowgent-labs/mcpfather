@@ -8,7 +8,7 @@ import (
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
 )
 
-// HTTPNode executes an http step — calling an external HTTP API on a named extra_upstream.
+// HTTPNode executes an http step — calling an external HTTP API on a named upstream.
 func HTTPNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.StepContext, client pipeline.HTTPClient) (interface{}, error) {
 	spec := step.Spec
 
@@ -32,9 +32,9 @@ func HTTPNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 		return nil, fmt.Errorf("http body: %w", err)
 	}
 
-	statusCode, respBody, err := client.Call(ctx, spec.ExtraUpstream, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
+	statusCode, respBody, err := client.Call(ctx, spec.Upstream, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
 	if err != nil {
-		return nil, fmt.Errorf("http %s %q on upstream %q failed: %w", spec.Method, spec.Path, spec.ExtraUpstream, err)
+		return nil, fmt.Errorf("http %s %q on upstream %q failed: %w", spec.Method, spec.Path, spec.Upstream, err)
 	}
 
 	if statusCode < 200 || statusCode >= 300 {

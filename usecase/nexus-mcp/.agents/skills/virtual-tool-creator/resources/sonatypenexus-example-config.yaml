@@ -22,7 +22,7 @@ server:
 # ---- Upstream (outbound) ----
 # Map keyed by name. "default" is the primary upstream for native tools.
 # Additional keys (e.g. "sonatypeiq") are referenced by http pipeline steps
-# via the extra_upstream field.
+# via the upstream field.
 upstream:
   default:
     endpoint: ""               # Nexus Repository API base URL (e.g. https://nexus.example.com)
@@ -322,7 +322,7 @@ virtualTools:
       - id: iqEval
         kind: http
         spec:
-          extra_upstream: sonatypeiq
+          upstream: sonatypeiq
           method: POST
           path: $iqPath
           parse: json

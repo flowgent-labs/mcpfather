@@ -35,8 +35,8 @@ func validateStep(step StepConfig) error {
 			return fmt.Errorf("Kind 'call' requires spec.args")
 		}
 	case "http":
-		if step.Spec.ExtraUpstream == "" {
-			return fmt.Errorf("Kind 'http' requires spec.extra_upstream")
+		if step.Spec.Upstream == "" {
+			return fmt.Errorf("Kind 'http' requires spec.upstream")
 		}
 		if step.Spec.Method == "" {
 			return fmt.Errorf("Kind 'http' requires spec.method")
@@ -177,7 +177,7 @@ func extractRefs(step StepConfig) []string {
 	}
 
 	// Extract from http step fields
-	refs = append(refs, extractDollarRefs(step.Spec.ExtraUpstream)...)
+	refs = append(refs, extractDollarRefs(step.Spec.Upstream)...)
 	refs = append(refs, extractDollarRefs(step.Spec.Method)...)
 	refs = append(refs, extractDollarRefs(step.Spec.Path)...)
 	for _, v := range step.Spec.Query {
