@@ -80,6 +80,30 @@ func findRepoRoot() (string, error) {
 	return "", fmt.Errorf("go.mod not found")
 }
 
+// ─── build cache: go build ONCE per go.mod fingerprint ──────
+// go.mod content is a stable hash of the generated project (spec + includes +
+// excludes). Once the first test builds the binary, all subsequent tests with
+// the same go.mod get a copy in <1ms instead of 3–5 s.
+
+var (
+	buildCacheMu sync.Mutex
+	buildCache   = map[string]string{} // go.mod content → cached binary path
+)
+
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		t.Fatalf("mkdir for cached binary: %v", err)
+	}
+	data, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatalf("read cached binary: %v", err)
+	}
+	if err := os.WriteFile(dst, data, 0755); err != nil {
+		t.Fatalf("write cached binary: %v", err)
+	}
+}
+
 // genProject runs mcpfather and returns the output directory path.
 func genProject(t *testing.T, includes, excludes string) string {
 	t.Helper()
@@ -119,11 +143,34 @@ func repoRoot(t *testing.T) string {
 }
 
 // buildServer runs go mod tidy + go build in the generated project dir.
+// Subsequent calls with a projectDir whose go.mod has identical content to a
+// previously built one will skip compilation and return a copy of the cached
+// binary — turning ~50 × 5s builds into 1 × 5s + 49 × 0.01s copies.
 func buildServer(t *testing.T, projectDir string) string {
 	t.Helper()
-	logProgress("[build] go mod tidy in %s", projectDir)
-	_, proxyEnv := testProxyEnv(t)
 	binName := filepath.Base(projectDir)
+	dst := filepath.Join(projectDir, "bin", binName)
+
+	// Compute cache key from go.mod content (fast, no I/O skip).
+	modFile := filepath.Join(projectDir, "go.mod")
+	data, err := os.ReadFile(modFile)
+	if err != nil {
+		t.Fatalf("read go.mod for cache key: %v", err)
+	}
+	key := string(data)
+
+	buildCacheMu.Lock()
+	cached, exists := buildCache[key]
+	buildCacheMu.Unlock()
+
+	if exists {
+		copyFile(t, cached, dst)
+		logProgress("[build] reused cached binary (go.mod hash match)")
+		return dst
+	}
+
+	logProgress("[build] go mod tidy + go build in %s", projectDir)
+	_, proxyEnv := testProxyEnv(t)
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = projectDir
 	cmd.Env = append(os.Environ(), proxyEnv...)
@@ -138,7 +185,12 @@ func buildServer(t *testing.T, projectDir string) string {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
 	logProgress("[build] binary built at %s/bin/%s", projectDir, binName)
-	return filepath.Join(projectDir, "bin", binName)
+
+	buildCacheMu.Lock()
+	buildCache[key] = dst
+	buildCacheMu.Unlock()
+
+	return dst
 }
 
 // mockUpstream starts an httptest server that records requests.
