@@ -21,7 +21,7 @@ type StepSpec struct {
 	Args  map[string]interface{} `yaml:"args,omitempty"`
 
 	// http — call an external HTTP API on a named backend upstream
-	ExtraUpstream string                 `yaml:"extra_upstream,omitempty"`
+	Upstream string                 `yaml:"upstream,omitempty"`
 	Method        string                 `yaml:"method,omitempty"`  // GET, POST, PUT, DELETE
 	Path          string                 `yaml:"path,omitempty"`    // e.g. /api/v2/components
 	Query         map[string]interface{} `yaml:"query,omitempty"`   // query params with $ref resolution
