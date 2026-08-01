@@ -45,6 +45,8 @@ spec:
               containerPort: {{ .Values.service.mgmtPort }}
               protocol: TCP
           env:
+            - name: HOME
+              value: "/home/mcp"
             - name: MCP__UPSTREAM__DEFAULT__ENDPOINT
               value: {{ .Values.config.upstream.default.endpoint | quote }}
             {{- if .Values.config.server.auth.oidc.enabled }}
@@ -147,7 +149,7 @@ spec:
             periodSeconds: 10
           volumeMounts:
             - name: config
-              mountPath: /home/mcp/config.yaml
+              mountPath: /home/mcp/.__BINARY_NAME__/config.yaml
               subPath: config.yaml
             {{- if eq .Values.secret.provider "gcp" }}
             - name: secrets
