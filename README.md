@@ -1,4 +1,4 @@
-# MCPFather - Enterprise-grade MCP server Builder
+# MCPFather - Enterprise-grade MCP Server Builder
 
 [![Build & Test](https://github.com/flowgent-labs/mcpfather/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpfather/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go)](https://go.dev/dl/)
