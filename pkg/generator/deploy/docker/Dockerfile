@@ -24,6 +24,8 @@ FROM scratch
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 COPY --from=builder /build/server /usr/local/bin/server
 
+ENV HOME=/home/mcp
+
 EXPOSE 8080 9991
 
 ENTRYPOINT ["/usr/local/bin/server", "--transport", "http", "--port", "8080"]

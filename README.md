@@ -451,6 +451,30 @@ web_token_env_var = "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN"
 }
 ```
 
+## Docker Deployment
+
+The generated Docker image is a static binary on `scratch` — no shell, no tools.
+Configure via environment variables and a volume-mounted config file.
+
+```sh
+# 1. Prepare config
+mkdir -p ~/.my-mcp-server
+cp config.yaml ~/.my-mcp-server/config.yaml
+
+# 2. Run (HOME is required — the server resolves $HOME/.<binaryName>/config.yaml)
+docker run -d --name my-mcp-server \
+    --restart unless-stopped \
+    -e HOME=/home/mcp \
+    -e MCP__UPSTREAM__DEFAULT__ENDPOINT="https://api.example.com" \
+    -e MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN="your-token" \
+    -v ~/.my-mcp-server:/home/mcp/.my-mcp-server \
+    -p 8080:8080 -p 9991:9991 \
+    ghcr.io/<YOUR_ORG>/my-mcp-server:v1.0.0
+```
+
+> **Note**: `-e HOME=/home/mcp` is mandatory. The `scratch` image has no environment
+> variables; without `HOME`, `os.UserHomeDir()` fails and the server exits immediately.
+
 ## Helm Deployment
 
 Generated MCP servers ship with an embedded Helm chart under `deploy/helm/`.
@@ -466,6 +490,9 @@ helm upgrade --install --create-namespace \
   --set config.upstream.default.auth.static.create=true \
   --set config.upstream.default.auth.static.webToken=<YOUR_TOKEN>
 ```
+
+The Helm chart sets `ENV HOME=/home/mcp` via the Docker image and mounts the config
+at `/home/mcp/.<binaryName>/config.yaml` automatically.
 
 Images are automatically built and pushed to e.g: `ghcr.io/<YOUR_ORG>/my-mcp-server`
 on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
