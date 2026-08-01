@@ -125,13 +125,13 @@ nativeTools:
 # ---- Virtual Tools ----
 virtualTools:
   # =========================================================================
-  # Basic — top 5 versions, no firewall filtering
+  # Basic — Find top 5 versions, no firewall filtering
   # =========================================================================
-  - name: maven_top5_versions
+  - name: find_maven_any_version
     enabled: true
     description: >
       Resolve the top 5 versions (latest first) for a Maven artifact given
-      its groupId and artifactId. No quarantine filtering.
+      its groupId and artifactId. No firewall quarantine safe filtering.
 
     annotations:
       readOnlyHint: true
@@ -196,7 +196,7 @@ virtualTools:
   # =========================================================================
   # Enterprise — top N firewall-safe versions via IQ Firewall evaluate
   # =========================================================================
-  - name: maven_top5_versions_safe
+  - name: find_maven_safe_version_with_iq
     enabled: true
     description: >
       Resolve the top N firewall-safe (non-quarantined, no active policy
@@ -424,3 +424,246 @@ virtualTools:
                       activeViolationCount, violations }
                   ]
               }
+
+  # =========================================================================
+  # Enterprise — top N firewall-safe versions via Nexus ExtDirect Firewall evaluate
+  # =========================================================================
+  - name: find_maven_safe_version_with_nexus
+    enabled: true
+    description: >
+      Find Maven artifact versions and return only versions allowed by Nexus ExtDirect Firewall
+      ExtDirect Firewall metadata. Asset lookup is internal and not exposed.
+
+    annotations:
+      readOnlyHint: true
+      destructiveHint: false
+      idempotentHint: true
+      openWorldHint: true
+
+    inputSchema:
+      type: object
+      required:
+        - repository
+        - groupId
+        - artifactId
+      properties:
+        repository:
+          type: string
+          description: Nexus repository name shown in the UI, e.g. "prd".
+        groupId:
+          type: string
+          description: Maven group ID, e.g. "org.springframework.security".
+        artifactId:
+          type: string
+          description: Maven artifact ID, e.g. "spring-security-crypto".
+        limit:
+          type: integer
+          default: 20
+          minimum: 1
+          maximum: 100
+          description: Max ALLOW versions to return.
+
+    pipeline:
+      - id: search
+        kind: call
+        spec:
+          tool: ListSearch
+          parse: json
+          args:
+            repository: $input.repository
+            maven.groupId: $input.groupId
+            maven.artifactId: $input.artifactId
+            format: maven2
+            sort: version
+            direction: desc
+        require:
+          nonEmpty: true
+          message: "No matching Maven components found in repository."
+
+      - id: searchPage2Path
+        kind: jq
+        spec:
+          from: $search
+          vars:
+            repo: $input.repository
+            groupId: $input.groupId
+            artifactId: $input.artifactId
+          expr: |
+            "/service/rest/v1/search?repository=\($repo | @uri)&maven.groupId=\($groupId | @uri)&maven.artifactId=\($artifactId | @uri)&format=maven2&sort=version&direction=desc"
+            + (if ((.continuationToken // "") != "") then "&continuationToken=\(.continuationToken | @uri)" else "" end)
+
+      - id: search2
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: $searchPage2Path
+          parse: json
+
+      - id: searchPage3Path
+        kind: jq
+        spec:
+          from: $search2
+          vars:
+            repo: $input.repository
+            groupId: $input.groupId
+            artifactId: $input.artifactId
+          expr: |
+            "/service/rest/v1/search?repository=\($repo | @uri)&maven.groupId=\($groupId | @uri)&maven.artifactId=\($artifactId | @uri)&format=maven2&sort=version&direction=desc"
+            + (if ((.continuationToken // "") != "") then "&continuationToken=\(.continuationToken | @uri)" else "" end)
+
+      - id: search3
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: $searchPage3Path
+          parse: json
+
+      - id: searchPage4Path
+        kind: jq
+        spec:
+          from: $search3
+          vars:
+            repo: $input.repository
+            groupId: $input.groupId
+            artifactId: $input.artifactId
+          expr: |
+            "/service/rest/v1/search?repository=\($repo | @uri)&maven.groupId=\($groupId | @uri)&maven.artifactId=\($artifactId | @uri)&format=maven2&sort=version&direction=desc"
+            + (if ((.continuationToken // "") != "") then "&continuationToken=\(.continuationToken | @uri)" else "" end)
+
+      - id: search4
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: $searchPage4Path
+          parse: json
+
+      - id: candidates
+        kind: jq
+        spec:
+          from: $search
+          vars:
+            limit: $input.limit
+            uiRepository: $input.repository
+            search2: $search2
+            search3: $search3
+            search4: $search4
+          expr: |
+            ([.items[]?, $search2.items[]?, $search3.items[]?, $search4.items[]?]
+            | reduce .[] as $component ([];
+                if any(.[]; ((.id // "") == ($component.id // ""))) then . else . + [$component] end
+              ))
+            | .[0:(($limit // 20) * 4)]
+            | map(
+                . as $component
+                | ($component.assets // []) as $assets
+                | ($assets | map(select((.maven2.extension // "") == "jar" and ((.maven2.classifier // "") == ""))) | .[0]) as $primary
+                | ($assets | map(select((.path // "") | test("\\.jar$"))) | .[0]) as $jar
+                | ($primary // $jar // ($assets[0] // {})) as $asset
+                | select($asset.id != null)
+                | {
+                    group: $component.group,
+                    name: $component.name,
+                    version: $component.version,
+                    repository: $component.repository,
+                    uiRepository: $uiRepository,
+                    downloadUrl: ($asset.downloadUrl // null),
+                    assetPath: ($asset.path // null),
+                    restAssetId: $asset.id,
+                    uiAssetId: ($asset.id | @base64d | split(":") | .[1]),
+                    sha1: ($asset.checksum.sha1 // null)
+                  }
+              )
+        require:
+          nonEmpty: true
+          message: "No Maven assets with REST asset ids were found."
+
+      - id: assetDetails
+        kind: foreach
+        spec:
+          in: $candidates
+          as: candidate
+          preserveOrder: true
+          concurrency: 4
+          pipeline:
+            - id: extdirectBody
+              kind: jq
+              spec:
+                vars:
+                  assetId: $candidate.uiAssetId
+                  repository: $candidate.uiRepository
+                expr: |
+                  {
+                    action: "coreui_Component",
+                    method: "readAsset",
+                    data: [$assetId, $repository],
+                    type: "rpc",
+                    tid: 17
+                  }
+
+            - id: asset
+              kind: http
+              spec:
+                upstream: default
+                method: POST
+                path: /service/extdirect
+                parse: json
+                headers:
+                  Content-Type: application/json
+                  Accept: "*/*"
+                  X-Nexus-UI: "true"
+                  X-Requested-With: XMLHttpRequest
+                body: $extdirectBody
+
+            - id: annotated
+              kind: jq
+              spec:
+                from: $asset
+                vars:
+                  candidate: $candidate
+                expr: |
+                  def values_for($key):
+                    [.. | objects
+                    | (if has($key) then .[$key] else empty end),
+                      (if ((.key? // .name? // .label? // "") == $key)
+                      then (.value? // .values? // .text? // empty)
+                      else empty end)
+                    ];
+                  def first_string($key):
+                    (values_for($key) | map(select(type == "string")) | .[0]) // null;
+
+                  first_string("quarantine-status") as $rawStatus
+                  | ($rawStatus // "") as $status
+                  | $candidate + {
+                      firewallStatusRaw: $rawStatus,
+                      firewallStatus: (
+                        if ($status | ascii_downcase) == "allow" then "allow"
+                        elif $rawStatus == null then "unknown"
+                        else "deny"
+                        end
+                      ),
+                      evaluatedHash: first_string("evaluated-hash"),
+                      cacheToken: first_string("cache_token"),
+                      auditAssetTimestamp: (values_for("auditAssetTimestamp") | .[0] // null)
+                    }
+
+            - id: emit
+              kind: emit
+              spec:
+                from: $annotated
+
+      - id: result
+        kind: return
+        spec:
+          from: $assetDetails
+          vars:
+            groupId: $input.groupId
+            artifactId: $input.artifactId
+            repo: $input.repository
+            limit: $input.limit
+          expr: |
+            ([.[] | select(.firewallStatus == "allow") | .version]
+            | .[0:($limit // 20)]) as $versions
+            | { coordinate: "\($groupId):\($artifactId)", repository: $repo, versions: $versions }
