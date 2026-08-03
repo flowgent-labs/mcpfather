@@ -10,7 +10,7 @@
 [![OpenTelemetry](https://img.shields.io/badge/tracing-OTel-5C4EE5?logo=opentelemetry)](https://opentelemetry.io/)
 [![Helm](https://img.shields.io/badge/deploy-Helm-0F1689?logo=helm)](https://helm.sh/)
 
-*An Enhanced enterprise-grade MCP builder — generates production-ready MCP servers from OpenAPI specs, Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools, auth forwarding, and observability built-in, and even use as regular CLI.*
+*An Enhanced enterprise-grade MCP generator / builder — generates production-ready MCP servers from OpenAPI specs, Each API operation becomes an AI-callable tool with typed schemas and customized aggregate virtual tools(Reduce tokens consumption), auth forwarding, and helm chart deployment and OTEL observability, and even use as regular CLI in development.*
 
 ## Features
 
