@@ -554,6 +554,11 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 - [Telegram APIs official schema - (*No Native Swagger format*)](https://core.telegram.org/schema/json)
     - You can use this tool convert ([telegram-convert-to-oas.py](usecase/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](usecase/swaggers/telegram/telegram-v20260715.schema.json).
 
+### Binance
+
+- [Binance APIs official schema](https://binance.github.io/binance-api-swagger/)
+    - [Binance Spot APIs OAS3](https://binance.github.io/binance-api-swagger/spot_api.yaml)
+
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
