@@ -38,5 +38,3 @@ func (c *Converter) createRequestTemplate(path, method string, operation *openap
 
 	return template, nil
 }
-
-

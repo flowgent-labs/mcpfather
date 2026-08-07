@@ -10,7 +10,7 @@ import (
 
 // Config represents the virtual tools configuration.
 type Config struct {
-	VirtualTools []VirtualToolConfig `yaml:"virtualTools"`
+	VirtualTools []VirtualToolConfig `yaml:"virtual_tools"`
 }
 
 // VirtualToolConfig defines a single virtual MCP tool.
@@ -19,7 +19,7 @@ type VirtualToolConfig struct {
 	Description string                 `yaml:"description"`
 	Enabled     *bool                  `yaml:"enabled,omitempty"`
 	Annotations map[string]interface{} `yaml:"annotations,omitempty"`
-	InputSchema map[string]interface{} `yaml:"inputSchema" schema:"required"`
+	InputSchema map[string]interface{} `yaml:"input_schema" schema:"required"`
 	Pipeline    []pipeline.StepConfig  `yaml:"pipeline" schema:"required"`
 }
 

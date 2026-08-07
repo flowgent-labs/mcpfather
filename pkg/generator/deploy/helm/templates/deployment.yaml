@@ -119,12 +119,8 @@ spec:
                   key: cookie_token
             {{- end }}
             {{- end }}
-            - name: MCP__RUNTIME__LOG_AUTHORIZATION
-              value: {{ .Values.config.runtime.logAuthorization | quote }}
-            {{- if .Values.config.runtime.downloadDir }}
-            - name: MCP__RUNTIME__DOWNLOAD_DIR
-              value: {{ .Values.config.runtime.downloadDir | quote }}
-            {{- end }}
+            - name: MCP__LOGGING__AUTH_VERBOSE
+              value: {{ .Values.config.logging.auth_verbose | quote }}
           {{- if .Values.config.mgmt.otel.enabled }}
             - name: MCP__MGMT__OTEL__ENABLED
               value: "true"

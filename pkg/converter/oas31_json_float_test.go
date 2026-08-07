@@ -200,4 +200,3 @@ func TestOAS31BlogsYAML(t *testing.T) {
 		t.Errorf("paths = %d, want 3", len(p.GetPaths()))
 	}
 }
-

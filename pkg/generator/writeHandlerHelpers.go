@@ -311,4 +311,3 @@ func (g *Generator) GenerateMetrics() error {
 }
 
 // (Legacy credential helpers removed — keychain/wincred stubs are in config.templ)
-
