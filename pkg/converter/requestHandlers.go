@@ -155,29 +155,103 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 	}
 	tool.Responses = responseTemplate
 
-		// Detect upload-type API (request body expects file: multipart/form-data,
-	// application/octet-stream, image/*)
-		if ct := detectUploadContentType(operation); ct != "" {
-		tool.UploadContentType = ct
-		// Upload tools accept file_name (required) and file_content (optional, base64).
-		// - file_name: looked up in ~/.{project}/uploads/ (stdio mode) or used when
-		//   staging file_content (HTTP mode).
-		// - file_content: base64-encoded file data (HTTP mode). When provided,
-		//   the server decodes and stages it in ~/.{project}/uploads/ before uploading.
-		tool.Args = append(tool.Args,
-			Arg{
-				Name:        "file_name",
-				Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged)",
-				Source:      "body",
-				Required:    true,
-			},
-			Arg{
-				Name:        "file_content",
-				Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
-				Source:      "body",
-				Required:    false,
-			},
-		)
+	// Detect upload-type API (request body expects file).
+	if ct := detectUploadContentType(operation); ct != "" {
+		if ct == "multipart/form-data" {
+			// For multipart/form-data, prefer the FileRef approach: binary file
+			// properties are converted to URI (string) arguments. The generated
+			// handler downloads each URI to a local temp directory and builds a
+			// proper multipart/form-data request to the upstream. This avoids
+			// the token/memory explosion of base64-encoding file content.
+			fileArgs, formArgs := c.extractMultipartFileArgs(operation)
+			if len(fileArgs) > 0 {
+				// Replace the single body arg (from convertRequestBody) with
+				// individual form field args + file ref args.
+				filteredArgs := make([]Arg, 0, len(tool.Args))
+				for _, a := range tool.Args {
+					if a.Name != "body" {
+						filteredArgs = append(filteredArgs, a)
+					}
+				}
+				tool.Args = filteredArgs
+
+				// Add non-file form field args
+				tool.Args = append(tool.Args, formArgs...)
+
+				// Add file ref args (URI type)
+				for _, fa := range fileArgs {
+					tool.Args = append(tool.Args, Arg{
+						Name:        fa.Name,
+						Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
+						Source:      "body",
+						Required:    fa.Required,
+						Schema: &Schema{
+							Types:  []string{"string"},
+							Format: "uri",
+						},
+					})
+				}
+				tool.FileArgs = fileArgs
+			} else if isMultipartPlainBinary(operation) {
+				// Non-object multipart schema (e.g. "type: string, format: binary"):
+				// use the legacy file_name / file_content upload path.
+				tool.UploadContentType = ct
+				tool.Args = append(tool.Args,
+					Arg{
+						Name:        "file_name",
+						Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
+						Source:      "body",
+						Required:    false,
+					},
+					Arg{
+						Name:        "file_content",
+						Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
+						Source:      "body",
+						Required:    false,
+					},
+				)
+				for i := range tool.Args {
+					if tool.Args[i].Name == "body" {
+						tool.Args[i].Required = false
+						break
+					}
+				}
+			}
+			// Object schema without binary properties: fall through to
+			// standard JSON body processing (no UploadContentType set).
+		} else {
+			// Non-multipart upload (application/octet-stream, image/*,
+			// video/*, audio/*): use file_name / file_content approach.
+			tool.UploadContentType = ct
+			// Upload tools accept file_name and file_content (both optional).
+			// - file_name: looked up in ~/.{project}/uploads/ (stdio mode) or used when
+			//   staging file_content (HTTP mode).
+			// - file_content: base64-encoded file data (HTTP mode).
+			// When neither is provided, the tool falls back to standard JSON body.
+			tool.Args = append(tool.Args,
+				Arg{
+					Name:        "file_name",
+					Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
+					Source:      "body",
+					Required:    false,
+				},
+				Arg{
+					Name:        "file_content",
+					Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
+					Source:      "body",
+					Required:    false,
+				},
+			)
+			// When upload content type is set, the original body arg (from
+			// convertRequestBody) should also be optional so that tools
+			// work without requiring a file or body.
+			for i := range tool.Args {
+				if tool.Args[i].Name == "body" {
+					tool.Args[i].Required = false
+					break
+				}
+			}
+		}
 	}
 
 	// Sort arguments by name for consistent output
@@ -202,14 +276,14 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 }
 
 // detectUploadContentType returns the content type if the operation expects a
-// file upload body (multipart/form-data, application/octet-stream, image/*),
+// file upload body (multipart/form-data, application/octet-stream, image/*, video/*, audio/*),
 // or "" otherwise.
 func detectUploadContentType(operation *openapi3.Operation) string {
 	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
 		return ""
 	}
 	for ct := range operation.RequestBody.Value.Content {
-		if ct == "multipart/form-data" || ct == "application/x-www-form-urlencoded" ||
+		if ct == "multipart/form-data" ||
 			ct == "application/octet-stream" ||
 			strings.HasPrefix(ct, "image/") || strings.HasPrefix(ct, "video/") ||
 			strings.HasPrefix(ct, "audio/") {
@@ -217,4 +291,95 @@ func detectUploadContentType(operation *openapi3.Operation) string {
 		}
 	}
 	return ""
+}
+
+// extractMultipartFileArgs parses a multipart/form-data request body schema to
+// extract file-type properties (format: binary) as FileArgs and non-file
+// properties as regular Args. Returns nil slices when the schema is not an
+// object with properties (e.g., a plain binary string schema without named
+// fields cannot be decomposed into individual FileRef args).
+func (c *Converter) extractMultipartFileArgs(operation *openapi3.Operation) ([]FileArg, []Arg) {
+	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
+		return nil, nil
+	}
+
+	for ct, mediaType := range operation.RequestBody.Value.Content {
+		if ct != "multipart/form-data" {
+			continue
+		}
+		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
+			continue
+		}
+		schema := mediaType.Schema.Value
+		// Only handle object schemas with named properties.
+		// A plain "type: string, format: binary" multipart body is handled by
+		// the legacy file_name/file_content path (UploadContentType).
+		if schema.Type == nil || !contains(*schema.Type, "object") || schema.Properties == nil {
+			return nil, nil
+		}
+
+		var fileArgs []FileArg
+		var formArgs []Arg
+		requiredSet := make(map[string]bool)
+		for _, r := range schema.Required {
+			requiredSet[r] = true
+		}
+
+		visited := make(map[*openapi3.Schema]bool)
+		for name, propRef := range schema.Properties {
+			if propRef == nil || propRef.Value == nil {
+				continue
+			}
+			prop := propRef.Value
+			if prop.Format == "binary" {
+				fileArgs = append(fileArgs, FileArg{
+					Name:        name,
+					Description: prop.Description,
+					Required:    requiredSet[name],
+				})
+			} else {
+				// Non-file form field — convert to a regular body arg.
+				propSchema, err := c.applySchema(prop, visited)
+				if err != nil {
+					continue
+				}
+				formArg := Arg{
+					Name:        name,
+					Description: prop.Description,
+					Source:      "body",
+					Required:    requiredSet[name],
+				}
+				if propSchema != nil {
+					formArg.Schema = propSchema
+				}
+				formArgs = append(formArgs, formArg)
+			}
+		}
+		return fileArgs, formArgs
+	}
+	return nil, nil
+}
+
+// isMultipartPlainBinary returns true when the operation's multipart/form-data
+// schema is a plain binary type (not an object with named properties). This
+// case cannot use FileRef (there are no named file args to extract) and must
+// fall back to the legacy file_name / file_content approach.
+func isMultipartPlainBinary(operation *openapi3.Operation) bool {
+	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
+		return false
+	}
+	for ct, mediaType := range operation.RequestBody.Value.Content {
+		if ct != "multipart/form-data" {
+			continue
+		}
+		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
+			continue
+		}
+		schema := mediaType.Schema.Value
+		// Plain binary: not an object schema, but has format: binary
+		return schema.Type != nil &&
+			!contains(*schema.Type, "object") &&
+			schema.Format == "binary"
+	}
+	return false
 }

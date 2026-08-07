@@ -31,16 +31,16 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 	virtualImportPath := BuildModuleName(g.outputDir) + "/pkg/mcpvirtual"
 
 	data := struct {
-		MCPToolsImportPath     string
-		HelpersImportPath      string
-		VirtualImportPath   string
-		BinaryName             string
-		Tools                  []ToolTemplateData
+		MCPToolsImportPath string
+		HelpersImportPath  string
+		VirtualImportPath  string
+		BinaryName         string
+		Tools              []ToolTemplateData
 	}{
-		MCPToolsImportPath:   importPath,
-		HelpersImportPath:    helperImportPath,
-		VirtualImportPath: virtualImportPath,
-		BinaryName:           filepath.Base(g.outputDir),
+		MCPToolsImportPath: importPath,
+		HelpersImportPath:  helperImportPath,
+		VirtualImportPath:  virtualImportPath,
+		BinaryName:         filepath.Base(g.outputDir),
 	}
 
 	for _, tool := range config.Tools {

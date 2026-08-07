@@ -263,19 +263,19 @@ func TestVirtualConfigPath(t *testing.T) {
 func TestLogPrintAuth(t *testing.T) {
 	t.Run("disabled by default", func(t *testing.T) {
 		SetConfig(&Config{})
-		if logPrintAuth() {
+		if loggingPrintAuth() {
 			t.Error("should be disabled")
 		}
 	})
 	t.Run("enabled", func(t *testing.T) {
-		SetConfig(&Config{Runtime: mcpconfig.RuntimeConfig{LogAuthorization: true}})
-		if !logPrintAuth() {
+		SetConfig(&Config{Logging: mcpconfig.LoggingConfig{AuthVerbose: true}})
+		if !loggingPrintAuth() {
 			t.Error("should be enabled")
 		}
 	})
 	t.Run("nil config", func(t *testing.T) {
 		SetConfig(nil)
-		if logPrintAuth() {
+		if loggingPrintAuth() {
 			t.Error("nil config should be disabled")
 		}
 	})
@@ -301,16 +301,7 @@ func TestResolveDownloadDir(t *testing.T) {
 		if dir == "" {
 			t.Error("download dir should not be empty")
 		}
-	})
-	t.Run("custom", func(t *testing.T) {
-		customDir := filepath.Join(t.TempDir(), "custom-downloads")
-		SetConfig(&Config{Runtime: mcpconfig.RuntimeConfig{DownloadDir: customDir}})
-		dir, err := resolveDownloadDir()
-		if err != nil {
-			t.Errorf("resolveDownloadDir should not error: %v", err)
-		}
-		if dir != customDir {
-			t.Errorf("got %q, want %q", dir, customDir)
-		}
+		// Download dir is hardcoded to ~/.{binaryName}/downloads.
+		// (Users deploying on k8s can mount volumes to this fixed path.)
 	})
 }

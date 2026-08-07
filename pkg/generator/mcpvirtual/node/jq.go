@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/itchyny/gojq"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
+	"github.com/itchyny/gojq"
 )
 
 // JQNode evaluates a jq expression against pipeline data.

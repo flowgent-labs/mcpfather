@@ -335,7 +335,6 @@ func TestWriteAdditionalProperties_NilAndFalse(t *testing.T) {
 	}
 }
 
-
 func TestWriteSchemaCombinators_OneOf(t *testing.T) {
 	c := &Converter{}
 	schema := &openapi3.Schema{
@@ -456,7 +455,6 @@ func TestWriteSchemaCombinators_None(t *testing.T) {
 		t.Errorf("expected no output for empty combinators, got: %q", out)
 	}
 }
-
 
 func TestWriteSchemaProperties_ObjectProperties(t *testing.T) {
 	c := &Converter{}

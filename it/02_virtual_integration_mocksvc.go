@@ -115,9 +115,10 @@ func (m *VirtualMockService) Reset() {
 // SonatypeIQ API pattern: app info → violations list → component details.
 //
 // Upstream endpoints (all under /api):
-//   GET /api/echo?role=app              → application info
-//   GET /api/echo?role=violations&appId= → policy violations list
-//   GET /api/hello?name=component-{id}   → component details (per component)
+//
+//	GET /api/echo?role=app              → application info
+//	GET /api/echo?role=violations&appId= → policy violations list
+//	GET /api/hello?name=component-{id}   → component details (per component)
 func (m *VirtualMockService) RegisterSonatypeIQScenario() {
 	// Component dataset keyed by component ID
 	components := map[string]map[string]interface{}{
@@ -143,11 +144,11 @@ func (m *VirtualMockService) RegisterSonatypeIQScenario() {
 		switch role {
 		case "app":
 			writeJSON(w, map[string]interface{}{
-				"publicId":        "app-123",
-				"name":            "RiskApp",
-				"organizationId":  "org-1",
-				"internalToken":   "secret-should-be-stripped",
-				"debugInfo":       "debug-should-be-stripped",
+				"publicId":       "app-123",
+				"name":           "RiskApp",
+				"organizationId": "org-1",
+				"internalToken":  "secret-should-be-stripped",
+				"debugInfo":      "debug-should-be-stripped",
 			})
 		case "violations":
 			writeJSON(w, []interface{}{
@@ -313,14 +314,14 @@ func (m *VirtualMockService) RegisterSonatypeIQRealScenario() {
 			"components": []interface{}{
 				// log4j-core — max threat 9, active violation, remediation exists
 				map[string]interface{}{
-					"displayName": "log4j-core-2.14.1.jar",
-					"hash":        "a1b2c3d4e5f6a1b2",
-					"sha256":      "sha256log4jabcdef1234567890abcdef1234567890",
-					"packageUrl":  "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
+					"displayName":  "log4j-core-2.14.1.jar",
+					"hash":         "a1b2c3d4e5f6a1b2",
+					"sha256":       "sha256log4jabcdef1234567890abcdef1234567890",
+					"packageUrl":   "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
 					"originalPurl": "pkg:maven/org.apache.logging.log4j/log4j-core@2.14.1",
-					"matchState":  "exact",
-					"proprietary": false,
-					"thirdParty":  true,
+					"matchState":   "exact",
+					"proprietary":  false,
+					"thirdParty":   true,
 					"componentIdentifier": map[string]interface{}{
 						"format": "maven",
 						"coordinates": map[string]interface{}{
@@ -356,14 +357,14 @@ func (m *VirtualMockService) RegisterSonatypeIQRealScenario() {
 				},
 				// spring-core — max threat 7, has active + waived violations
 				map[string]interface{}{
-					"displayName": "spring-core-5.3.9.jar",
-					"hash":        "b2c3d4e5f6a2b3c4",
-					"sha256":      "sha256springfedcba0987654321fedcba0987654321",
-					"packageUrl":  "pkg:maven/org.springframework/spring-core@5.3.9",
+					"displayName":  "spring-core-5.3.9.jar",
+					"hash":         "b2c3d4e5f6a2b3c4",
+					"sha256":       "sha256springfedcba0987654321fedcba0987654321",
+					"packageUrl":   "pkg:maven/org.springframework/spring-core@5.3.9",
 					"originalPurl": "pkg:maven/org.springframework/spring-core@5.3.9",
-					"matchState":  "exact",
-					"proprietary": false,
-					"thirdParty":  true,
+					"matchState":   "exact",
+					"proprietary":  false,
+					"thirdParty":   true,
 					"componentIdentifier": map[string]interface{}{
 						"format": "maven",
 						"coordinates": map[string]interface{}{
@@ -399,14 +400,14 @@ func (m *VirtualMockService) RegisterSonatypeIQRealScenario() {
 				},
 				// safe-lib — max threat 2, below default minThreatLevel of 5
 				map[string]interface{}{
-					"displayName": "safe-lib-1.0.jar",
-					"hash":        "c3d4e5f6a3c4d5e6",
-					"sha256":      "sha256safe142536abcdef142536abcdef142536abcdef",
-					"packageUrl":  "pkg:maven/com.example/safe-lib@1.0",
+					"displayName":  "safe-lib-1.0.jar",
+					"hash":         "c3d4e5f6a3c4d5e6",
+					"sha256":       "sha256safe142536abcdef142536abcdef142536abcdef",
+					"packageUrl":   "pkg:maven/com.example/safe-lib@1.0",
 					"originalPurl": "pkg:maven/com.example/safe-lib@1.0",
-					"matchState":  "exact",
-					"proprietary": false,
-					"thirdParty":  true,
+					"matchState":   "exact",
+					"proprietary":  false,
+					"thirdParty":   true,
 					"componentIdentifier": map[string]interface{}{
 						"format": "maven",
 						"coordinates": map[string]interface{}{
@@ -441,42 +442,42 @@ func (m *VirtualMockService) RegisterSonatypeIQRealScenario() {
 			"applicationId": internalAppID,
 			"reports": []interface{}{
 				map[string]interface{}{
-					"scanId":              "other-scan-001",
-					"stage":               "develop",
-					"evaluationDate":      "2024-06-14T12:00:00Z",
-					"policyEvaluationId":  "eval-001",
-					"reportHtmlUrl":       "/report/html/001",
-					"reportPdfUrl":        "/report/pdf/001",
-					"isReevaluation":      false,
-					"isForMonitoring":     false,
-					"scanTriggerType":     "WEB_UI",
-					"commitHash":          "oldcommit001",
+					"scanId":                 "other-scan-001",
+					"stage":                  "develop",
+					"evaluationDate":         "2024-06-14T12:00:00Z",
+					"policyEvaluationId":     "eval-001",
+					"reportHtmlUrl":          "/report/html/001",
+					"reportPdfUrl":           "/report/pdf/001",
+					"isReevaluation":         false,
+					"isForMonitoring":        false,
+					"scanTriggerType":        "WEB_UI",
+					"commitHash":             "oldcommit001",
 					"affectedComponentCount": 10,
 				},
 				map[string]interface{}{
-					"scanId":              scanID,
-					"stage":               "build",
-					"evaluationDate":      "2024-06-15T08:30:00Z",
-					"policyEvaluationId":  "eval-002",
-					"reportHtmlUrl":       "/report/html/002",
-					"reportPdfUrl":        "/report/pdf/002",
-					"isReevaluation":      true,
-					"isForMonitoring":     false,
-					"scanTriggerType":     "JENKINS",
-					"commitHash":          "abc123def456",
+					"scanId":                 scanID,
+					"stage":                  "build",
+					"evaluationDate":         "2024-06-15T08:30:00Z",
+					"policyEvaluationId":     "eval-002",
+					"reportHtmlUrl":          "/report/html/002",
+					"reportPdfUrl":           "/report/pdf/002",
+					"isReevaluation":         true,
+					"isForMonitoring":        false,
+					"scanTriggerType":        "JENKINS",
+					"commitHash":             "abc123def456",
 					"affectedComponentCount": 12,
 				},
 				map[string]interface{}{
-					"scanId":              "other-scan-003",
-					"stage":               "release",
-					"evaluationDate":      "2024-06-15T10:00:00Z",
-					"policyEvaluationId":  "eval-003",
-					"reportHtmlUrl":       "/report/html/003",
-					"reportPdfUrl":        "/report/pdf/003",
-					"isReevaluation":      false,
-					"isForMonitoring":     true,
-					"scanTriggerType":     "CLI",
-					"commitHash":          "latestcommit003",
+					"scanId":                 "other-scan-003",
+					"stage":                  "release",
+					"evaluationDate":         "2024-06-15T10:00:00Z",
+					"policyEvaluationId":     "eval-003",
+					"reportHtmlUrl":          "/report/html/003",
+					"reportPdfUrl":           "/report/pdf/003",
+					"isReevaluation":         false,
+					"isForMonitoring":        true,
+					"scanTriggerType":        "CLI",
+					"commitHash":             "latestcommit003",
 					"affectedComponentCount": 8,
 				},
 			},
