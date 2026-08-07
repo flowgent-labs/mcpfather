@@ -108,7 +108,11 @@ server:
       # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
       # e.g. ["given_name", "family_name", "preferred_username"]
       # additional_client_token_claim_forward: []
-  max_parallel_requests: 100
+  # HTTP server timeouts in seconds. 0 = disabled.
+  # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
+  read_timeout_seconds: 30
+  write_timeout_seconds: 0
+  idle_timeout_seconds: 120
 
 # ---- Upstream (outbound) ----
 # Credentials the server uses to call upstream APIs.
@@ -131,11 +135,11 @@ upstream:
       static:
         web_token: "${MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN}"   # or set cookie_token
 
-runtime:
-  download_dir: ""
-  log_authorization: false
+logging:
+  level: 0
+  auth_verbose: false
 
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: true   # expose all native tools
     # includes: [Tool1, Tool2]            # or whitelist specific tools
@@ -197,10 +201,10 @@ Trace spans are named `mcp.tool.<name>`. W3C `traceparent` is propagated to upst
 Compose native tools via a declarative pipeline DSL:
 
 ```yaml
-virtualTools:
+virtual_tools:
   - name: MyVirtualTool
     description: Chain multiple native tools together
-    inputSchema:
+    input_schema:
       type: object
       properties:
         appId: { type: string }

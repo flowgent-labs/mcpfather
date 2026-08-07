@@ -10,10 +10,10 @@ func TestLoadConfig_Valid(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := `
-virtualTools:
+virtual_tools:
   - name: test_tool
     description: A test virtual tool
-    inputSchema:
+    input_schema:
       type: object
       properties:
         id:
@@ -67,13 +67,13 @@ func TestLoadConfig_WithAnnotations(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := `
-virtualTools:
+virtual_tools:
   - name: mytool
     description: "Test"
     annotations:
       readOnlyHint: true
       destructiveHint: false
-    inputSchema:
+    input_schema:
       type: object
       properties:
         id:

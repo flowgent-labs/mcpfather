@@ -44,8 +44,6 @@ func isObject(schema *openapi3.Schema) bool {
 		len(*schema.Type) > 0 && (*schema.Type)[0] == "object"
 }
 
-
-
 // Type checking helpers - now with nil checking
 func hasStringType(schema *openapi3.Schema) bool {
 	return schema != nil && schema.Type != nil && contains(*schema.Type, "string")

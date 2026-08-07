@@ -29,15 +29,27 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 		args = make(map[string]interface{})
 	}
 
-{{- if .UploadContentType }}
+{{- if .FileArgs }}
+	// FileRef (multipart/form-data): collect file URIs, download them,
+	// and build a multipart/form-data request to the upstream.
+	fileRefs := map[string]string{}
+	{{- range .FileArgs }}
+	if uri, ok := args["{{.Name}}"].(string); ok && uri != "" {
+		fileRefs["{{.Name}}"] = uri
+	}
+	{{- end }}
+	if len(fileRefs) > 0 {
+		return mcputils.ForwardMultipartRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, fileRefs, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, "{{.ToolNameOriginal}}")
+	}
+	// No file URIs provided: fall through to standard JSON body forwarding.
+{{- else if .UploadContentType }}
+	// Single-file upload (binary content types): read from uploads directory
+	// or decode base64 content.
 	fileName := ""
 	if fn, ok := args["file_name"]; ok {
 		if s, ok := fn.(string); ok {
 			fileName = s
 		}
-	}
-	if fileName == "" {
-		return mcp.NewToolResultError("missing required argument: file_name"), nil
 	}
 	fileContentBase64 := ""
 	if fc, ok := args["file_content"]; ok {
@@ -45,9 +57,15 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 			fileContentBase64 = s
 		}
 	}
-	return mcputils.ForwardUploadRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", fileName, fileContentBase64, "{{.UploadContentType}}", "{{.ToolNameOriginal}}")
-{{- else }}
-	{{- if .Headers }}
+	if fileName != "" {
+		return mcputils.ForwardUploadRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", fileName, fileContentBase64, "{{.UploadContentType}}", "{{.ToolNameOriginal}}")
+	}
+	// No file provided: fall through to standard JSON body forwarding.
+{{- end }}
+	{{- if or .FileArgs .UploadContentType }}
+	// FileRef / upload fallthrough — body is JSON, not multipart/binary.
+	contentType := "application/json"
+	{{- else if .Headers }}
 	{{- range .Headers }}
 	contentType := "{{.Value}}"
 	{{- end }}
@@ -55,5 +73,4 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	contentType := ""
 	{{- end }}
 	return mcputils.ForwardAndParseResponse(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, contentType, "{{.ToolNameOriginal}}")
-{{- end }}
 }

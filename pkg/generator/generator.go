@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/flowgent-labs/mcpfather/pkg/converter"
+	"github.com/getkin/kin-openapi/openapi3"
 )
 
 type Generator struct {

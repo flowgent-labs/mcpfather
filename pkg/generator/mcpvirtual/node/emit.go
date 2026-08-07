@@ -3,8 +3,8 @@ package node
 import (
 	"fmt"
 
-	"github.com/itchyny/gojq"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
+	"github.com/itchyny/gojq"
 )
 
 // EmitNode evaluates a jq expression and returns the result — used within
