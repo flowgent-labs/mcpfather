@@ -151,9 +151,11 @@ func processSchemaMap(node *yaml.Node) {
 }
 
 // convertExclusiveMinMax converts:
-//   exclusiveMinimum: 0  →  exclusiveMinimum: true, minimum: 0
-//   exclusiveMinimum: 0.0 → exclusiveMinimum: true, minimum: 0.0
-//   exclusiveMaximum: 100 → exclusiveMaximum: true, maximum: 100
+//
+//	exclusiveMinimum: 0  →  exclusiveMinimum: true, minimum: 0
+//	exclusiveMinimum: 0.0 → exclusiveMinimum: true, minimum: 0.0
+//	exclusiveMaximum: 100 → exclusiveMaximum: true, maximum: 100
+//
 // Skips inserting minimum/maximum if the key already exists in the node.
 func convertExclusiveMinMax(node *yaml.Node) {
 	content := node.Content
@@ -224,7 +226,8 @@ func hasKey(node *yaml.Node, key string) bool {
 }
 
 // convertArrayTypeNull converts:
-//   type: ["string", "null"] → type: "string", nullable: true
+//
+//	type: ["string", "null"] → type: "string", nullable: true
 func convertArrayTypeNull(node *yaml.Node) {
 	for i := 0; i < len(node.Content); i += 2 {
 		key := node.Content[i]
@@ -292,16 +295,16 @@ func removeOAS31Keywords(node *yaml.Node) {
 		// JSON Schema 2020-12 keywords absent from OAS 3.0 Schema
 		"const": true,
 		// JSON Schema 2020-12 dynamic references
-		"$dynamicRef":   true,
+		"$dynamicRef":    true,
 		"$dynamicAnchor": true,
-		"$anchor":       true,
-		"$schema":       true,
+		"$anchor":        true,
+		"$schema":        true,
 		// JSON Schema 2020-12 structural changes
-		"$defs":                true,
-		"contains":             true,
-		"minContains":          true,
-		"maxContains":          true,
-		"unevaluatedItems":     true,
+		"$defs":                 true,
+		"contains":              true,
+		"minContains":           true,
+		"maxContains":           true,
+		"unevaluatedItems":      true,
 		"unevaluatedProperties": true,
 		// JSON Schema 2020-12 conditional
 		"if":   true,

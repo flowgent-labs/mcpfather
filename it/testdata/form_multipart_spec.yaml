@@ -1,0 +1,78 @@
+openapi: "3.0.3"
+info:
+  title: Multipart Form Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /upload:
+    post:
+      operationId: uploadFile
+      summary: Upload a file (optional)
+      description: Upload a binary file, or send JSON body
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /multipart-resource:
+    post:
+      operationId: createMultipartResource
+      summary: Create a resource via multipart (file optional)
+      description: Creates a resource with optional file upload
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: Resource name
+                description:
+                  type: string
+                  description: Resource description
+                file:
+                  type: string
+                  format: binary
+                  description: Optional file attachment
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /form-resource:
+    post:
+      operationId: createFormResource
+      summary: Create a resource via form-urlencoded
+      description: Creates a resource with form-encoded body (not a file upload)
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

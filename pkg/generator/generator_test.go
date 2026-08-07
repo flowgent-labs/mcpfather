@@ -24,6 +24,7 @@ func createTempSpecFileWithContent(t *testing.T, content string) string {
 	}
 	return tempFile.Name()
 }
+
 const testSpecOAS30Gen = `openapi: "3.0.3"
 info:
   title: Blogs API
@@ -111,8 +112,8 @@ func TestNewGenerator_Success_WithValidFile(t *testing.T) {
 				t.Error("gen.spec is nil, want non-nil")
 			} else {
 				if gen.spec.Info == nil {
-				t.Errorf("gen.spec.Info.Title not parsed correctly")
-			}
+					t.Errorf("gen.spec.Info.Title not parsed correctly")
+				}
 			}
 		})
 	}

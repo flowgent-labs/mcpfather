@@ -265,19 +265,19 @@ The same virtual tools work over the MCP HTTP transport (`StreamableHTTPServer`)
 In one terminal, start the HTTP server:
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18888
+source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18889
 ```
 
-Wait for the log line `MCP server listening on :18888/mcp`.
+Wait for the log line `MCP server listening on :18889/mcp`.
 
 #### 4.6.2 Test via mcpclient.sh
 
 In another terminal, call the virtual tool through the MCP HTTP endpoint:
 
 ```bash
-export MCP_SERVER_ENDPOINT=http://localhost:18888/mcp
+export MCP_SERVER_ENDPOINT=http://localhost:18889/mcp
 source .env && ./usecase/sonarqube-mcp/mcpclient.sh call get_overall_issues \
-  '{"projectKey":"'$SONARQUBE_PROJECT_KEY'","branch":"'$SONARQUBE_TEST_BRANCH'","component":"'$SONARQUBE_TEST_COMPONENT'"}'
+  '{"projectKey":"'$SONARQUBE_PROJECT_KEY'","branch":"'$SONARQUBE_TEST_BRANCH'","component":"'$SONARQUBE_TEST_COMPONENT'"}' | jq -r '.result.content[].text' | jq
 ```
 
 **Result**: pass — same response shape as CLI mode (section 4.2), delivered over HTTP.
