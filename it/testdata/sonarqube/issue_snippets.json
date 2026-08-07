@@ -1,0 +1,361 @@
+{
+  "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java": {
+    "component": {
+      "key": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "uuid": "e9ba0c89-ecb3-4171-b127-76d0cfb66c6d",
+      "path": "apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "name": "WorkflowController.java",
+      "longName": "apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "q": "FIL",
+      "project": "rengine",
+      "projectName": "Rengine",
+      "measures": {
+        "lines": "97.0",
+        "coverage": "0.0",
+        "duplicationDensity": "0.0",
+        "issues": "1.0"
+      }
+    },
+    "sources": [
+      {
+        "line": 61,
+        "code": "    <span class=\"a\">@Operation</span>(description = <span class=\"s\">\"Query workflows.\"</span>)",
+        "scmRevision": "ccc93de0f40fa78763bccfcf8c3116af4fa50047",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-01-17T05:57:23+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 62,
+        "code": "    <span class=\"a\">@ApiResponses</span>(value = { <span class=\"a\">@ApiResponse</span>(responseCode = <span class=\"s\">\"200\"</span>, description = <span class=\"s\">\"successful\"</span>) })",
+        "scmRevision": "8b961378d10f4b0abaea7d148868746928d53666",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T09:17:58+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 63,
+        "code": "    <span class=\"a\">@RequestMapping</span>(path = { <span class=\"s\">\"query\"</span> }, produces = <span class=\"s\">\"application/json\"</span>, method = { GET })",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 64,
+        "code": "    <span class=\"a\">@PreAuthorize</span>(<span class=\"s\">\"hasPermission(#model,'arn:rengine:workflow:read:v1')\"</span>)",
+        "scmRevision": "36801c9ffd403bdfcca099bdf9803576e4e185e8",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-03-11T06:17:06+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 65,
+        "code": "    <span class=\"k\">public</span> RespBase&lt;PageHolder&lt;<span class=\"sym-12 sym\">Workflow</span>&gt;&gt; <span class=\"sym-26 sym\">query</span>(<span class=\"a\">@Validated</span> <span class=\"sym-16 sym\">WorkflowQuery</span> <span class=\"sym-27 sym\">model</span>) {",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 66,
+        "code": "        log.debug(<span class=\"s\">\"called: model={}\"</span>, <span class=\"sym-27 sym\">model</span>);",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 67,
+        "code": "        RespBase&lt;PageHolder&lt;<span class=\"sym-12 sym\">Workflow</span>&gt;&gt; <span class=\"sym-28 sym\">resp</span> = RespBase.create();",
+        "scmRevision": "bd788883e448e86173ce5d9afb115938afe79c34",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-26T11:26:34+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 68,
+        "code": "        <span class=\"sym-28 sym\">resp</span>.setData(<span class=\"sym-25 sym\">workflowService</span>.query(<span class=\"sym-27 sym\">model</span>));",
+        "scmRevision": "8b961378d10f4b0abaea7d148868746928d53666",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T09:17:58+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 69,
+        "code": "        <span class=\"k\">return</span> <span class=\"sym-28 sym\">resp</span>;",
+        "scmRevision": "e255ddf34487d242c8936e678e42b9921d10e010",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-08-31T05:33:20+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 70,
+        "code": "    }",
+        "scmRevision": "e255ddf34487d242c8936e678e42b9921d10e010",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-08-31T05:33:20+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 71,
+        "code": "",
+        "scmRevision": "e255ddf34487d242c8936e678e42b9921d10e010",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-08-31T05:33:20+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 72,
+        "code": "    <span class=\"cd\">// @SecurityRequirement(name = \"default_oauth\")</span>",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 73,
+        "code": "    <span class=\"a\">@Operation</span>(description = <span class=\"s\">\"Save workflow.\"</span>)",
+        "scmRevision": "ccc93de0f40fa78763bccfcf8c3116af4fa50047",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-01-17T05:57:23+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 74,
+        "code": "    <span class=\"a\">@ApiResponses</span>(value = { <span class=\"a\">@ApiResponse</span>(responseCode = <span class=\"s\">\"200\"</span>, description = <span class=\"s\">\"successful\"</span>) })",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 75,
+        "code": "    <span class=\"a\">@RequestMapping</span>(path = { <span class=\"s\">\"save\"</span> }, consumes = <span class=\"s\">\"application/json\"</span>, produces = <span class=\"s\">\"application/json\"</span>, method = { POST })",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 76,
+        "code": "    <span class=\"a\">@PreAuthorize</span>(<span class=\"s\">\"hasPermission(#model,'arn:rengine:workflow:write:v1')\"</span>)",
+        "scmRevision": "36801c9ffd403bdfcca099bdf9803576e4e185e8",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-03-11T06:17:06+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 77,
+        "code": "    <span class=\"k\">public</span> RespBase&lt;<span class=\"sym-18 sym\">WorkflowSaveResult</span>&gt; <span class=\"sym-29 sym\">save</span>(<span class=\"a\">@Validated</span> <span class=\"a\">@RequestBody</span> <span class=\"sym-17 sym\">WorkflowSave</span> <span class=\"sym-30 sym\">model</span>) {",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 78,
+        "code": "        log.debug(<span class=\"s\">\"called: model={}\"</span>, <span class=\"sym-30 sym\">model</span>);",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 79,
+        "code": "        RespBase&lt;<span class=\"sym-18 sym\">WorkflowSaveResult</span>&gt; <span class=\"sym-31 sym\">resp</span> = RespBase.create();",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 80,
+        "code": "        <span class=\"sym-31 sym\">resp</span>.setData(<span class=\"sym-25 sym\">workflowService</span>.save(<span class=\"sym-30 sym\">model</span>));",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 81,
+        "code": "        <span class=\"k\">return</span> <span class=\"sym-31 sym\">resp</span>;",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 82,
+        "code": "    }",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 83,
+        "code": "",
+        "scmRevision": "803184600804713e86b062b31518d9095741d54b",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-15T10:50:49+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 84,
+        "code": "    <span class=\"cd\">// @SecurityRequirement(name = \"default_oauth\")</span>",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 85,
+        "code": "    <span class=\"a\">@Operation</span>(description = <span class=\"s\">\"Delete workflow.\"</span>)",
+        "scmRevision": "1ef13f4714cc27c0e687cbf5ab0a0df1fb2c3978",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-12-14T10:41:15+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 86,
+        "code": "    <span class=\"a\">@ApiResponses</span>(value = { <span class=\"a\">@ApiResponse</span>(responseCode = <span class=\"s\">\"200\"</span>, description = <span class=\"s\">\"successful\"</span>) })",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 87,
+        "code": "    <span class=\"a\">@RequestMapping</span>(path = { <span class=\"s\">\"delete\"</span> }, produces = <span class=\"s\">\"application/json\"</span>, method = { DELETE, POST })",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 88,
+        "code": "    <span class=\"a\">@PreAuthorize</span>(<span class=\"s\">\"hasPermission(#model,'arn:rengine:workflow:delete:v1')\"</span>)",
+        "scmRevision": "36801c9ffd403bdfcca099bdf9803576e4e185e8",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-03-11T06:17:06+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 89,
+        "code": "    <span class=\"k\">public</span> RespBase&lt;<span class=\"sym-15 sym\">WorkflowDeleteResult</span>&gt; <span class=\"sym-32 sym\">delete</span>(<span class=\"a\">@Validated</span> <span class=\"a\">@RequestBody</span> <span class=\"sym-14 sym\">WorkflowDelete</span> <span class=\"sym-33 sym\">model</span>) {",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 90,
+        "code": "        log.debug(<span class=\"s\">\"called: model={}\"</span>, <span class=\"sym-33 sym\">model</span>);",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 91,
+        "code": "        RespBase&lt;<span class=\"sym-15 sym\">WorkflowDeleteResult</span>&gt; <span class=\"sym-34 sym\">resp</span> = RespBase.create();",
+        "scmRevision": "edbf07fb4334558790a15d56030b606ef83df124",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2023-02-08T14:43:01+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 92,
+        "code": "        <span class=\"sym-34 sym\">resp</span>.setData(<span class=\"sym-25 sym\">workflowService</span>.delete(<span class=\"sym-33 sym\">model</span>));",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 93,
+        "code": "        <span class=\"k\">return</span> <span class=\"sym-34 sym\">resp</span>;",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "utLineHits": 0,
+        "lineHits": 0,
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 94,
+        "code": "    }",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      },
+      {
+        "line": 95,
+        "code": "",
+        "scmRevision": "3a043ace981e5afa271c9fa4d65f25967b0ab74a",
+        "scmAuthor": "jameswong1376@gmail.com",
+        "scmDate": "2022-09-16T10:58:11+0000",
+        "duplicated": false,
+        "isNew": false
+      }
+    ]
+  }
+}

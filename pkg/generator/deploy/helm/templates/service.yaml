@@ -1,9 +1,9 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: {{ include "__BINARY_NAME__.fullname" . }}
+  name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
   labels:
-    {{- include "__BINARY_NAME__.labels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.labels" . | nindent 4 }}
 spec:
   type: {{ .Values.service.type }}
   ports:
@@ -11,9 +11,11 @@ spec:
       targetPort: http
       protocol: TCP
       name: http
+    {{- if .Values.config.mgmt.enabled }}
     - port: {{ .Values.service.mgmtPort }}
       targetPort: mgmt
       protocol: TCP
       name: mgmt
+    {{- end }}
   selector:
-    {{- include "__BINARY_NAME__.selectorLabels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.selectorLabels" . | nindent 4 }}

@@ -1,11 +1,11 @@
-{{- if (include "__BINARY_NAME__.useEnvoyGateway" .) }}
+{{- if (include "__MCP_SERVER_NAME__.useEnvoyGateway" .) }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
 metadata:
-  name: {{ include "__BINARY_NAME__.fullname" . }}
+  name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
   labels:
-    {{- include "__BINARY_NAME__.labels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.labels" . | nindent 4 }}
 spec:
   gatewayClassName: {{ .Values.ingress.envoy.gatewayClassName }}
   listeners:
@@ -18,33 +18,33 @@ spec:
       tls:
         mode: Terminate
         certificateRefs:
-          - name: {{ include "__BINARY_NAME__.fullname" $ }}-tls
+          - name: {{ include "__MCP_SERVER_NAME__.fullname" $ }}-tls
       {{- end }}
     {{- end }}
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: {{ include "__BINARY_NAME__.fullname" . }}
+  name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
   labels:
-    {{- include "__BINARY_NAME__.labels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.labels" . | nindent 4 }}
 spec:
   parentRefs:
-    - name: {{ include "__BINARY_NAME__.fullname" . }}
+    - name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
       port: {{ .Values.ingress.envoy.gatewayPort }}
-  {{- range .Values.ingress.envoy.hosts }}
   hostnames:
+{{- range .Values.ingress.envoy.hosts }}
     - {{ .host | quote }}
-  {{- end }}
+{{- end }}
   rules:
     {{- range .Values.ingress.envoy.hosts }}
     {{- range .paths }}
     - matches:
         - path:
             type: PathPrefix
-            value: {{ .path }}
+            value: {{ .path | quote }}
       backendRefs:
-        - name: {{ include "__BINARY_NAME__.fullname" $ }}
+        - name: {{ include "__MCP_SERVER_NAME__.fullname" $ }}
           port: {{ $.Values.service.port }}
     {{- end }}
     {{- end }}
