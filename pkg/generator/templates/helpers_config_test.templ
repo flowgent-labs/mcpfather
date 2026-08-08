@@ -249,7 +249,12 @@ func TestMatchConfigKey(t *testing.T) {
 }
 
 func TestVirtualConfigPath(t *testing.T) {
-	got := VirtualConfigPath("test-mcp")
+	// Must call LoadConfig first to initialise the package-level serviceName.
+	_, err := LoadConfig("test-mcp")
+	if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+	got := VirtualConfigPath()
 	if got == "" {
 		t.Error("VirtualConfigPath returned empty")
 	}
@@ -301,7 +306,7 @@ func TestResolveDownloadDir(t *testing.T) {
 		if dir == "" {
 			t.Error("download dir should not be empty")
 		}
-		// Download dir is hardcoded to ~/.{binaryName}/download.
+		// Download dir is hardcoded to ~/.{serviceName}/ifs/download.
 		// (Users deploying on k8s can mount volumes to this fixed path.)
 	})
 }

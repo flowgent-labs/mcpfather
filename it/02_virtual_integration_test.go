@@ -979,14 +979,14 @@ func TestScenario_JQ_WithVarsFromMultipleSources(t *testing.T) {
 // SECTION 10: End-to-End Integration Tests (generate → build → run → verify)
 // ===========================================================================
 
-func writeVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
+func writeVirtualConfig(t *testing.T, homeDir, serviceName, yamlContent string) {
 	t.Helper()
-	configDir := filepath.Join(homeDir, "."+binaryName)
+	configDir := filepath.Join(homeDir, "."+serviceName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}
 	configPath := filepath.Join(configDir, "config.yaml")
-	logProgress("[config] writing virtual config for %s at %s (%d bytes)", binaryName, configPath, len(yamlContent))
+	logProgress("[config] writing virtual config for %s at %s (%d bytes)", serviceName, configPath, len(yamlContent))
 	if err := os.WriteFile(configPath, []byte(yamlContent), 0644); err != nil {
 		t.Fatalf("failed to write config: %v", err)
 	}
@@ -1070,7 +1070,7 @@ func TestE2E_VirtualTool_CallJQReturn(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1095,7 +1095,7 @@ virtual_tools:
         spec:
           from: $clean
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1134,7 +1134,7 @@ func TestE2E_VirtualTool_ChainedNativeTools(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1171,7 +1171,7 @@ virtual_tools:
         spec:
           from: $merge_step
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1213,7 +1213,7 @@ func TestE2E_VirtualTool_ForeachOverInputArray(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1253,7 +1253,7 @@ virtual_tools:
         spec:
           from: $process_all
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1298,7 +1298,7 @@ func TestE2E_VirtualTool_CoexistsWithNativeTools(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1344,7 +1344,7 @@ virtual_tools:
         spec:
           from: $rename_greeting
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1381,7 +1381,7 @@ func TestE2E_VirtualTool_InvalidConfigServerStarts(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	// Duplicate step ids — validation should fail
 	virtConfig := `
@@ -1402,7 +1402,7 @@ virtual_tools:
         spec:
           from: $step1
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1438,7 +1438,7 @@ func TestE2E_VirtualTool_CallParseJSON(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1460,7 +1460,7 @@ virtual_tools:
           from: $fetch
           expr: '{key: .nested.key, count: .nested.count}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1489,7 +1489,7 @@ func TestE2E_VirtualTool_RequireNonEmptyOnJQ(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1517,7 +1517,7 @@ virtual_tools:
         spec:
           from: $extract
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1547,7 +1547,7 @@ func TestE2E_VirtualTool_ForeachConcurrencyFromInput(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1589,7 +1589,7 @@ virtual_tools:
         spec:
           from: $batch
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1627,7 +1627,7 @@ func TestE2E_VirtualTool_ReturnWithVarsAndExpr(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1661,7 +1661,7 @@ virtual_tools:
             code: $greet.code
           expr: '{summary: {origin: .server, greeting_text: $greeting, status_code: $code}, trace: .trace_id}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1705,7 +1705,7 @@ func TestE2E_VirtualTool_AnnotationsPropagated(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1729,7 +1729,7 @@ virtual_tools:
         spec:
           from: $fetch
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1765,7 +1765,7 @@ func TestE2E_VirtualTool_RequireNonEmptyPasses(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1793,7 +1793,7 @@ virtual_tools:
         spec:
           from: $extract_items
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1824,7 +1824,7 @@ func TestE2E_VirtualTool_DefaultsAppliedToMissingArgs(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1848,7 +1848,7 @@ virtual_tools:
         spec:
           from: $greet
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1883,7 +1883,7 @@ func TestE2E_VirtualTool_DefaultsOverriddenByArgs(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1910,7 +1910,7 @@ virtual_tools:
         spec:
           from: $greet
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -1944,7 +1944,7 @@ func TestE2E_VirtualTool_DefaultsMixedWithArgs(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1971,7 +1971,7 @@ virtual_tools:
         spec:
           from: $greet
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2003,7 +2003,7 @@ func TestE2E_VirtualTool_DefaultsBoolean(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2030,7 +2030,7 @@ virtual_tools:
         spec:
           from: $greet
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2069,7 +2069,7 @@ func TestE2E_MCP_HeaderForwarding_ExplicitlyDisabled(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	// Config with upstream section explicitly setting forwarding to false
 	// and a simple virtual tool so the server registers virtual tools path.
@@ -2095,7 +2095,7 @@ virtual_tools:
         spec:
           from: $fetch
 `
-	writeVirtualConfig(t, homeDir, binaryName, cfg)
+	writeVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2130,7 +2130,7 @@ func TestE2E_MCP_HeaderForwarding_Enabled(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 upstream:
@@ -2154,7 +2154,7 @@ virtual_tools:
         spec:
           from: $fetch
 `
-	writeVirtualConfig(t, homeDir, binaryName, cfg)
+	writeVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2188,7 +2188,7 @@ func TestE2E_MCP_HeaderForwarding_DefaultsToEnabled(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	// enable_mcp_session_forward defaults to true
 	cfg := `
@@ -2212,7 +2212,7 @@ virtual_tools:
         spec:
           from: $fetch
 `
-	writeVirtualConfig(t, homeDir, binaryName, cfg)
+	writeVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2250,7 +2250,7 @@ func TestE2E_SonatypeIQ_FullPipeline(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2318,7 +2318,7 @@ virtual_tools:
             comps: $foreach_comp
           expr: '{appName: $app.name, appId: $app.publicId, totalViolations: ($comps | length), componentDetails: $comps}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2364,7 +2364,7 @@ func TestE2E_SonatypeIQ_RequireValidation(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2393,7 +2393,7 @@ virtual_tools:
         spec:
           from: $extract
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2421,7 +2421,7 @@ func TestE2E_SonatypeIQ_ParseJSON(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2444,7 +2444,7 @@ virtual_tools:
           from: $fetch
           expr: '.nested.key'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2467,7 +2467,7 @@ func TestE2E_SonatypeIQ_ReturnWithVarsExpr(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2500,7 +2500,7 @@ virtual_tools:
             h: $call_hello
           expr: '{echo_status: $e.echo_status, trace: $e.trace_id, greeting: $h.greeting, hello_code: $h.code}'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2533,7 +2533,7 @@ func TestE2E_SonatypeIQ_ForeachConcurrency(t *testing.T) {
 
 	dir := genProject(t, "sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2575,7 +2575,7 @@ virtual_tools:
           from: $batch
           expr: '[.[] | {processed_name: .processed, result_status: .status}]'
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2620,7 +2620,7 @@ func TestE2E_SonatypeIQ_SimpleChain(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -2645,7 +2645,7 @@ virtual_tools:
         spec:
           from: $project
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2680,7 +2680,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 
 	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
-	binaryName := "sonatypeiq-mcp"
+	serviceName := "sonatypeiq-mcp"
 
 	virtConfig := `
 virtual_tools:
@@ -2934,7 +2934,7 @@ virtual_tools:
               components: .
             }
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -3040,7 +3040,7 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 
 	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
-	binaryName := "sonatypeiq-mcp"
+	serviceName := "sonatypeiq-mcp"
 
 	virtConfig := `
 virtual_tools:
@@ -3101,7 +3101,7 @@ virtual_tools:
         spec:
           from: $threatComponents
 `
-	writeVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
 	defer cleanup()

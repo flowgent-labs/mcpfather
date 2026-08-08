@@ -42,7 +42,7 @@ type VirtualToolPipelineConfig = mcpconfig.VirtualToolPipelineConfig
 var (
 	globalCfg   *Config
 	globalCfgMu sync.RWMutex
-	binaryName  string
+	serviceName string
 )
 
 // SetConfig stores the global config for use by all packages.
@@ -65,18 +65,23 @@ const envPrefix = "MCP__"
 
 // ---- config loading ----
 
-// LoadConfig reads config.yaml from $HOME/.{binaryName}/config.yaml using viper.
+// LoadConfig reads config.yaml from $HOME/.{serviceName}/config.yaml using viper.
 // MCP__ environment variables override all config file values (structs, maps, and arrays),
 // with Spring Boot-style 0-based index notation for slices (e.g. MCP__VIRTUAL_TOOLS__0__NAME).
 // Priority: CLI flags (where applicable) > ENV > config.yaml.
 // Returns defaults when the file is missing.
 func LoadConfig(name string) (*Config, error) {
-	binaryName = name
+	serviceName = name
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, fmt.Errorf("home dir: %w", err)
 	}
-	configPath := filepath.Join(home, "."+binaryName, "config.yaml")
+	// Allow MCP__SERVER__SERVICE_NAME env to point to a custom config location.
+	configDir := serviceName
+	if env := os.Getenv("MCP__SERVER__SERVICE_NAME"); env != "" {
+		configDir = env
+	}
+	configPath := filepath.Join(home, "."+configDir, "config.yaml")
 
 	v := viper.New()
 	v.SetConfigFile(configPath)
@@ -403,13 +408,29 @@ func normalizeConfigKey(s string) string {
 	return b.String()
 }
 
-// VirtualConfigPath returns the path to the config file for virtual tools.
-func VirtualConfigPath(binaryName string) string {
+// resolveServiceName returns the effective service name for filesystem paths
+// and OpenTelemetry resource attributes. Resolution order:
+//  1. MCP__SERVER__SERVICE_NAME environment variable
+//  2. server.service_name in the loaded config (SetConfig must have been called)
+//  3. The default name passed to LoadConfig (the generated MCP server binary name)
+func resolveServiceName() string {
+	if env := os.Getenv("MCP__SERVER__SERVICE_NAME"); env != "" {
+		return env
+	}
+	cfg := GetConfig()
+	if cfg != nil && cfg.Server.ServiceName != "" {
+		return cfg.Server.ServiceName
+	}
+	return serviceName
+}
+
+// VirtualConfigPath returns the path to the config file for diagnostics and logging.
+func VirtualConfigPath() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(home, "."+binaryName, "config.yaml")
+	return filepath.Join(home, "."+resolveServiceName(), "config.yaml")
 }
 
 // ---- legacy helpers (populated from config for backward compatibility) ----
@@ -557,22 +578,22 @@ func loggingPrintAuth() bool {
 }
 
 // resolveUploadDir returns the directory where uploaded files are staged.
-// Defaults to ~/.{binaryName}/upload.
+// Defaults to ~/.{serviceName}/ifs/upload.
 func resolveUploadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+binaryName, "upload"), nil
+		return filepath.Join(home, "."+resolveServiceName(), "ifs", "upload"), nil
 	}
-	return "." + binaryName + "/upload", nil
+	return filepath.Join("."+resolveServiceName(), "ifs", "upload"), nil
 }
 
 // resolveDownloadDir returns the directory for downloaded files.
-// Hardcoded to ~/.{binaryName}/download (users deploying on k8s can mount
+// Hardcoded to ~/.{serviceName}/ifs/download (users deploying on k8s can mount
 // a volume to this fixed path).
 func resolveDownloadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+binaryName, "download"), nil
+		return filepath.Join(home, "."+resolveServiceName(), "ifs", "download"), nil
 	}
-	return "." + binaryName + "/download", nil
+	return filepath.Join("."+resolveServiceName(), "ifs", "download"), nil
 }
