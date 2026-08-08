@@ -341,6 +341,9 @@
         "read_timeout_seconds": {
           "type": "integer"
         },
+        "service_name": {
+          "type": "string"
+        },
         "write_timeout_seconds": {
           "type": "integer"
         }

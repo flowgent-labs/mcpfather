@@ -1081,7 +1081,7 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestUpload_CLI_FromUploadsDir verifies that an upload tool reads a file from
-// the upload directory (~/.{serviceName}/upload/) and sends it to the upstream.
+// the upload directory (~/.{serviceName}/ifs/upload/) and sends it to the upstream.
 func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterUploadScenario()
@@ -1094,7 +1094,7 @@ func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	homeDir := t.TempDir()
 
 	// Stage the file in the upload directory
-	uploadDir := filepath.Join(homeDir, "."+serviceName, "upload")
+	uploadDir := filepath.Join(homeDir, "."+serviceName, "ifs", "upload")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		t.Fatalf("failed to create upload dir: %v", err)
 	}
