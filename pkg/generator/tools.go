@@ -216,7 +216,7 @@ func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
 	}
 
 	helpersImportPath := BuildModuleName(g.outputDir) + "/pkg/helpers"
-	binaryName := filepath.Base(g.outputDir)
+	serviceName := filepath.Base(g.outputDir)
 
 	for _, tool := range config.Tools {
 		capitalizedName := capitalizeFirstLetter(tool.Name)
@@ -225,12 +225,12 @@ func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
 			ToolNameOriginal  string
 			ToolHandlerName   string
 			HelpersImportPath string
-			BinaryName        string
+			ServiceName        string
 		}{
 			ToolNameOriginal:  capitalizedName,
 			ToolHandlerName:   capitalizedName + "Handler",
 			HelpersImportPath: helpersImportPath,
-			BinaryName:        binaryName,
+			ServiceName:        serviceName,
 		}
 
 		var buf bytes.Buffer

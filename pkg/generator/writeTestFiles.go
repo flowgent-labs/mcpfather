@@ -16,8 +16,8 @@ func (g *Generator) GenerateCommonTestFiles() error {
 
 	data := struct {
 		ModuleName string
-		BinaryName string
-	}{ModuleName: moduleName, BinaryName: binName}
+		ServiceName string
+	}{ModuleName: moduleName, ServiceName: binName}
 
 	templatesToGenerate := []struct {
 		tmplName string
