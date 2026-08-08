@@ -99,5 +99,3 @@ func GenerateJSONSchemaDraft7(args []Arg) (string, error) {
 
 	return string(schemaBytes), nil
 }
-
-

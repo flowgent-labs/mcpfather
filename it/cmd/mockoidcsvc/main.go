@@ -4,12 +4,13 @@
 // Prints its listen address to stdout so tests can discover it.
 //
 // Endpoints:
-//   GET  /.well-known/openid-configuration  — OIDC discovery
-//   GET  /keys                               — JWKS (public key)
-//   POST /token                              — client_credentials or device_code → JWT
-//   POST /device/code                        — initiate device authorization flow
-//   POST /sign                               — custom claims → signed JWT
-//   GET  /health                             — readiness probe
+//
+//	GET  /.well-known/openid-configuration  — OIDC discovery
+//	GET  /keys                               — JWKS (public key)
+//	POST /token                              — client_credentials or device_code → JWT
+//	POST /device/code                        — initiate device authorization flow
+//	POST /sign                               — custom claims → signed JWT
+//	GET  /health                             — readiness probe
 package main
 
 import (

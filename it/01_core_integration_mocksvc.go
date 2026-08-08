@@ -20,10 +20,11 @@ import (
 
 // CoreMockService provides a mock upstream HTTP server with request recording.
 type CoreMockService struct {
-	mu       sync.Mutex
-	server   *httptest.Server
-	requests []CoreMockRequest
-	routes   map[string]http.HandlerFunc
+	mu          sync.Mutex
+	server      *httptest.Server
+	requests    []CoreMockRequest
+	routes      map[string]http.HandlerFunc
+	lastFileRef *FileRefRecord
 }
 
 // CoreMockRequest records a request received by the mock upstream.
@@ -260,13 +261,109 @@ func (m *CoreMockService) RegisterUploadScenario() {
 			fileContent = string(bodyBytes)
 		}
 		writeCoreJSON(w, map[string]interface{}{
-			"method":         r.Method,
-			"contentType":    contentType,
-			"bodySize":       len(bodyBytes),
-			"fileContent":    fileContent,
+			"method":          r.Method,
+			"contentType":     contentType,
+			"bodySize":        len(bodyBytes),
+			"fileContent":     fileContent,
 			"fileContentSize": len(fileContent),
 		})
 	})
+}
+
+// FileRefRecord holds parsed multipart form data recorded by
+// RegisterFileRefScenario when a FileRef upload reaches the upstream.
+type FileRefRecord struct {
+	FormFields map[string]string
+	Files      map[string]FileRefFileRecord
+}
+
+// FileRefFileRecord holds metadata about a single uploaded file part.
+type FileRefFileRecord struct {
+	FileName    string
+	ContentType string
+	Content     []byte
+	Size        int
+}
+
+// RegisterFileRefScenario registers:
+//   - GET  /files/* → serves a known file body for download
+//   - POST /multipart-resource → parses multipart form, records fields + files,
+//     echoes back what was received
+//
+// Use LastFileRef to inspect multipart data after the call.
+func (m *CoreMockService) RegisterFileRefScenario() {
+	m.mu.Lock()
+	m.lastFileRef = nil
+	m.mu.Unlock()
+
+	// Serve files for download
+	m.Handle("/files/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		// Return a predictable payload so tests can verify the uploaded content.
+		fileName := strings.TrimPrefix(r.URL.Path, "/files/")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileName))
+		w.Write([]byte("HELLO-FILEREF-" + fileName))
+	})
+
+	// Accept multipart upload
+	m.Handle("/multipart-resource", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		record := &FileRefRecord{
+			FormFields: make(map[string]string),
+			Files:      make(map[string]FileRefFileRecord),
+		}
+
+		contentType := r.Header.Get("Content-Type")
+		if strings.Contains(contentType, "multipart/form-data") {
+			_ = r.ParseMultipartForm(32 << 20)
+			for name, values := range r.MultipartForm.Value {
+				if len(values) > 0 {
+					record.FormFields[name] = values[0]
+				}
+			}
+			for name, headers := range r.MultipartForm.File {
+				if len(headers) > 0 {
+					fh := headers[0]
+					f, err := fh.Open()
+					if err == nil {
+						data, _ := io.ReadAll(f)
+						f.Close()
+						record.Files[name] = FileRefFileRecord{
+							FileName:    fh.Filename,
+							ContentType: fh.Header.Get("Content-Type"),
+							Content:     data,
+							Size:        len(data),
+						}
+					}
+				}
+			}
+		}
+
+		m.mu.Lock()
+		m.lastFileRef = record
+		m.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		writeCoreJSON(w, map[string]interface{}{
+			"status":     "ok",
+			"fieldCount": len(record.FormFields),
+			"fileCount":  len(record.Files),
+		})
+	})
+}
+
+// LastFileRef returns the last recorded FileRef multipart upload data.
+func (m *CoreMockService) LastFileRef() *FileRefRecord {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastFileRef
 }
 
 func writeCoreJSON(w http.ResponseWriter, v interface{}) {

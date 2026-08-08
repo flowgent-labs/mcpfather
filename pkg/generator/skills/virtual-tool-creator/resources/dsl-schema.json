@@ -23,14 +23,14 @@
     "Config": {
       "additionalProperties": false,
       "properties": {
+        "logging": {
+          "$ref": "#/$defs/LoggingConfig"
+        },
         "mgmt": {
           "$ref": "#/$defs/MgmtConfig"
         },
-        "nativeTools": {
+        "native_tools": {
           "$ref": "#/$defs/NativeToolsConfig"
-        },
-        "runtime": {
-          "$ref": "#/$defs/RuntimeConfig"
         },
         "server": {
           "$ref": "#/$defs/ServerConfig"
@@ -40,6 +40,12 @@
             "$ref": "#/$defs/UpstreamEntryConfig"
           },
           "type": "object"
+        },
+        "virtual_tools": {
+          "items": {
+            "$ref": "#/$defs/VirtualToolPipelineConfig"
+          },
+          "type": "array"
         }
       },
       "type": "object"
@@ -95,9 +101,6 @@
       "additionalProperties": false,
       "properties": {
         "body": {},
-        "upstream": {
-          "type": "string"
-        },
         "headers": {
           "additionalProperties": {},
           "type": "object"
@@ -114,6 +117,9 @@
         "query": {
           "additionalProperties": {},
           "type": "object"
+        },
+        "upstream": {
+          "type": "string"
         }
       },
       "required": [
@@ -121,6 +127,15 @@
         "method",
         "path"
       ],
+      "type": "object"
+    },
+    "IFSConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        }
+      },
       "type": "object"
     },
     "JQSpec": {
@@ -140,6 +155,18 @@
       "required": [
         "expr"
       ],
+      "type": "object"
+    },
+    "LoggingConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "auth_verbose": {
+          "type": "boolean"
+        },
+        "level": {
+          "type": "integer"
+        }
+      },
       "type": "object"
     },
     "MetricsConfig": {
@@ -290,18 +317,6 @@
       },
       "type": "object"
     },
-    "RuntimeConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "download_dir": {
-          "type": "string"
-        },
-        "log_authorization": {
-          "type": "boolean"
-        }
-      },
-      "type": "object"
-    },
     "ServerAuthConfig": {
       "additionalProperties": false,
       "properties": {
@@ -317,7 +332,16 @@
         "auth": {
           "$ref": "#/$defs/ServerAuthConfig"
         },
-        "max_parallel_requests": {
+        "idle_timeout_seconds": {
+          "type": "integer"
+        },
+        "ifs": {
+          "$ref": "#/$defs/IFSConfig"
+        },
+        "read_timeout_seconds": {
+          "type": "integer"
+        },
+        "write_timeout_seconds": {
           "type": "integer"
         }
       },
@@ -568,7 +592,7 @@
         "enabled": {
           "type": "boolean"
         },
-        "inputSchema": {
+        "input_schema": {
           "additionalProperties": {},
           "type": "object"
         },
@@ -584,9 +608,36 @@
       },
       "required": [
         "name",
-        "inputSchema",
+        "input_schema",
         "pipeline"
       ],
+      "type": "object"
+    },
+    "VirtualToolPipelineConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "annotations": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "description": {
+          "type": "string"
+        },
+        "input_schema": {
+          "additionalProperties": {},
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "pipeline": {
+          "items": {
+            "additionalProperties": {},
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
       "type": "object"
     }
   },
@@ -595,14 +646,14 @@
   "additionalProperties": true,
   "description": "Schema for mcpfather MCP server configuration ($HOME/.\u003cbinary\u003e/config.yaml). Generated from Go structs in mcpconfig + mcpvirtual/config + mcpvirtual/pipeline.",
   "properties": {
+    "logging": {
+      "$ref": "#/$defs/LoggingConfig"
+    },
     "mgmt": {
       "$ref": "#/$defs/MgmtConfig"
     },
-    "nativeTools": {
+    "native_tools": {
       "$ref": "#/$defs/NativeToolsConfig"
-    },
-    "runtime": {
-      "$ref": "#/$defs/RuntimeConfig"
     },
     "server": {
       "$ref": "#/$defs/ServerConfig"
@@ -613,7 +664,7 @@
       },
       "type": "object"
     },
-    "virtualTools": {
+    "virtual_tools": {
       "items": {
         "$ref": "#/$defs/VirtualTool"
       },

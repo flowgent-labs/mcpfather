@@ -103,14 +103,14 @@ func Generate(cfg Config) Schema {
 	}
 
 	return Schema{
-		"$schema":     "https://json-schema.org/draft/2020-12/schema",
-		"$id":         cfg.SchemaID,
-		"title":       cfg.SchemaTitle,
-		"description": cfg.SchemaDescription,
-		"type":        "object",
-		"properties":  rootProps,
+		"$schema":              "https://json-schema.org/draft/2020-12/schema",
+		"$id":                  cfg.SchemaID,
+		"title":                cfg.SchemaTitle,
+		"description":          cfg.SchemaDescription,
+		"type":                 "object",
+		"properties":           rootProps,
 		"additionalProperties": true,
-		"$defs":               defs,
+		"$defs":                defs,
 	}
 }
 
@@ -152,7 +152,7 @@ func structToDef(t reflect.Type, defs Schema, renames map[string]string) Schema 
 	// by kind conditionals).
 	if t.Name() == "StepSpec" {
 		delete(defs, name) // remove placeholder, per-kind specs replace it
-		return Schema{}     // empty schema for now — kind conditional fills it in
+		return Schema{}    // empty schema for now — kind conditional fills it in
 	}
 
 	props := Schema{}

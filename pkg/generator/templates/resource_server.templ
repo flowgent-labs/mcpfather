@@ -259,7 +259,7 @@ func bearerTokenFromHeader(h string) (string, bool) {
 // writeUnauthorized returns 401 with a WWW-Authenticate header pointing to
 // the RFC 9728 Protected Resource Metadata document.
 func writeUnauthorized(w http.ResponseWriter, resourceMetadataURL string, reason string) {
-	if logPrintAuth() {
+	if loggingPrintAuth() {
 		fmt.Fprintf(os.Stderr, "Warning: server auth rejected request: %s\n", reason)
 	}
 	value := `Bearer error="invalid_token"`

@@ -156,8 +156,8 @@ func TestForeachNode_InvalidList(t *testing.T) {
 		ID:   "bad",
 		Kind: "foreach",
 		Spec: pipeline.StepSpec{
-			In:  "$data",
-			As:  "item",
+			In: "$data",
+			As: "item",
 			Pipeline: []pipeline.StepConfig{
 				{ID: "e", Kind: "emit", Spec: pipeline.StepSpec{From: "$item"}},
 			},
@@ -242,8 +242,8 @@ func TestForeachNode_DefaultConcurrency(t *testing.T) {
 		ID:   "process",
 		Kind: "foreach",
 		Spec: pipeline.StepSpec{
-			In:  "$items",
-			As:  "item",
+			In: "$items",
+			As: "item",
 			Pipeline: []pipeline.StepConfig{
 				{
 					ID:   "call",
@@ -279,8 +279,8 @@ func TestForeachNode_NoEmitError(t *testing.T) {
 		ID:   "bad",
 		Kind: "foreach",
 		Spec: pipeline.StepSpec{
-			In:  "$items",
-			As:  "item",
+			In: "$items",
+			As: "item",
 			Pipeline: []pipeline.StepConfig{
 				{
 					ID:   "onlyCall",
@@ -314,8 +314,8 @@ func TestForeachNode_EmptyList(t *testing.T) {
 		ID:   "process",
 		Kind: "foreach",
 		Spec: pipeline.StepSpec{
-			In:  "$items",
-			As:  "item",
+			In: "$items",
+			As: "item",
 			Pipeline: []pipeline.StepConfig{
 				{
 					ID:   "emit",
@@ -453,8 +453,8 @@ func TestForeachNode_OnMissingDefault_Error(t *testing.T) {
 		ID:   "process",
 		Kind: "foreach",
 		Spec: pipeline.StepSpec{
-			In:   "$data.missing",
-			As:   "item",
+			In: "$data.missing",
+			As: "item",
 			Pipeline: []pipeline.StepConfig{
 				{ID: "emit", Kind: "emit", Spec: pipeline.StepSpec{From: "$item"}},
 			},

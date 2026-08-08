@@ -92,9 +92,7 @@ secret:
 
 # -- MCP server configuration (mounted as ConfigMap)
 config:
-  # -- Server (inbound): validates bearer tokens presented by MCP clients
-  # (AI agents). Resource Server role per RFC 9728 / MCP Authorization spec.
-  # Only enforced on the http transport.
+  # ---- Server (inbound) ----
   server:
     auth:
       oidc:
@@ -106,52 +104,83 @@ config:
         audience: ""
         # -- When true, validated frontend JWT claims (sub, email) are forwarded
         # upstream as X-MCP-Client-Token-Sub and X-MCP-Client-Token-Email headers.
-        enableClientTokenClaimForward: true
+        enable_client_token_claim_forward: true
         # -- Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
-        additionalClientTokenClaimForward: []
         # e.g. ["given_name", "family_name", "preferred_username"]
-    # -- Maximum number of concurrent MCP requests from AI agent clients.
-    max_parallel_requests: 100
-  # -- Upstream (outbound): credentials the server uses to call upstream APIs.
-  # Independent from server — an inbound token is never reused outbound.
+        additional_client_token_claim_forward: []
+    # -- Internal File System (IFS) REST API for binary file transfer.
+    ifs:
+      enabled: true
+    # -- HTTP server timeouts in seconds. 0 = disabled.
+    # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
+    read_timeout_seconds: 30
+    write_timeout_seconds: 0
+    idle_timeout_seconds: 120
+
+  # ---- Logging ----
+  logging:
+    level: 0                  # 0-10 (0=silent, 10=full debug)
+    auth_verbose: false       # set true to print Authorization/Cookie header values
+
+  # ---- Management ----
+  mgmt:
+    enabled: true
+    host: "0.0.0.0"
+    port: 9991
+    pprof:
+      enabled: false
+      server_bind: "0.0.0.0:6669"
+    otel:
+      enabled: false
+      endpoint: ""
+      protocol: "grpc"
+      timeout: 10000
+      sample_rate: 1.0
+    metrics:
+      enabled: true
+      prometheus: true
+      export_interval: "30s"
+      histogram_boundaries:
+        task: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120]
+      labels: {}
+
+  # ---- Upstream (outbound) ----
   upstream:
     default:
       endpoint: ""
-      enableMCPSessionForwarding: true
+      enable_mcp_session_forward: true
       auth:
         # -- OIDC client credentials flow (machine-to-machine).
         oidc:
           enabled: false
           issuer: ""
-          clientId: ""
+          client_id: ""
+          client_secret: ""
           scopes: "openid"
-          tokenUrl: ""
-  tools:
-    registerAllByDefault: false
-    includes: []
-    excludes: []
-  mgmt:
-    enabled: true
-    otel:
-      enabled: false
-      endpoint: ""
-      protocol: "grpc"
-      sampleRate: 1.0
-    metrics:
-      enabled: true
-      prometheus: true
-  runtime:
-    downloadDir: ""
-    logAuthorization: false
+          token_url: ""
+        static:
+          web_token: ""
+          web_token_file: ""
+          cookie_token: ""
+          cookie_token_file: ""
 
-  # -- Virtual tools pipeline definitions.
-  # Each virtual tool has: name, description, inputSchema, and pipeline.
-  virtualTools: []
+  # ---- Native MCP Tools ----
+  native_tools:
+    expose:
+      register_all_tools_by_default: false
+      includes: []
+      excludes: []
+
+  # ---- Virtual Tools ----
+  # Compose multiple native tools into a single virtual tool via a declarative
+  # pipeline (call → jq → foreach → emit → return).
+  # Each virtual tool has: name, description, input_schema, and pipeline.
+  virtual_tools: []
   # Example:
-  # virtualTools:
-  #   - name: virt_chain
+  # virtual_tools:
+  #   - name: my_virtual_tool
   #     description: Chain multiple tool calls
-  #     inputSchema:
+  #     input_schema:
   #       type: object
   #       properties:
   #         name:
