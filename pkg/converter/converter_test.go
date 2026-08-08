@@ -268,8 +268,16 @@ func TestConverter_UploadDownloadDetection(t *testing.T) {
 	if uploadTool == nil {
 		t.Fatal("expected uploadAttachment tool to be generated")
 	}
-	if uploadTool.UploadContentType == "" {
-		t.Error("expected uploadAttachment to have UploadContentType set")
+	// With FileRef approach, multipart/form-data object schemas use FileArgs
+	// instead of UploadContentType.
+	if len(uploadTool.FileArgs) == 0 {
+		t.Error("expected uploadAttachment to have FileArgs set (FileRef for multipart/form-data)")
+	}
+	if len(uploadTool.FileArgs) > 0 && uploadTool.FileArgs[0].Name != "file" {
+		t.Errorf("expected FileArgs[0].Name = 'file', got %q", uploadTool.FileArgs[0].Name)
+	}
+	if uploadTool.UploadContentType != "" {
+		t.Error("multipart/form-data with object schema should use FileArgs, not UploadContentType")
 	}
 
 	if downloadTool == nil {
@@ -277,6 +285,346 @@ func TestConverter_UploadDownloadDetection(t *testing.T) {
 	}
 	if downloadTool.UploadContentType != "" {
 		t.Error("download tool should not have UploadContentType set")
+	}
+	if len(downloadTool.FileArgs) != 0 {
+		t.Error("download tool should not have FileArgs set")
+	}
+}
+
+func TestConverter_UploadTool_FileRefArgs(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecOAS30)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	// Find upload tool
+	var uploadTool *Tool
+	for i := range config.Tools {
+		if config.Tools[i].Name == "UploadAttachment" {
+			uploadTool = &config.Tools[i]
+			break
+		}
+	}
+	if uploadTool == nil {
+		t.Fatal("expected uploadAttachment tool to be generated")
+	}
+
+	// Verify FileArgs is populated (FileRef approach for multipart/form-data)
+	if len(uploadTool.FileArgs) == 0 {
+		t.Fatal("expected FileArgs to be set for multipart/form-data tool")
+	}
+	if uploadTool.FileArgs[0].Name != "file" {
+		t.Errorf("expected FileArgs[0].Name = 'file', got %q", uploadTool.FileArgs[0].Name)
+	}
+
+	// Verify the 'file' arg is uri type (FileRef)
+	var fileArg *Arg
+	for i := range uploadTool.Args {
+		if uploadTool.Args[i].Name == "file" {
+			fileArg = &uploadTool.Args[i]
+			break
+		}
+	}
+	if fileArg == nil {
+		t.Fatal("expected 'file' uri arg (FileRef) in upload tool")
+	}
+	if fileArg.Schema == nil || fileArg.Schema.Format != "uri" {
+		t.Error("file arg should have uri format (FileRef)")
+	}
+
+	// file_name and file_content should NOT be present (replaced by FileRef)
+	for _, arg := range uploadTool.Args {
+		if arg.Name == "file_name" || arg.Name == "file_content" {
+			t.Errorf("FileRef tools should not have %s arg (use uri args instead)", arg.Name)
+		}
+	}
+
+	// body arg should NOT be present (replaced by individual form + file ref args)
+	for _, arg := range uploadTool.Args {
+		if arg.Name == "body" {
+			t.Error("FileRef tools should not have a 'body' arg")
+		}
+	}
+}
+
+// testSpecFormURLEncoded is a spec with application/x-www-form-urlencoded request body
+const testSpecFormURLEncoded = `openapi: "3.0.3"
+info:
+  title: Form URL Encoded API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /form:
+    post:
+      operationId: submitForm
+      summary: Submit a form
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+      responses:
+        "200":
+          description: OK
+`
+
+func TestDetectUploadContentType_ExcludesFormUrlEncoded(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecFormURLEncoded)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	if len(config.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
+	}
+
+	tool := config.Tools[0]
+	if tool.UploadContentType != "" {
+		t.Errorf("form-url-encoded API should NOT have UploadContentType set, got %q", tool.UploadContentType)
+	}
+
+	// Verify no file_name or file_content args are added
+	for _, arg := range tool.Args {
+		if arg.Name == "file_name" || arg.Name == "file_content" {
+			t.Errorf("form-url-encoded API should not have %s arg", arg.Name)
+		}
+	}
+}
+
+// testSpecMultipartMixed is a multipart/form-data spec with both file (binary)
+// and non-file (text) properties to exercise the full FileRef extraction.
+const testSpecMultipartMixed = `openapi: "3.0.3"
+info:
+  title: Multipart Mixed API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /resource:
+    post:
+      operationId: createResource
+      summary: Create a resource with file attachment
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                  description: Resource name
+                description:
+                  type: string
+                  description: Resource description
+                attachment:
+                  type: string
+                  format: binary
+                  description: Optional file
+                photo:
+                  type: string
+                  format: binary
+                  description: Optional photo
+      responses:
+        "200":
+          description: OK
+`
+
+func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecMultipartMixed)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	if len(config.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
+	}
+	tool := config.Tools[0]
+
+	// Should have FileArgs for both binary properties
+	if len(tool.FileArgs) != 2 {
+		t.Fatalf("expected 2 FileArgs (attachment + photo), got %d", len(tool.FileArgs))
+	}
+	// Check FileArgs content
+	fileNames := make(map[string]bool)
+	for _, fa := range tool.FileArgs {
+		fileNames[fa.Name] = true
+	}
+	if !fileNames["attachment"] {
+		t.Error("expected FileArg for 'attachment'")
+	}
+	if !fileNames["photo"] {
+		t.Error("expected FileArg for 'photo'")
+	}
+
+	// No UploadContentType (FileRef takes precedence)
+	if tool.UploadContentType != "" {
+		t.Error("UploadContentType should be empty for multipart FileRef tools")
+	}
+
+	// Check args: should have name (required), description, attachment (uri), photo (uri)
+	argNames := make(map[string]*Arg)
+	for i := range tool.Args {
+		argNames[tool.Args[i].Name] = &tool.Args[i]
+	}
+
+	// name should be required string
+	if nameArg, ok := argNames["name"]; !ok {
+		t.Error("expected 'name' arg (form field)")
+	} else if !nameArg.Required {
+		t.Error("'name' should be required (schema says required: [name])")
+	}
+
+	// description should be optional string
+	if descArg, ok := argNames["description"]; !ok {
+		t.Error("expected 'description' arg (form field)")
+	} else if descArg.Required {
+		t.Error("'description' should be optional")
+	}
+
+	// attachment should be optional uri
+	if attArg, ok := argNames["attachment"]; !ok {
+		t.Error("expected 'attachment' arg (file ref)")
+	} else {
+		if attArg.Schema == nil || attArg.Schema.Format != "uri" {
+			t.Error("attachment should have uri format")
+		}
+		if attArg.Required {
+			t.Error("attachment should be optional")
+		}
+	}
+
+	// photo should be optional uri
+	if photoArg, ok := argNames["photo"]; !ok {
+		t.Error("expected 'photo' arg (file ref)")
+	} else {
+		if photoArg.Schema == nil || photoArg.Schema.Format != "uri" {
+			t.Error("photo should have uri format")
+		}
+	}
+
+	// No body, file_name, or file_content args
+	for _, badName := range []string{"body", "file_name", "file_content"} {
+		if _, ok := argNames[badName]; ok {
+			t.Errorf("tool should NOT have %q arg", badName)
+		}
+	}
+}
+
+// testSpecSimpleBinaryMultipart is a multipart spec with a plain binary string
+// schema (not an object). This path should still use UploadContentType and
+// file_name/file_content (legacy behavior), NOT FileRef.
+const testSpecSimpleBinaryMultipart = `openapi: "3.0.3"
+info:
+  title: Simple Binary Upload
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /raw-upload:
+    post:
+      operationId: rawUpload
+      summary: Upload a raw binary file
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: OK
+`
+
+func TestSimpleBinaryMultipart_UsesUploadContentType(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecSimpleBinaryMultipart)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	if len(config.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
+	}
+	tool := config.Tools[0]
+
+	// Plain binary multipart (non-object schema) should use UploadContentType
+	if tool.UploadContentType == "" {
+		t.Error("plain binary multipart should have UploadContentType set")
+	}
+
+	// Should NOT have FileArgs (non-object schema can't extract named file args)
+	if len(tool.FileArgs) != 0 {
+		t.Error("plain binary multipart should NOT have FileArgs")
+	}
+
+	// Should have file_name and file_content args
+	hasFileName := false
+	hasFileContent := false
+	for _, arg := range tool.Args {
+		if arg.Name == "file_name" {
+			hasFileName = true
+			if arg.Required {
+				t.Error("file_name should be optional")
+			}
+		}
+		if arg.Name == "file_content" {
+			hasFileContent = true
+			if arg.Required {
+				t.Error("file_content should be optional")
+			}
+		}
+	}
+	if !hasFileName {
+		t.Error("plain binary multipart should have file_name arg")
+	}
+	if !hasFileContent {
+		t.Error("plain binary multipart should have file_content arg")
 	}
 }
 

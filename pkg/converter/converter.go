@@ -79,7 +79,6 @@ func NewConverter(parser *Parser, includePaths []string, excludePaths []string, 
 	}, nil
 }
 
-
 // Convert converts an OpenAPI document to an MCP configuration
 func (c *Converter) Convert() (*MCPConfig, error) {
 	if c.parser.GetDocument() == nil {
@@ -98,7 +97,7 @@ func (c *Converter) Convert() (*MCPConfig, error) {
 		Tools: []Tool{},
 	}
 
-// Process each path and operation
+	// Process each path and operation
 	for path, pathItem := range c.parser.GetPaths() {
 		operations := getOperations(pathItem)
 		for method, operation := range operations {

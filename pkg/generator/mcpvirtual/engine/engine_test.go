@@ -97,10 +97,10 @@ func TestEngine_ApplyDefaults(t *testing.T) {
 				InputSchema: map[string]interface{}{
 					"type": "object",
 					"properties": map[string]interface{}{
-						"id":     map[string]interface{}{"type": "string"},
-						"limit":  map[string]interface{}{"type": "integer", "default": 100},
-						"debug":  map[string]interface{}{"type": "boolean", "default": true},
-						"name":   map[string]interface{}{"type": "string", "default": "default_name"},
+						"id":    map[string]interface{}{"type": "string"},
+						"limit": map[string]interface{}{"type": "integer", "default": 100},
+						"debug": map[string]interface{}{"type": "boolean", "default": true},
+						"name":  map[string]interface{}{"type": "string", "default": "default_name"},
 					},
 				},
 				Pipeline: []pipeline.StepConfig{
@@ -237,7 +237,7 @@ func TestApplyDefaults(t *testing.T) {
 			wantArgs: map[string]interface{}{},
 		},
 		{
-			name: "nil schema",
+			name:     "nil schema",
 			schema:   nil,
 			args:     map[string]interface{}{"x": 1},
 			wantArgs: map[string]interface{}{"x": 1},
@@ -265,7 +265,7 @@ func TestApplyDefaults(t *testing.T) {
 					"limit": map[string]interface{}{"type": "integer", "default": 100},
 				},
 			},
-			args: map[string]interface{}{"limit": 50},
+			args:     map[string]interface{}{"limit": 50},
 			wantArgs: map[string]interface{}{"limit": 50},
 		},
 		{

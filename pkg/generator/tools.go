@@ -40,35 +40,35 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 	}
 
 	funcMap := template.FuncMap{
-			"goRawString": func(s string) string {
-				// Construct a Go string expression using double-quoted strings.
-				// Properly handles backticks, newlines, backslashes, and quotes.
-				//
-				// Examples:
-				//   "hello"      → "hello"
-				//   "a`b"        → "a" + "`" + "b"
-				//   "a\nb"       → "a\nb"
-				s = strings.ReplaceAll(s, "\\", `\\`)
-				s = strings.ReplaceAll(s, `"`, `\"`)
-				lines := strings.Split(s, "\n")
-				var b strings.Builder
-				b.WriteByte('"')
-				for i, line := range lines {
-					if i > 0 {
-						b.WriteString(`\n`)
-					}
-					parts := strings.Split(line, "`")
-					b.WriteString(parts[0])
-					for j := 1; j < len(parts); j++ {
-						b.WriteByte('"')
-						b.WriteString(` + "\x60" + `)
-						b.WriteByte('"')
-						b.WriteString(parts[j])
-					}
+		"goRawString": func(s string) string {
+			// Construct a Go string expression using double-quoted strings.
+			// Properly handles backticks, newlines, backslashes, and quotes.
+			//
+			// Examples:
+			//   "hello"      → "hello"
+			//   "a`b"        → "a" + "`" + "b"
+			//   "a\nb"       → "a\nb"
+			s = strings.ReplaceAll(s, "\\", `\\`)
+			s = strings.ReplaceAll(s, `"`, `\"`)
+			lines := strings.Split(s, "\n")
+			var b strings.Builder
+			b.WriteByte('"')
+			for i, line := range lines {
+				if i > 0 {
+					b.WriteString(`\n`)
 				}
-				b.WriteByte('"')
-				return b.String()
-			},
+				parts := strings.Split(line, "`")
+				b.WriteString(parts[0])
+				for j := 1; j < len(parts); j++ {
+					b.WriteByte('"')
+					b.WriteString(` + "\x60" + `)
+					b.WriteByte('"')
+					b.WriteString(parts[j])
+				}
+			}
+			b.WriteByte('"')
+			return b.String()
+		},
 	}
 
 	tmpl, err := template.New("tool.templ").Funcs(funcMap).Parse(string(toolTemplateContent))
@@ -98,6 +98,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			RequestPath       string
 			PathArgs          []converter.Arg
 			UploadContentType string
+			FileArgs          []converter.FileArg
 		}{
 			ToolTemplateData: ToolTemplateData{
 				ToolNameOriginal:      capitalizedName,
@@ -115,6 +116,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			RequestPath:       requestPath,
 			PathArgs:          pathArgs,
 			UploadContentType: tool.UploadContentType,
+			FileArgs:          tool.FileArgs,
 		}
 
 		outputFileName := capitalizedName + ".go"
@@ -197,6 +199,7 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 
 	return nil
 }
+
 // GenerateToolTestFiles generates individual tool test files (*_test.go) for each tool.
 func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
 	toolsDir := filepath.Join(g.outputDir, "pkg", "mcptools")

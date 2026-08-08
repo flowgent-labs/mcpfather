@@ -106,7 +106,6 @@ func detectCluster(t *testing.T) (clusterType, string) {
 	return clusterUnknown, "" // unreachable
 }
 
-
 // deployPrereqsOK checks that kubectl, helm, and docker are available and a
 // Kubernetes cluster is reachable via ~/.kube/config (or KUBECONFIG).
 func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
@@ -322,8 +321,8 @@ func deployHelmChart(t *testing.T, helm, kubectl, projectDir, imageRepo, imageTa
 		"--set", fmt.Sprintf("image.tag=%s", imageTag),
 		"--set", "image.pullPolicy=IfNotPresent",
 		"--set", fmt.Sprintf("config.upstream.default.endpoint=%s", upstreamURL),
-		"--set", "config.tools.registerAllByDefault=true",
-		"--set", "config.runtime.logAuthorization=false",
+		"--set", "config.native_tools.expose.register_all_tools_by_default=true",
+		"--set", "config.logging.auth_verbose=false",
 		"--wait",
 		"--timeout", "120s",
 	}
@@ -483,7 +482,7 @@ func TestDeploy_FullE2E(t *testing.T) {
 		"--set", fmt.Sprintf("image.tag=%s", imageVer),
 		"--set", "image.pullPolicy=IfNotPresent",
 		"--set", fmt.Sprintf("config.upstream.default.endpoint=%s", mockURL),
-		"--set", "config.tools.registerAllByDefault=true",
+		"--set", "config.native_tools.expose.register_all_tools_by_default=true",
 		"--wait", "--timeout", "60s",
 	}
 	if out, err := exec.Command(helm, args...).CombinedOutput(); err != nil {

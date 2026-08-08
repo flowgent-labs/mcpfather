@@ -12,8 +12,14 @@ func TestDefaultConfig(t *testing.T) {
 	if cfg.Server.Auth.OIDC.EnableClientTokenClaimForward != true {
 		t.Error("server.auth.oidc.enable_client_token_claim_forward should default to true")
 	}
-	if cfg.Server.MaxParallelRequests != 100 {
-		t.Errorf("server.max_parallel_requests = %d, want 100", cfg.Server.MaxParallelRequests)
+	if cfg.Server.ReadTimeoutSeconds != 30 {
+		t.Errorf("server.read_timeout_seconds = %d, want 30", cfg.Server.ReadTimeoutSeconds)
+	}
+	if cfg.Server.WriteTimeoutSeconds != 0 {
+		t.Errorf("server.write_timeout_seconds = %d, want 0 (disabled for SSE)", cfg.Server.WriteTimeoutSeconds)
+	}
+	if cfg.Server.IdleTimeoutSeconds != 120 {
+		t.Errorf("server.idle_timeout_seconds = %d, want 120", cfg.Server.IdleTimeoutSeconds)
 	}
 
 	defaultUp, ok := cfg.Upstream["default"]
@@ -43,8 +49,8 @@ func TestDefaultConfig_YAMLTags(t *testing.T) {
 	if cfg.Upstream["default"].Endpoint == "" {
 		t.Error("default upstream endpoint is empty")
 	}
-	if cfg.Server.MaxParallelRequests <= 0 {
-		t.Error("server.max_parallel_requests should be positive")
+	if cfg.Server.ReadTimeoutSeconds <= 0 {
+		t.Error("server.read_timeout_seconds should be positive")
 	}
 }
 
@@ -113,5 +119,71 @@ func TestUpstreamEntryConfig_Fields(t *testing.T) {
 	}
 	if entry.Auth.Static.WebToken != "token123" {
 		t.Error("static web_token mismatch")
+	}
+}
+
+func TestIFSConfig_Defaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if !cfg.Server.IFS.Enabled {
+		t.Error("server.ifs.enabled should default to true")
+	}
+}
+
+func TestLoggingConfig_Defaults(t *testing.T) {
+	cfg := DefaultConfig()
+	if cfg.Logging.Level != 0 {
+		t.Errorf("logging.level = %d, want 0", cfg.Logging.Level)
+	}
+	if cfg.Logging.AuthVerbose != false {
+		t.Error("logging.auth_verbose should default to false")
+	}
+}
+
+func TestLoggingConfig_Level(t *testing.T) {
+	l := LoggingConfig{Level: 5, AuthVerbose: true}
+	if l.Level != 5 {
+		t.Errorf("Level = %d, want 5", l.Level)
+	}
+	if !l.AuthVerbose {
+		t.Error("AuthVerbose should be true")
+	}
+}
+
+func TestVirtualToolPipelineConfig_Fields(t *testing.T) {
+	vt := VirtualToolPipelineConfig{
+		Name:        "my-virtual-tool",
+		Description: "A composed virtual tool",
+		InputSchema: map[string]interface{}{
+			"type": "object",
+			"properties": map[string]interface{}{
+				"param1": map[string]interface{}{"type": "string"},
+			},
+		},
+		Pipeline: []map[string]interface{}{
+			{"call": map[string]interface{}{"tool": "nativeTool"}},
+		},
+		Annotations: map[string]interface{}{
+			"readOnlyHint": true,
+		},
+	}
+	if vt.Name != "my-virtual-tool" {
+		t.Errorf("Name = %q, want 'my-virtual-tool'", vt.Name)
+	}
+	if vt.Description != "A composed virtual tool" {
+		t.Error("Description mismatch")
+	}
+	if len(vt.Pipeline) != 1 {
+		t.Errorf("Pipeline length = %d, want 1", len(vt.Pipeline))
+	}
+}
+
+func TestIFSConfig_Fields(t *testing.T) {
+	ifs := IFSConfig{Enabled: true}
+	if !ifs.Enabled {
+		t.Error("Enabled should be true")
+	}
+	ifs2 := IFSConfig{Enabled: false}
+	if ifs2.Enabled {
+		t.Error("Enabled should be false")
 	}
 }

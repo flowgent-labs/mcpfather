@@ -50,7 +50,8 @@ func lookPathMulti(name string, extra ...string) string {
 }
 
 // k3sBinary returns the best available k3s binary path. It probes:
-//   PATH → $CACHE/k3s → /usr/local/bin/k3s → /opt/homebrew/bin/k3s → ~/bin/k3s
+//
+//	PATH → $CACHE/k3s → /usr/local/bin/k3s → /opt/homebrew/bin/k3s → ~/bin/k3s
 func k3sBinary() string {
 	home, _ := os.UserHomeDir()
 	return lookPathMulti("k3s",
@@ -62,7 +63,8 @@ func k3sBinary() string {
 }
 
 // helmBinary returns the best available helm binary path.
-//   PATH → $CACHE/helm → /usr/local/bin/helm → /opt/homebrew/bin/helm
+//
+//	PATH → $CACHE/helm → /usr/local/bin/helm → /opt/homebrew/bin/helm
 func helmBinary() string {
 	return lookPathMulti("helm",
 		filepath.Join(toolCacheDir(), "helm"),
@@ -272,7 +274,9 @@ func probeTCP(addr string) (bool, string) {
 }
 
 func mark(ok bool) string {
-	if ok { return "✓" }
+	if ok {
+		return "✓"
+	}
 	return "✗"
 }
 

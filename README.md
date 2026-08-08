@@ -1,4 +1,4 @@
-# MCPFather - Enterprise-grade MCP Server Builder
+# MCPFather
 
 [![Build & Test](https://github.com/flowgent-labs/mcpfather/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/flowgent-labs/mcpfather/actions/workflows/ci.yml)
 [![Go Version](https://img.shields.io/badge/go-1.26.4-00ADD8?logo=go)](https://go.dev/dl/)
@@ -20,6 +20,7 @@
 - **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
 - **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
 - **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
+- **IFS Data Plane Server** — Built-in REST endpoints (`/_/ifs/*`) for binary file upload and download, cleanly separated from the JSON-RPC 2.0 control plane at `/mcp`. OpenAPI file transfer operations become MCP tools that route binary payloads through the data plane, not the control channel.
 
 ## Quick Start
 
@@ -170,6 +171,39 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `9` | + pretty-printed JSON body |
 | `10` | Same as 9 (full debug) |
 
+### IFS — Internal File System (Data Plane)
+
+MCP speaks JSON-RPC 2.0 at `/mcp` — a **control plane** that carries structured tool invocations. But OpenAPI specs often include file download/upload operations that transfer raw binary payloads. Pushing multi-megabyte blobs through JSON-RPC is inefficient and breaks streaming semantics.
+
+MCPFather solves this with a **dual-plane architecture**:
+
+| Plane | Protocol | Endpoint | Purpose |
+|---|---|---|---|
+| **Control** | JSON-RPC 2.0 | `/mcp` | Tool discovery, typed arguments, structured results |
+| **Data** | REST | `/_/ifs/*` | Binary file upload/download with UUID collision avoidance |
+
+**How it works:**
+
+1. **Generator stage** — MCPFather detects OpenAPI operations that produce/consume binary content (e.g. `produces: application/octet-stream`, multipart form uploads). These become MCP tools that return a **FileRef** (`file://` URI) instead of inline base64 data.
+
+2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/downloads/ifs/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
+   ```json
+   {"fileRef": "http://localhost:8080/_/ifs/download/20260808/a1b2c3d4-....pdf"}
+   ```
+
+3. **Upload reverse** — The MCP client uploads a file via `POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
+
+**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/downloads/ifs/{yyyyMMdd}/`.
+
+**Configuration** (`config.yaml`):
+```yaml
+server:
+  ifs:
+    enabled: true   # set false to disable the data plane (pure JSON-RPC mode)
+```
+
+> The IFS REST API is part of the same HTTP server (same port) as `/mcp`. No additional ports or services needed.
+
 ### Environment variables
 
 **Auth Layers at a Glance — frontend validates inbound, backend authenticates outbound:**
@@ -234,7 +268,7 @@ usecase/confluence-mcp/bin/confluence-mcp --print-default-config
 
 ```yaml
 # ---- Native MCP Tools ----
-nativeTools:
+native_tools:
   expose:
     # When true, all native tools are registered by default
     # (individual tools can be hidden via excludes).
@@ -266,14 +300,14 @@ nativeTools:
   - [sonarqube-example-config.yaml](.agents/skills/virtual-tool-creator/resources/sonarqube-example-config.yaml)
   - [sonatypeiq-example-config.yaml](.agents/skills/virtual-tool-creator/resources/sonatypeiq-example-config.yaml)
 
-`$HOME/.{BIN_NAME}/config.yaml`:
+`~/.test-verify-v2/config.yaml`:
 
 ```yaml
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
 # Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
-virtualTools:
+virtual_tools:
   - id: getData
     kind: call
     spec:

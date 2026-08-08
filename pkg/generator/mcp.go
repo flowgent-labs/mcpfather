@@ -8,8 +8,8 @@ import (
 	"go/format"
 	"os"
 	"os/exec"
-	"sort"
 	"path/filepath"
+	"sort"
 	"strings"
 	"text/template"
 
