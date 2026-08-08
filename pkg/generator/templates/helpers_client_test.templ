@@ -4,6 +4,7 @@ package mcputils
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -651,9 +652,12 @@ func TestForwardMultipartRequestDeletesIFSUploadSource(t *testing.T) {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			t.Fatalf("parse multipart: %v", err)
 		}
-		file, _, err := r.FormFile("file")
+		file, header, err := r.FormFile("file")
 		if err != nil {
 			t.Fatalf("missing file part: %v", err)
+		}
+		if got := header.Header.Get("Content-Type"); got != "application/zip" {
+			t.Fatalf("file part Content-Type = %q, want application/zip", got)
 		}
 		defer file.Close()
 		body, _ := io.ReadAll(file)
@@ -677,16 +681,174 @@ func TestForwardMultipartRequestDeletesIFSUploadSource(t *testing.T) {
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		t.Fatalf("mkdir upload dir: %v", err)
 	}
-	sourceFile := filepath.Join(uploadDir, "multipart-source.bin")
+	sourceFile := filepath.Join(uploadDir, "multipart-source.zip")
 	if err := os.WriteFile(sourceFile, []byte("multipart upload content"), 0644); err != nil {
 		t.Fatalf("write upload source: %v", err)
 	}
 
 	fileRefs := map[string]string{"file": "file://" + sourceFile}
-	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", map[string]interface{}{}, fileRefs, nil, "TestMultipartUpload"); err != nil {
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", map[string]interface{}{}, fileRefs, nil, nil, nil, "TestMultipartUpload"); err != nil {
 		t.Fatalf("ForwardMultipartRequest failed: %v", err)
 	}
 	if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
 		t.Fatalf("IFS upload source should be removed after multipart forwarding, stat err=%v", err)
+	}
+}
+
+func TestForwardMultipartRequestOmitsMissingOptionalFile(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+			t.Fatalf("expected multipart content type, got %q", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("note"); got != "no-file" {
+			t.Fatalf("note form field = %q, want no-file", got)
+		}
+		if r.MultipartForm != nil {
+			if files := r.MultipartForm.File["file"]; len(files) != 0 {
+				t.Fatalf("optional file part should be omitted, got %d file parts", len(files))
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	args := map[string]interface{}{"note": "no-file"}
+	fileRefs := map[string]string{"file": ""}
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", args, fileRefs, nil, nil, nil, "TestMultipartUpload"); err != nil {
+		t.Fatalf("ForwardMultipartRequest failed: %v", err)
+	}
+}
+
+func TestForwardMultipartRequestStringFileArgBecomesFormField(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("file"); got != "already-uploaded.zip" {
+			t.Fatalf("file form field = %q, want already-uploaded.zip", got)
+		}
+		if r.MultipartForm != nil {
+			if files := r.MultipartForm.File["file"]; len(files) != 0 {
+				t.Fatalf("string branch should not create file parts, got %d", len(files))
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	args := map[string]interface{}{"file": "already-uploaded.zip"}
+	fileRefs := map[string]string{"file": "already-uploaded.zip"}
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", args, fileRefs, nil, nil, nil, "TestMultipartUpload"); err != nil {
+		t.Fatalf("ForwardMultipartRequest failed: %v", err)
+	}
+}
+
+func TestForwardMultipartRequestSeparatesQueryAndFormFields(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("configId"); got != "cfg-123" {
+			t.Fatalf("configId query = %q, want cfg-123", got)
+		}
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		if got := r.FormValue("note"); got != "form-note" {
+			t.Fatalf("note form field = %q, want form-note", got)
+		}
+		if r.MultipartForm != nil {
+			if values := r.MultipartForm.Value["configId"]; len(values) != 0 {
+				t.Fatalf("query parameter configId should not be duplicated into form body, got %v", values)
+			}
+			if values := r.MultipartForm.Value["id"]; len(values) != 0 {
+				t.Fatalf("path parameter id should not be duplicated into form body, got %v", values)
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	args := map[string]interface{}{"id": "42", "configId": "cfg-123", "note": "form-note"}
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/reports/{id}/upload", args, nil, []string{"id"}, []string{"configId"}, nil, "TestMultipartUpload"); err != nil {
+		t.Fatalf("ForwardMultipartRequest failed: %v", err)
+	}
+}
+
+func TestForwardMultipartRequestUsesPartContentTypes(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		reader, err := r.MultipartReader()
+		if err != nil {
+			t.Fatalf("multipart reader: %v", err)
+		}
+		seenJSON := false
+		seenFile := false
+		for {
+			part, err := reader.NextPart()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				t.Fatalf("next part: %v", err)
+			}
+			switch part.FormName() {
+			case "metadata":
+				seenJSON = true
+				if got := part.Header.Get("Content-Type"); got != "application/json" {
+					t.Fatalf("metadata Content-Type = %q, want application/json", got)
+				}
+				body, _ := io.ReadAll(part)
+				var got map[string]interface{}
+				if err := json.Unmarshal(body, &got); err != nil {
+					t.Fatalf("metadata JSON body = %s: %v", body, err)
+				}
+				if got["name"] != "report" || got["enabled"] != true {
+					t.Fatalf("metadata body = %#v", got)
+				}
+			case "file":
+				seenFile = true
+				if got := part.Header.Get("Content-Type"); got != "application/zip" {
+					t.Fatalf("file Content-Type = %q, want application/zip", got)
+				}
+			}
+		}
+		if !seenJSON {
+			t.Fatal("missing metadata part")
+		}
+		if !seenFile {
+			t.Fatal("missing file part")
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	oldCfg := GetConfig()
+	t.Setenv("HOME", t.TempDir())
+	LoadConfig("{{.ServiceName}}")
+	defer SetConfig(oldCfg)
+
+	uploadDir, err := resolveUploadDir()
+	if err != nil {
+		t.Fatalf("resolveUploadDir: %v", err)
+	}
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		t.Fatalf("mkdir upload dir: %v", err)
+	}
+	sourceFile := filepath.Join(uploadDir, "encoded-source.zip")
+	if err := os.WriteFile(sourceFile, []byte("zip bytes"), 0644); err != nil {
+		t.Fatalf("write upload source: %v", err)
+	}
+
+	args := map[string]interface{}{
+		"metadata": map[string]interface{}{"name": "report", "enabled": true},
+	}
+	fileRefs := map[string]string{"file": "file://" + sourceFile}
+	partContentTypes := map[string]string{"metadata": "application/json", "file": "application/zip"}
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", args, fileRefs, nil, nil, partContentTypes, "TestMultipartUpload"); err != nil {
+		t.Fatalf("ForwardMultipartRequest failed: %v", err)
 	}
 }

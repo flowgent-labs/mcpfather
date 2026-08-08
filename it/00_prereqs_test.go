@@ -333,6 +333,9 @@ func gfwMode() (string, string) {
 	country := detectCountry()
 	if country == "CN" {
 		setCNEnv()
+		if testNetworkProxyConfigured() {
+			return "true", "auto-detected CN → HTTPS proxy configured"
+		}
 		return "true", "auto-detected CN → GOPROXY=goproxy.cn"
 	}
 	if country != "??" {
@@ -344,6 +347,9 @@ func gfwMode() (string, string) {
 	if err == nil {
 		conn.Close()
 		setCNEnv()
+		if testNetworkProxyConfigured() {
+			return "true", "auto-detected CN (HTTPS proxy configured)"
+		}
 		return "true", "auto-detected CN (goproxy.cn reachable, ipinfo.io blocked)"
 	}
 	os.Setenv("IN_CN_GFW", "false")
@@ -352,6 +358,10 @@ func gfwMode() (string, string) {
 
 func setCNEnv() {
 	os.Setenv("IN_CN_GFW", "true")
+	if testNetworkProxyConfigured() {
+		os.Unsetenv("GOPROXY")
+		return
+	}
 	if v, ok := os.LookupEnv("GOPROXY"); !ok || v == "" {
 		os.Setenv("GOPROXY", "https://goproxy.cn,direct")
 	}
@@ -361,6 +371,15 @@ func setCNEnv() {
 	if v, ok := os.LookupEnv("GONOSUMCHECK"); !ok || v == "" {
 		os.Setenv("GONOSUMCHECK", "*")
 	}
+}
+
+func testNetworkProxyConfigured() bool {
+	for _, key := range []string{"MCPFATHER_TEST_PROXY", "HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+		if strings.TrimSpace(os.Getenv(key)) != "" {
+			return true
+		}
+	}
+	return false
 }
 
 func detectCountry() string {

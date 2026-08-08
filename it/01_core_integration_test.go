@@ -1567,11 +1567,10 @@ func TestFileRef_MultipartUpload_HTTP(t *testing.T) {
 	}
 }
 
-// TestFileRef_NoFileProvided_MultipartWithEmptyPart verifies that FileRef
-// tools always send multipart/form-data even when no file is provided —
-// the empty file part prevents "missing boundary" errors on upstream
-// services (e.g. Spring Boot).
-func TestFileRef_NoFileProvided_MultipartWithEmptyPart(t *testing.T) {
+// TestFileRef_NoFileProvided_OmitsOptionalFilePart verifies that FileRef tools
+// still send multipart/form-data when no optional file is provided, but do not
+// fabricate an empty file part that can trigger upstream filename validators.
+func TestFileRef_NoFileProvided_OmitsOptionalFilePart(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterFileRefScenario()
 	mockURL := mock.Start()
@@ -1601,13 +1600,8 @@ func TestFileRef_NoFileProvided_MultipartWithEmptyPart(t *testing.T) {
 	if record.FormFields["description"] != "No file here" {
 		t.Errorf("expected form field description='No file here', got %q", record.FormFields["description"])
 	}
-	// File part should exist but be empty (0 bytes)
-	fileRec, ok := record.Files["file"]
-	if !ok {
-		t.Fatal("expected 'file' in uploaded files (empty file part)")
-	}
-	if fileRec.Size != 0 {
-		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("optional file arg should be omitted when no file is provided")
 	}
 }
 
@@ -1657,7 +1651,7 @@ func TestMultipartAnyOfFileRef_CLI(t *testing.T) {
 	}
 }
 
-func TestMultipartAnyOfFile_NoFileProvidedSendsEmptyPart(t *testing.T) {
+func TestMultipartAnyOfFile_NoFileProvidedOmitsFilePart(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterFileRefScenario()
 	mockURL := mock.Start()
@@ -1689,12 +1683,151 @@ func TestMultipartAnyOfFile_NoFileProvidedSendsEmptyPart(t *testing.T) {
 	if _, ok := record.FormFields["id"]; ok {
 		t.Error("path parameter id should not be forwarded as a multipart form field")
 	}
-	fileRec, ok := record.Files["file"]
-	if !ok {
-		t.Fatal("expected empty 'file' part even when file arg is omitted")
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("optional anyOf file arg should be omitted when no file is provided")
 	}
-	if fileRec.Size != 0 {
-		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+}
+
+func TestMultipartAnyOfFile_StringValueSendsTextField(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV2", "")
+	assertGeneratedToolUsesMultipart(t, dir, "UploadReportV2")
+	binPath := buildServer(t, dir)
+
+	stdout, _ := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "UploadReportV2",
+		"--id=303",
+		"--note=string-file-value",
+		"--file=existing-report.zip",
+	)
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("multipart V2 string file value call failed: %s", stdout)
+	}
+
+	assertLastRequestIsMultipart(t, mock)
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from multipart V2")
+	}
+	if got := record.FormFields["file"]; got != "existing-report.zip" {
+		t.Fatalf("expected anyOf string branch as form field file=existing-report.zip, got %q", got)
+	}
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("string branch should not be forwarded as a file part")
+	}
+}
+
+func TestMultipartAnyOfFile_QueryParamStaysOutOfForm(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV2", "")
+	assertGeneratedToolUsesMultipart(t, dir, "UploadReportV2")
+	binPath := buildServer(t, dir)
+
+	stdout, _ := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "UploadReportV2",
+		"--id=404",
+		"--configId=cfg-404",
+		"--note=query-and-form",
+	)
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("multipart V2 query/form call failed: %s", stdout)
+	}
+
+	assertLastRequestIsMultipart(t, mock)
+	requests := mock.Requests()
+	if len(requests) == 0 {
+		t.Fatal("expected upstream request")
+	}
+	lastReq := requests[len(requests)-1]
+	if got := lastReq.Query.Get("configId"); got != "cfg-404" {
+		t.Fatalf("expected configId query=cfg-404, got %q (query=%s)", got, lastReq.Query.Encode())
+	}
+	if strings.Contains(lastReq.Path, "{id}") || !strings.Contains(lastReq.Path, "/upload-report/404/v2") {
+		t.Fatalf("expected path id substituted, got %q", lastReq.Path)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from multipart V2")
+	}
+	if got := record.FormFields["note"]; got != "query-and-form" {
+		t.Fatalf("expected note form field, got %q", got)
+	}
+	if _, ok := record.FormFields["configId"]; ok {
+		t.Fatal("query parameter configId should not be duplicated as a multipart form field")
+	}
+	if _, ok := record.FormFields["id"]; ok {
+		t.Fatal("path parameter id should not be duplicated as a multipart form field")
+	}
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("optional anyOf file arg should be omitted when no file is provided")
+	}
+}
+
+func TestMultipartAnyOfFile_JSONPartEncoding(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV2", "")
+	assertGeneratedToolUsesMultipart(t, dir, "UploadReportV2")
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, t.TempDir(), "", "")
+	defer cleanup()
+
+	result := callNativeTool(t, baseURL, "UploadReportV2", map[string]interface{}{
+		"id":       505,
+		"configId": "cfg-json",
+		"note":     "json-part",
+		"metadata": map[string]interface{}{
+			"name":    "report",
+			"enabled": true,
+		},
+	})
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Fatalf("multipart V2 JSON part call failed: %s", result)
+	}
+
+	assertLastRequestIsMultipart(t, mock)
+	requests := mock.Requests()
+	if len(requests) == 0 {
+		t.Fatal("expected upstream request")
+	}
+	if got := requests[len(requests)-1].Query.Get("configId"); got != "cfg-json" {
+		t.Fatalf("expected configId query=cfg-json, got %q", got)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from multipart V2")
+	}
+	if got := record.FieldContentTypes["metadata"]; got != "application/json" {
+		t.Fatalf("metadata part Content-Type = %q, want application/json", got)
+	}
+	var metadata map[string]interface{}
+	if err := json.Unmarshal([]byte(record.FormFields["metadata"]), &metadata); err != nil {
+		t.Fatalf("metadata part is not JSON: %q: %v", record.FormFields["metadata"], err)
+	}
+	if metadata["name"] != "report" || metadata["enabled"] != true {
+		t.Fatalf("unexpected metadata part body: %#v", metadata)
+	}
+	if _, ok := record.FormFields["configId"]; ok {
+		t.Fatal("query parameter configId should not be duplicated as a multipart form field")
+	}
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("optional anyOf file arg should be omitted when no file is provided")
 	}
 }
 
@@ -2154,10 +2287,10 @@ func TestMcpclientSh_KeyValueBodySyntax(t *testing.T) {
 	}
 }
 
-// TestMcpclientSh_NoFile_EmptyPart verifies that calling a FileRef tool
-// without any file argument still produces a valid multipart request (empty
-// file part) to avoid Spring Boot "missing boundary" errors.
-func TestMcpclientSh_NoFile_EmptyPart(t *testing.T) {
+// TestMcpclientSh_NoFile_OmitsOptionalFilePart verifies that calling a FileRef
+// tool without a file argument still produces a valid multipart request without
+// fabricating an empty file part.
+func TestMcpclientSh_NoFile_OmitsOptionalFilePart(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterFileRefScenario()
 	mockURL := mock.Start()
@@ -2187,14 +2320,10 @@ func TestMcpclientSh_NoFile_EmptyPart(t *testing.T) {
 
 	record := mock.LastFileRef()
 	if record == nil {
-		t.Fatal("expected multipart upload data (even without file)")
+		t.Fatal("expected multipart upload data")
 	}
-	fileRec, ok := record.Files["file"]
-	if !ok {
-		t.Fatal("expected 'file' in uploaded files (empty file part)")
-	}
-	if fileRec.Size != 0 {
-		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	if _, ok := record.Files["file"]; ok {
+		t.Fatal("optional file arg should be omitted when no file is provided")
 	}
 	if record.FormFields["name"] != "empty-file" {
 		t.Errorf("expected form field name=empty-file, got %q", record.FormFields["name"])

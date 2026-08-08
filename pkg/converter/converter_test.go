@@ -444,6 +444,12 @@ paths:
                 description:
                   type: string
                   description: Resource description
+                metadata:
+                  type: object
+                  description: JSON metadata
+                  properties:
+                    enabled:
+                      type: boolean
                 attachment:
                   type: string
                   format: binary
@@ -452,6 +458,11 @@ paths:
                   type: string
                   format: binary
                   description: Optional photo
+            encoding:
+              metadata:
+                contentType: application/json
+              attachment:
+                contentType: application/zip
       responses:
         "200":
           description: OK
@@ -483,11 +494,16 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 	}
 	// Check FileArgs content
 	fileNames := make(map[string]bool)
+	fileContentTypes := make(map[string]string)
 	for _, fa := range tool.FileArgs {
 		fileNames[fa.Name] = true
+		fileContentTypes[fa.Name] = fa.ContentType
 	}
 	if !fileNames["attachment"] {
 		t.Error("expected FileArg for 'attachment'")
+	}
+	if got := fileContentTypes["attachment"]; got != "application/zip" {
+		t.Errorf("attachment ContentType = %q, want application/zip", got)
 	}
 	if !fileNames["photo"] {
 		t.Error("expected FileArg for 'photo'")
@@ -516,6 +532,12 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 		t.Error("expected 'description' arg (form field)")
 	} else if descArg.Required {
 		t.Error("'description' should be optional")
+	}
+
+	if metadataArg, ok := argNames["metadata"]; !ok {
+		t.Error("expected 'metadata' arg (form field)")
+	} else if metadataArg.MultipartContentType != "application/json" {
+		t.Errorf("metadata MultipartContentType = %q, want application/json", metadataArg.MultipartContentType)
 	}
 
 	// attachment should be optional uri
