@@ -184,16 +184,16 @@ MCPFather solves this with a **dual-plane architecture**:
 
 **How it works:**
 
-1. **Generator stage** — MCPFather detects OpenAPI operations that produce/consume binary content (e.g. `produces: application/octet-stream`, multipart form uploads). These become MCP tools that return a **FileRef** (`file://` URI) instead of inline base64 data.
+1. **Generator stage** — MCPFather detects OpenAPI operations that produce/consume binary content (e.g. `produces: application/octet-stream`, multipart form upload). These become MCP tools that return a **FileRef** (`file://` URI) instead of inline base64 data.
 
-2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/downloads/ifs/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
+2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/download/ifs/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
    ```json
    {"fileRef": "http://localhost:8080/_/ifs/download/20260808/a1b2c3d4-....pdf"}
    ```
 
-3. **Upload reverse** — The MCP client uploads a file via `POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
+3. **Upload reverse** — The MCP client upload a file via `POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
 
-**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/downloads/ifs/{yyyyMMdd}/`.
+**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/download/ifs/{yyyyMMdd}/`.
 
 **Configuration** (`config.yaml`):
 ```yaml
