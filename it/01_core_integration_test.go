@@ -479,6 +479,37 @@ func TestGenerator_ValidOperationId_Succeeds(t *testing.T) {
 	}
 }
 
+func TestGenerator_GeneratedServerVersionFlag(t *testing.T) {
+	projectDir := genProject(t, "echoHeaders", "")
+	bin := buildServer(t, projectDir)
+
+	for _, flagName := range []string{"--version", "-V"} {
+		t.Run(flagName, func(t *testing.T) {
+			cmd := exec.Command(bin, flagName)
+			cmd.Env = testProcessEnv("HOME=" + t.TempDir())
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("%s failed: %v\n%s", flagName, err, out)
+			}
+
+			got := string(out)
+			if !strings.Contains(got, filepath.Base(projectDir)+" dev") {
+				t.Fatalf("version output should include binary name and version, got: %q", got)
+			}
+			for _, want := range []string{"commit: unknown", "built: unknown", "go"} {
+				if !strings.Contains(got, want) {
+					t.Fatalf("version output missing %q: %q", want, got)
+				}
+			}
+			for _, unexpected := range []string{"Upstream endpoint:", "MCP server listening", "Management server"} {
+				if strings.Contains(got, unexpected) {
+					t.Fatalf("version command should not start server or load runtime config, got: %q", got)
+				}
+			}
+		})
+	}
+}
+
 // TestGenerator_VeryLongOperationId_Succeeds tests the common enterprise
 // scenario where operationIds are extremely long with dash/underscore
 // separators (e.g. auto-generated from API gateways). The generator must:

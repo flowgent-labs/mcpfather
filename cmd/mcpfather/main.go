@@ -41,6 +41,7 @@ func init() {
 	flag.BoolVar(&verbose, "v", false, "Enable verbose logging")
 	flag.BoolVar(&verbose, "verbose", false, "Enable verbose logging")
 	flag.BoolVar(&version, "version", false, "Print version and exit")
+	flag.BoolVar(&version, "V", false, "Print version and exit")
 }
 
 func printVersion() {
@@ -62,7 +63,7 @@ Options:
   -e, --excludes    Comma-separated OpenAPI paths to exclude
   --validation      Enable OpenAPI validation
   -v, --verbose     Enable verbose logging
-  --version         Print version and exit
+  -V, --version     Print version and exit
 `)
 }
 

@@ -368,7 +368,10 @@ func (g *Generator) GenerateMakefile() error {
 
 MCP_SERVER_NAME := %s
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_DATE := $(shell date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ 2>/dev/null || echo "unknown")
 BUILD_FLAGS := -v -trimpath
+LDFLAGS := -ldflags "-s -w -X main.versionStr=$(VERSION) -X main.gitCommit=$(GIT_COMMIT) -X main.buildDate=$(BUILD_DATE)"
 
 GOPROXY ?= https://goproxy.cn,direct
 
@@ -386,7 +389,7 @@ help:
 	@echo "  make build-with-otel-http   Build with OTLP HTTP/protobuf exporter"
 	@echo "  make run                    Build and run the server"
 	@echo "  make test-ut                Run unit tests"
-		@echo "  make coverage               Run tests with HTML coverage report"
+	@echo "  make coverage               Run tests with HTML coverage report"
 	@echo "  make gen-dsl-schema         Regenerate JSON Schema from config types"
 	@echo "  make clean                  Remove build artifacts"
 	@echo "  make build-image            Build Docker image"
@@ -397,16 +400,16 @@ help:
 	@echo ""
 
 build: go.sum
-	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 build-all:
-	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-linux-amd64-$(VERSION)   .
-	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-linux-arm64-$(VERSION)   .
-	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-amd64-$(VERSION)  .
-	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-arm64-$(VERSION)  .
-	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-windows-amd64-$(VERSION).exe .
-	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-windows-arm64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-linux-amd64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-linux-arm64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-amd64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-arm64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-windows-amd64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) $(LDFLAGS) -o bin/$(MCP_SERVER_NAME)-windows-arm64-$(VERSION).exe .
 
 go.sum: go.mod
 	GOPROXY=$(GOPROXY) go mod tidy
@@ -430,11 +433,11 @@ gen-dsl-schema:
 build-with-otel: build-with-otel-grpc
 
 build-with-otel-grpc: go.sum
-	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 build-with-otel-http: go.sum
-	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
+	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) $(LDFLAGS) -o $(BIN) .
 	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 # ---- Container & Kubernetes ----
@@ -449,13 +452,13 @@ MCP_OIDC_CLIENT_ID  ?= $(MCP_OIDC_CLIENT_ID)
 MCP_OIDC_CLIENT_SECRET  ?= $(MCP_OIDC_CLIENT_SECRET)
 
 build-image: build
-	docker build -t $(IMAGE_REPO):$(IMAGE_TAG) -f deploy/docker/Dockerfile .
+	docker build --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) -t $(IMAGE_REPO):$(IMAGE_TAG) -f deploy/docker/Dockerfile .
 
 build-image-with-otel-grpc: build-with-otel-grpc
-	docker build --build-arg BUILD_TAGS=otel_grpc -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-grpc -f deploy/docker/Dockerfile .
+	docker build --build-arg BUILD_TAGS=otel_grpc --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-grpc -f deploy/docker/Dockerfile .
 
 build-image-with-otel-http: build-with-otel-http
-	docker build --build-arg BUILD_TAGS=otel_http -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-http -f deploy/docker/Dockerfile .
+	docker build --build-arg BUILD_TAGS=otel_http --build-arg VERSION=$(VERSION) --build-arg GIT_COMMIT=$(GIT_COMMIT) --build-arg BUILD_DATE=$(BUILD_DATE) -t $(IMAGE_REPO):$(IMAGE_TAG)-otel-http -f deploy/docker/Dockerfile .
 
 build-image-with-otel: build-image-with-otel-grpc
 
@@ -845,7 +848,7 @@ func argValueFromSchema(name string, s *converter.Schema) string {
 func (g *Generator) RunGoModTidy() error {
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = g.outputDir
-	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off", "GOTOOLCHAIN=local")
+	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GOSUMDB=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -886,9 +889,9 @@ func (g *Generator) RunGoModTidy() error {
 func (g *Generator) RunGoBuild() error {
 	serviceName := filepath.Base(g.outputDir)
 	binPath := filepath.Join(g.outputDir, serviceName)
-	cmd := exec.Command("go", "build", "-o", binPath, ".")
+	cmd := exec.Command("go", "build", "-ldflags", "-s -w -X main.versionStr=dev -X main.gitCommit=unknown -X main.buildDate=unknown", "-o", binPath, ".")
 	cmd.Dir = g.outputDir
-	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GONOSUMCHECK=*", "GOSUMDB=off", "GOTOOLCHAIN=local")
+	cmd.Env = append(os.Environ(), "GOPROXY=https://proxy.golang.org,direct", "GOSUMDB=off", "GOTOOLCHAIN=local")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
