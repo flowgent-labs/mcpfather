@@ -158,10 +158,10 @@ func TestScenario_ConfigLoad_ValidVirtualTools(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 	content := `
-virtualTools:
+virtual_tools:
   - name: enrich_report
     description: Enrich a report with extra data
-    inputSchema:
+    input_schema:
       type: object
       properties:
         reportId:
@@ -197,7 +197,7 @@ virtualTools:
           from: $clean
   - name: health_summary
     description: Get health summary
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1073,10 +1073,10 @@ func TestE2E_VirtualTool_CallJQReturn(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_clean_echo
     description: Echo with cleanup
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1137,10 +1137,10 @@ func TestE2E_VirtualTool_ChainedNativeTools(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_chain
     description: Chain echo and greet
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -1216,10 +1216,10 @@ func TestE2E_VirtualTool_ForeachOverInputArray(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_batch_greet
     description: Batch greet
-    inputSchema:
+    input_schema:
       type: object
       properties:
         names:
@@ -1301,10 +1301,10 @@ func TestE2E_VirtualTool_CoexistsWithNativeTools(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_fast_echo
     description: Fast echo wrapper
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1320,7 +1320,7 @@ virtualTools:
 
   - name: virt_greet_wrapper
     description: Greet with rename
-    inputSchema:
+    input_schema:
       type: object
       properties:
         person:
@@ -1385,10 +1385,10 @@ func TestE2E_VirtualTool_InvalidConfigServerStarts(t *testing.T) {
 
 	// Duplicate step ids — validation should fail
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: bad_tool
     description: Broken
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1441,10 +1441,10 @@ func TestE2E_VirtualTool_CallParseJSON(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_parse_json
     description: Parse JSON from text response
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1492,10 +1492,10 @@ func TestE2E_VirtualTool_RequireNonEmptyOnJQ(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_require_jq
     description: Require nonEmpty on jq step
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1550,10 +1550,10 @@ func TestE2E_VirtualTool_ForeachConcurrencyFromInput(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_concurrent
     description: Foreach with input concurrency
-    inputSchema:
+    input_schema:
       type: object
       properties:
         names:
@@ -1630,10 +1630,10 @@ func TestE2E_VirtualTool_ReturnWithVarsAndExpr(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_summary
     description: Build summary with vars and expr
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -1708,14 +1708,14 @@ func TestE2E_VirtualTool_AnnotationsPropagated(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_annotated
     description: Annotated tool
     annotations:
       readOnlyHint: true
       destructiveHint: false
       idempotentHint: true
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1768,10 +1768,10 @@ func TestE2E_VirtualTool_RequireNonEmptyPasses(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_require_ok
     description: Require validation that passes
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -1827,10 +1827,10 @@ func TestE2E_VirtualTool_DefaultsAppliedToMissingArgs(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_defaults_basic
     description: Test default values are applied
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -1886,10 +1886,10 @@ func TestE2E_VirtualTool_DefaultsOverriddenByArgs(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_defaults_override
     description: Test that provided args override defaults
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -1947,10 +1947,10 @@ func TestE2E_VirtualTool_DefaultsMixedWithArgs(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_defaults_mixed
     description: Test mix of defaults and overrides
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -2006,10 +2006,10 @@ func TestE2E_VirtualTool_DefaultsBoolean(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_defaults_bool
     description: Test boolean defaults
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -2078,10 +2078,10 @@ upstream:
     default:
         enable_mcp_session_forward: false
 runtime:
-virtualTools:
+virtual_tools:
   - name: simple_passthrough
     description: Simple passthrough
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2137,10 +2137,10 @@ upstream:
     default:
         enable_mcp_session_forward: true
 runtime:
-virtualTools:
+virtual_tools:
   - name: simple_passthrough
     description: Simple passthrough
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2195,10 +2195,10 @@ func TestE2E_MCP_HeaderForwarding_DefaultsToEnabled(t *testing.T) {
 upstream:
     default:
         enable_mcp_session_forward: true
-virtualTools:
+virtual_tools:
   - name: simple_passthrough
     description: Simple passthrough
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2253,10 +2253,10 @@ func TestE2E_SonatypeIQ_FullPipeline(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_sonatype_report
     description: SonatypeIQ-style full pipeline report
-    inputSchema:
+    input_schema:
       type: object
       properties:
         appPublicId:
@@ -2367,10 +2367,10 @@ func TestE2E_SonatypeIQ_RequireValidation(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_require_sonatype
     description: Require validation test
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2424,10 +2424,10 @@ func TestE2E_SonatypeIQ_ParseJSON(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_parse_json
     description: Parse JSON from text/plain response
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2470,10 +2470,10 @@ func TestE2E_SonatypeIQ_ReturnWithVarsExpr(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_return_vars
     description: Return with vars and expression
-    inputSchema:
+    input_schema:
       type: object
       properties:
         name:
@@ -2536,10 +2536,10 @@ func TestE2E_SonatypeIQ_ForeachConcurrency(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_foreach_concurrent
     description: Foreach with concurrency from input
-    inputSchema:
+    input_schema:
       type: object
       properties:
         items:
@@ -2623,10 +2623,10 @@ func TestE2E_SonatypeIQ_SimpleChain(t *testing.T) {
 	binaryName := filepath.Base(dir)
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: virt_simple
     description: Simple call→jq→return chain
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -2683,7 +2683,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	binaryName := "sonatypeiq-mcp"
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: get_scan_violations_recommends
     description: Retrieve policy violations for a scan, keep components at or above a threat threshold, enrich each component with remediation suggestions.
 
@@ -2693,7 +2693,7 @@ virtualTools:
       idempotentHint: true
       openWorldHint: true
 
-    inputSchema:
+    input_schema:
       type: object
       required:
         - applicationPublicId
@@ -3043,10 +3043,10 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	binaryName := "sonatypeiq-mcp"
 
 	virtConfig := `
-virtualTools:
+virtual_tools:
   - name: get_scan_violations_recommends
     description: Simple pipeline to verify threat level filtering
-    inputSchema:
+    input_schema:
       type: object
       required:
         - applicationPublicId
@@ -3157,10 +3157,10 @@ virtualTools:
 // schema validation.
 func TestDSLSchema_ValidMinimalConfig(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
     description: A simple virtual tool
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3179,10 +3179,10 @@ virtualTools:
 // TestDSLSchema_EnabledField validates the 'enabled' field on virtual tools.
 func TestDSLSchema_EnabledField(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
     enabled: false
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3201,9 +3201,9 @@ virtualTools:
 // TestDSLSchema_RequireFieldField validates the 'field' property on require.
 func TestDSLSchema_RequireFieldField(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3231,9 +3231,9 @@ virtualTools:
 // TestDSLSchema_OnMissingField validates the 'onMissing' field on foreach spec.
 func TestDSLSchema_OnMissingField(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
-    inputSchema:
+    input_schema:
       type: object
       properties:
         items:
@@ -3266,12 +3266,12 @@ virtualTools:
 // TestDSLSchema_AnnotationsField validates the 'annotations' field on virtual tools.
 func TestDSLSchema_AnnotationsField(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
     annotations:
       title: My Tool
       readOnly: true
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3291,9 +3291,9 @@ virtualTools:
 // with missing required fields fails schema validation.
 func TestDSLSchema_InvalidConfig_MissingRequiredPipeline(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
-    inputSchema:
+    input_schema:
       type: object
 `
 	validateDSLConfig(t, configYAML, false)
@@ -3303,9 +3303,9 @@ virtualTools:
 // with an unknown step kind fails schema validation.
 func TestDSLSchema_InvalidConfig_UnknownStepKind(t *testing.T) {
 	configYAML := `
-virtualTools:
+virtual_tools:
   - name: my_tool
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3396,12 +3396,12 @@ mgmt:
     enabled: true
     prometheus: true
     export_interval: 30s
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: true
-virtualTools:
+virtual_tools:
   - name: my_tool
-    inputSchema:
+    input_schema:
       type: object
     pipeline:
       - id: step1
@@ -3427,9 +3427,9 @@ upstream:
 runtime:
   download_dir: ""
   log_authorization: true
-virtualTools:
+virtual_tools:
   - name: t1
-    inputSchema: {type: object}
+    input_schema: {type: object}
     pipeline:
       - id: s1
         kind: call
@@ -3447,9 +3447,9 @@ func TestDSLSchema_RuntimeWithoutUpstream(t *testing.T) {
 	configYAML := `
 runtime:
   download_dir: /tmp
-virtualTools:
+virtual_tools:
   - name: t1
-    inputSchema: {type: object}
+    input_schema: {type: object}
     pipeline:
       - id: s1
         kind: call
@@ -3481,9 +3481,9 @@ mgmt:
     enabled: true
     prometheus: true
     export_interval: 15s
-virtualTools:
+virtual_tools:
   - name: t1
-    inputSchema: {type: object}
+    input_schema: {type: object}
     pipeline:
       - id: s1
         kind: call
@@ -3521,9 +3521,9 @@ upstream:
         web_token_file: /path/to/token
         cookie_token: JSESSIONID=abc
         cookie_token_file: /path/to/cookie
-virtualTools:
+virtual_tools:
   - name: t1
-    inputSchema: {type: object}
+    input_schema: {type: object}
     pipeline:
       - id: s1
         kind: call
@@ -3538,7 +3538,7 @@ virtualTools:
 // TestDSLSchema_ToolsConfig validates the tools.expose section.
 func TestDSLSchema_ToolsConfig(t *testing.T) {
 	configYAML := `
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: true
     includes:
@@ -3546,9 +3546,9 @@ nativeTools:
       - ToolB
     excludes:
       - ToolC
-virtualTools:
+virtual_tools:
   - name: t1
-    inputSchema: {type: object}
+    input_schema: {type: object}
     pipeline:
       - id: s1
         kind: call
@@ -3778,9 +3778,9 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 				continue
 			}
 			result := map[string]interface{}{
-				"quarantined":     false,
-				"catalogDate":     "2025-01-01T00:00:00Z",
-				"component":       comp,
+				"quarantined":      false,
+				"catalogDate":      "2025-01-01T00:00:00Z",
+				"component":        comp,
 				"policyViolations": []map[string]interface{}{},
 			}
 			ver := comp.PackageURL
@@ -3793,12 +3793,12 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 				result["quarantineDate"] = "2025-06-01T10:00:00Z"
 				result["policyViolations"] = []map[string]interface{}{
 					{
-						"policyId":            "POL-CRIT",
-						"policyName":          "Security-Critical-CVE",
-						"policyViolationId":   "pv-crit-" + fmt.Sprint(i),
-						"openTime":            "2025-06-01T10:00:00Z",
-						"waiveTime":           nil, "fixTime": nil, "legacyViolationTime": nil,
-						"threatLevel":         9,
+						"policyId":          "POL-CRIT",
+						"policyName":        "Security-Critical-CVE",
+						"policyViolationId": "pv-crit-" + fmt.Sprint(i),
+						"openTime":          "2025-06-01T10:00:00Z",
+						"waiveTime":         nil, "fixTime": nil, "legacyViolationTime": nil,
+						"threatLevel":          9,
 						"constraintViolations": []map[string]interface{}{},
 					},
 				}
@@ -3810,7 +3810,7 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 						"policyViolationId": "pv-age-" + fmt.Sprint(i),
 						"openTime":          "2024-12-01T00:00:00Z",
 						"waiveTime":         nil, "fixTime": nil, "legacyViolationTime": nil,
-						"threatLevel":       3,
+						"threatLevel": 3,
 					},
 				}
 			} else if strings.Contains(ver, "mid") {
@@ -3821,7 +3821,7 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 						"policyViolationId": "pv-mod-" + fmt.Sprint(i),
 						"openTime":          "2025-03-01T00:00:00Z",
 						"waiveTime":         nil, "fixTime": nil, "legacyViolationTime": nil,
-						"threatLevel":       5,
+						"threatLevel": 5,
 					},
 					{
 						"policyId":          "POL-LIC",
@@ -3829,7 +3829,7 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 						"policyViolationId": "pv-lic-" + fmt.Sprint(i),
 						"openTime":          "2025-02-01T00:00:00Z",
 						"waiveTime":         "2025-02-15T00:00:00Z", "fixTime": nil, "legacyViolationTime": nil,
-						"threatLevel":       5,
+						"threatLevel": 5,
 					},
 				}
 			}
@@ -3839,8 +3839,8 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"repositoryManagerId": "nexus",
 			"repositoryId":        "maven-central",
-				"repositoryPublicId":  "nexus-maven-central",
-				"repositoryType":      "maven",
+			"repositoryPublicId":  "nexus-maven-central",
+			"repositoryType":      "maven",
 			"results":             results,
 		})
 	})
@@ -3869,15 +3869,15 @@ upstream:
         enabled: false
       static:
         web_token: ""
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: false
     includes:
       - ListSearch
-virtualTools:
+virtual_tools:
   - name: maven_top5_versions_safe
     description: Top N firewall-safe Maven versions
-    inputSchema:
+    input_schema:
       type: object
       required:
         - mavenGroupId
@@ -4060,13 +4060,13 @@ virtualTools:
 
 	// ── Call the virtual tool ──
 	result := mcpCallVirtualTool(t, baseURL, "maven_top5_versions_safe", map[string]interface{}{
-		"mavenGroupId":         "com.fasterxml.jackson.core",
-		"mavenArtifactId":      "jackson-databind",
-		"repository":           "maven-central",
-		"repositoryManagerId":  "nexus",
-		"limit":                float64(5),
-		"fetchLimit":           float64(20),
-		"minThreatLevel":       float64(1),
+		"mavenGroupId":        "com.fasterxml.jackson.core",
+		"mavenArtifactId":     "jackson-databind",
+		"repository":          "maven-central",
+		"repositoryManagerId": "nexus",
+		"limit":               float64(5),
+		"fetchLimit":          float64(20),
+		"minThreatLevel":      float64(1),
 	})
 
 	data := mustJSON(t, result)
@@ -4175,7 +4175,9 @@ func TestE2E_HTTPStep_Minimal(t *testing.T) {
 
 	configYAML := fmt.Sprintf(`
 server:
-  max_parallel_requests: 100
+  read_timeout_seconds: 30
+  write_timeout_seconds: 0
+  idle_timeout_seconds: 120
 upstream:
   default:
     endpoint: %s
@@ -4189,14 +4191,14 @@ upstream:
     auth:
       oidc: {enabled: false}
       static: {web_token: ""}
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: false
     includes: []
-virtualTools:
+virtual_tools:
   - name: virt_http_test
     description: Minimal http step test
-    inputSchema:
+    input_schema:
       type: object
       properties:
         payload:
@@ -4284,14 +4286,14 @@ upstream:
     auth:
       oidc: {enabled: false}
       static: {web_token: ""}
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: false
     includes: []
-virtualTools:
+virtual_tools:
   - name: virt_http_json_body
     description: Test http step with JSON map body
-    inputSchema:
+    input_schema:
       type: object
       properties: {}
     pipeline:
@@ -4401,9 +4403,9 @@ func TestE2E_NexusFirewall_MinThreatLevelFiltering(t *testing.T) {
 		results := make([]map[string]interface{}, 0, len(req.Components))
 		for i, comp := range req.Components {
 			result := map[string]interface{}{
-				"quarantined":     false,
-				"catalogDate":     "2025-01-01T00:00:00Z",
-				"component":       comp,
+				"quarantined":      false,
+				"catalogDate":      "2025-01-01T00:00:00Z",
+				"component":        comp,
 				"policyViolations": []map[string]interface{}{},
 			}
 			ver := comp.PackageURL
@@ -4446,15 +4448,15 @@ upstream:
     auth:
       oidc: {enabled: false}
       static: {web_token: ""}
-nativeTools:
+native_tools:
   expose:
     register_all_tools_by_default: false
     includes:
       - ListSearch
-virtualTools:
+virtual_tools:
   - name: maven_top5_versions_safe
     description: Firewall-safe versions
-    inputSchema:
+    input_schema:
       type: object
       required:
         - mavenGroupId

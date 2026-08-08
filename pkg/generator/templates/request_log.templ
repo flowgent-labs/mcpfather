@@ -22,12 +22,19 @@ import (
 //	10+:  trace   — + request body content (first 2048 bytes), response body content
 //
 // Each level includes everything from lower levels. Sensitive headers
-// (Authorization, Cookie) are always redacted unless runtime.log_authorization
+// (Authorization, Cookie) are always redacted unless logging.auth_verbose
 // is explicitly enabled in config.
 var verbosity int
 
 // SetVerbosity sets the request logging verbosity level (0-10).
+// When v is 0 (the default from CLI), falls back to cfg.Logging.Level.
+// Priority: -v CLI flag (v != 0) > MCP__LOGGING__LEVEL ENV > logging.level in config.yaml.
 func SetVerbosity(v int) {
+	if v == 0 {
+		if cfg := GetConfig(); cfg != nil && cfg.Logging.Level > 0 {
+			v = cfg.Logging.Level
+		}
+	}
 	if v < 0 {
 		v = 0
 	}
@@ -100,7 +107,7 @@ func truncateForLog(s string, max int) string {
 
 // printAuth returns true when Authorization/Cookie header values may be logged.
 func printAuth() bool {
-	return logPrintAuth()
+	return loggingPrintAuth()
 }
 
 // headerNames returns a sorted, comma-separated list of header names.
@@ -128,7 +135,7 @@ func IsSensitiveHeader(key string) bool {
 }
 
 // logHeaders prints all header values. Sensitive headers (Authorization, Cookie)
-// are redacted unless runtime.log_authorization is enabled.
+// are redacted unless logging.auth_verbose is enabled.
 func logHeaders(h http.Header, logFn func(string, ...interface{})) {
 	for key, values := range h {
 		isSensitive := strings.EqualFold(key, "Authorization") || strings.EqualFold(key, "Cookie") || strings.EqualFold(key, "Set-Cookie")
@@ -164,7 +171,7 @@ func LogRequest(method string, url string, query map[string][]string, header htt
 			vlog(8, "    req "+format, args...)
 		})
 		if !printAuth() {
-			vlog(8, "    (sensitive header values redacted — set runtime.log_authorization=true to reveal)")
+			vlog(8, "    (sensitive header values redacted — set logging.auth_verbose=true to reveal)")
 		}
 	}
 	// Level 8-9: request body length only
@@ -193,7 +200,7 @@ func LogResponse(ctx context.Context, statusCode int, method string, url string,
 			vlogCtx(ctx, 8, "    resp "+format, args...)
 		})
 		if !printAuth() {
-			vlogCtx(ctx, 8, "    (sensitive header values redacted — set runtime.log_authorization=true to reveal)")
+			vlogCtx(ctx, 8, "    (sensitive header values redacted — set logging.auth_verbose=true to reveal)")
 		}
 	}
 	// Level 8-9: response body length only

@@ -22,7 +22,14 @@ type Tool struct {
 	RawInputSchema  string
 	// UploadContentType is non-empty when this tool accepts a local file path
 	// to upload. The value is the Content-Type header to send upstream.
+	// For multipart/form-data with binary properties, prefer FileArgs (FileRef).
 	UploadContentType string
+	// FileArgs lists multipart file fields that should be accepted as URI
+	// references. When non-empty, the generated handler downloads files from
+	// these URIs, constructs a multipart/form-data request, and forwards it
+	// to upstream. This replaces the base64 file_content approach for
+	// multipart APIs to avoid token/memory explosion.
+	FileArgs []FileArg
 }
 
 // RequestTemplate represents the MCP request template
@@ -47,7 +54,7 @@ type ResponseTemplate struct {
 	PrependBody string
 	StatusCode  int
 	ContentType string
-	Suffix       string 
+	Suffix      string
 }
 
 // ConvertOptions represents options for the conversion process
@@ -67,6 +74,16 @@ type ToolTemplate struct {
 type MCPConfigTemplate struct {
 	Server ServerConfig
 	Tools  ToolTemplate
+}
+
+// FileArg represents a file-type property extracted from a multipart/form-data
+// request body schema. The generated handler accepts a URI for this arg,
+// downloads the file to a local temp directory, and includes it in the
+// multipart request forwarded to the upstream.
+type FileArg struct {
+	Name        string // e.g., "file"
+	Description string
+	Required    bool
 }
 
 // Arg represents an argument in an API, which can come from path, query, or body

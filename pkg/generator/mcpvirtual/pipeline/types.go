@@ -20,11 +20,11 @@ type StepSpec struct {
 
 	// http — call an external HTTP API on a named backend upstream
 	Upstream string                 `yaml:"upstream,omitempty"`
-	Method        string                 `yaml:"method,omitempty"`  // GET, POST, PUT, DELETE
-	Path          string                 `yaml:"path,omitempty"`    // e.g. /api/v2/components
-	Query         map[string]interface{} `yaml:"query,omitempty"`   // query params with $ref resolution
-	Headers       map[string]interface{} `yaml:"headers,omitempty"` // extra headers with $ref resolution
-	Body          interface{}            `yaml:"body,omitempty"`    // request body with $ref resolution
+	Method   string                 `yaml:"method,omitempty"`  // GET, POST, PUT, DELETE
+	Path     string                 `yaml:"path,omitempty"`    // e.g. /api/v2/components
+	Query    map[string]interface{} `yaml:"query,omitempty"`   // query params with $ref resolution
+	Headers  map[string]interface{} `yaml:"headers,omitempty"` // extra headers with $ref resolution
+	Body     interface{}            `yaml:"body,omitempty"`    // request body with $ref resolution
 
 	// jq, return, emit (shared)
 	From string                 `yaml:"from,omitempty"`
@@ -43,7 +43,7 @@ type StepSpec struct {
 // RequireConfig defines post-execution validation on a step's result.
 type RequireConfig struct {
 	NonEmpty bool   `yaml:"nonEmpty"`
-	Field    string `yaml:"field"`    // required field path that must exist in result (e.g. "issues")
+	Field    string `yaml:"field"` // required field path that must exist in result (e.g. "issues")
 	Message  string `yaml:"message"`
 }
 

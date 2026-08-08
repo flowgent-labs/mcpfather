@@ -138,29 +138,29 @@ Example:
 	}
 
 	// Verify the generated code actually compiles
-		proxyURL := os.Getenv("MCPFATHER_TEST_PROXY")
-		if proxyURL == "" {
-			proxyURL = os.Getenv("HTTPS_PROXY")
-		}
-		buildEnv := append(os.Environ(),
-			"GOPROXY=https://goproxy.cn,direct",
-			"GONOSUMCHECK=*",
-			"GOSUMDB=off",
-			"GOTOOLCHAIN=local",
-		)
-		if proxyURL != "" {
-			buildEnv = append(buildEnv, "HTTPS_PROXY="+proxyURL)
-		}
-		tidyCmd := exec.Command("go", "mod", "tidy")
-		tidyCmd.Dir = tmpDir
-		tidyCmd.Env = buildEnv
-		if out, err := tidyCmd.CombinedOutput(); err != nil {
-			t.Fatalf("go mod tidy failed:\n%s", out)
-		}
-		cmd := exec.Command("go", "build", "./...")
-		cmd.Dir = tmpDir
-		cmd.Env = buildEnv
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("Generated code does not compile:\n%s\n%s", out, content)
-		}
+	proxyURL := os.Getenv("MCPFATHER_TEST_PROXY")
+	if proxyURL == "" {
+		proxyURL = os.Getenv("HTTPS_PROXY")
+	}
+	buildEnv := append(os.Environ(),
+		"GOPROXY=https://goproxy.cn,direct",
+		"GONOSUMCHECK=*",
+		"GOSUMDB=off",
+		"GOTOOLCHAIN=local",
+	)
+	if proxyURL != "" {
+		buildEnv = append(buildEnv, "HTTPS_PROXY="+proxyURL)
+	}
+	tidyCmd := exec.Command("go", "mod", "tidy")
+	tidyCmd.Dir = tmpDir
+	tidyCmd.Env = buildEnv
+	if out, err := tidyCmd.CombinedOutput(); err != nil {
+		t.Fatalf("go mod tidy failed:\n%s", out)
+	}
+	cmd := exec.Command("go", "build", "./...")
+	cmd.Dir = tmpDir
+	cmd.Env = buildEnv
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("Generated code does not compile:\n%s\n%s", out, content)
+	}
 }
