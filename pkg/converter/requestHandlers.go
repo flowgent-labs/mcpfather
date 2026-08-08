@@ -160,7 +160,7 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 		if ct == "multipart/form-data" {
 			// For multipart/form-data, prefer the FileRef approach: binary file
 			// properties are converted to URI (string) arguments. The generated
-			// handler downloads each URI to a local temp directory and builds a
+			// handler download each URI to a local temp directory and builds a
 			// proper multipart/form-data request to the upstream. This avoids
 			// the token/memory explosion of base64-encoding file content.
 			fileArgs, formArgs := c.extractMultipartFileArgs(operation)
@@ -199,7 +199,7 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 				tool.Args = append(tool.Args,
 					Arg{
 						Name:        "file_name",
-						Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
+						Description: "File name to upload (looked up in ~/.{project}/upload/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
 						Source:      "body",
 						Required:    false,
 					},
@@ -224,14 +224,14 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 			// video/*, audio/*): use file_name / file_content approach.
 			tool.UploadContentType = ct
 			// Upload tools accept file_name and file_content (both optional).
-			// - file_name: looked up in ~/.{project}/uploads/ (stdio mode) or used when
+			// - file_name: looked up in ~/.{project}/upload/ (stdio mode) or used when
 			//   staging file_content (HTTP mode).
 			// - file_content: base64-encoded file data (HTTP mode).
 			// When neither is provided, the tool falls back to standard JSON body.
 			tool.Args = append(tool.Args,
 				Arg{
 					Name:        "file_name",
-					Description: "File name to upload (looked up in ~/.{project}/uploads/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
+					Description: "File name to upload (looked up in ~/.{project}/upload/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
 					Source:      "body",
 					Required:    false,
 				},

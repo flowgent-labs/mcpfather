@@ -301,7 +301,7 @@ func TestResolveDownloadDir(t *testing.T) {
 		if dir == "" {
 			t.Error("download dir should not be empty")
 		}
-		// Download dir is hardcoded to ~/.{binaryName}/downloads.
+		// Download dir is hardcoded to ~/.{binaryName}/download.
 		// (Users deploying on k8s can mount volumes to this fixed path.)
 	})
 }

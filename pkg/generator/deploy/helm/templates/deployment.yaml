@@ -154,7 +154,7 @@ spec:
             {{- end }}
             {{- if .Values.persistence.enabled }}
             - name: data
-              mountPath: /home/mcp/downloads
+              mountPath: /home/mcp/download
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

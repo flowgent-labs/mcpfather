@@ -206,9 +206,9 @@ func TestDetermineFileName(t *testing.T) {
 	t.Run("from URL path", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
 		defer ts.Close()
-		resp, _ := http.Get(ts.URL + "/downloads/data.csv")
+		resp, _ := http.Get(ts.URL + "/download/data.csv")
 		resp.Header.Set("Content-Type", "text/csv")
-		resp.Request, _ = http.NewRequest("GET", ts.URL+"/downloads/data.csv", nil)
+		resp.Request, _ = http.NewRequest("GET", ts.URL+"/download/data.csv", nil)
 		got := DetermineFileName(resp, "default")
 		if got != "data.csv" {
 			t.Errorf("got %q, want %q", got, "data.csv")

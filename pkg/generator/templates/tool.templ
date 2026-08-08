@@ -43,7 +43,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 	// No file URIs provided: fall through to standard JSON body forwarding.
 {{- else if .UploadContentType }}
-	// Single-file upload (binary content types): read from uploads directory
+	// Single-file upload (binary content types): read from upload directory
 	// or decode base64 content.
 	fileName := ""
 	if fn, ok := args["file_name"]; ok {

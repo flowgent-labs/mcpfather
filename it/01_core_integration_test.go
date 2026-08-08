@@ -935,9 +935,9 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/downloads/ifs/{yyyyMMdd}/ with UUID naming.
+	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
 	// Walk the IFS date directories to find the downloaded file.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "downloads", "ifs")
+	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
 	found := false
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -991,8 +991,8 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 		t.Errorf("expected filename derived from URL path or content-type, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/downloads/ifs/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "downloads", "ifs")
+	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
+	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
 	found := false
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1049,8 +1049,8 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/downloads/ifs/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "downloads", "ifs")
+	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
+	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
 	found := 0
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1081,7 +1081,7 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestUpload_CLI_FromUploadsDir verifies that an upload tool reads a file from
-// the uploads directory (~/.{binaryName}/uploads/) and sends it to the upstream.
+// the upload directory (~/.{binaryName}/upload/) and sends it to the upstream.
 func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterUploadScenario()
@@ -1093,13 +1093,13 @@ func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	binaryName := filepath.Base(dir)
 	homeDir := t.TempDir()
 
-	// Stage the file in the uploads directory
-	uploadsDir := filepath.Join(homeDir, "."+binaryName, "uploads")
-	if err := os.MkdirAll(uploadsDir, 0755); err != nil {
-		t.Fatalf("failed to create uploads dir: %v", err)
+	// Stage the file in the upload directory
+	uploadDir := filepath.Join(homeDir, "."+binaryName, "upload")
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		t.Fatalf("failed to create upload dir: %v", err)
 	}
 	testContent := []byte("hello world upload test content")
-	if err := os.WriteFile(filepath.Join(uploadsDir, "test-upload.bin"), testContent, 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(uploadDir, "test-upload.bin"), testContent, 0644); err != nil {
 		t.Fatalf("failed to stage upload file: %v", err)
 	}
 
@@ -1345,7 +1345,7 @@ func TestFileRef_MultipartUpload_CLI(t *testing.T) {
 }
 
 // TestFileRef_MultipartUpload_HTTP verifies that when a FileRef tool is called
-// in HTTP mode with a file URI, the generated MCP server downloads the file
+// in HTTP mode with a file URI, the generated MCP server download the file
 // and forwards it as a proper multipart/form-data request to the upstream.
 func TestFileRef_MultipartUpload_HTTP(t *testing.T) {
 	mock := NewCoreMockService()
@@ -2583,8 +2583,8 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 		t.Errorf("downloaded content = %q, want %q", string(downloaded), testContent)
 	}
 
-	// Verify file exists on disk in the expected path (IFS uses downloads dir)
-	ifsDataDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "downloads", "ifs", dateStr)
+	// Verify file exists on disk in the expected path (IFS uses download dir)
+	ifsDataDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "download", "ifs", dateStr)
 	stagedFile := filepath.Join(ifsDataDir, testFileName)
 	if _, err := os.Stat(stagedFile); os.IsNotExist(err) {
 		t.Errorf("expected IFS file at %s, but not found", stagedFile)

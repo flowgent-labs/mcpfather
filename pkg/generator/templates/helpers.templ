@@ -455,7 +455,7 @@ func DetermineFileName(resp *http.Response, defaultName string) string {
 	return defaultName + ext
 }
 
-// SaveBinaryStream streams the response body directly to a file in the downloads
+// SaveBinaryStream streams the response body directly to a file in the download
 // directory without buffering the entire content in memory. Returns the file path
 // and the number of bytes written.
 func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, error) {
@@ -485,7 +485,7 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, e
 }
 
 // ForwardAndParseResponse sends a request to the upstream and handles the full
-// response lifecycle: error status codes, binary downloads, and text responses.
+// response lifecycle: error status codes, binary download, and text responses.
 // All non-upload tool handlers call this to eliminate per-tool boilerplate.
 func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, pathKeys []string, contentType, toolName string) (*mcp.CallToolResult, error) {
 	startTime := time.Now()
@@ -520,13 +520,13 @@ func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path str
 	return mcp.NewToolResultText(string(body)), nil
 }
 
-// ForwardUploadRequest reads file data (from uploads directory or base64 content)
+// ForwardUploadRequest reads file data (from upload directory or base64 content)
 // and sends it as the request body to the upstream service.
 //
 // Two modes:
-//   - fileContentBase64 != "": decode and stage in uploads dir, then upload
+//   - fileContentBase64 != "": decode and stage in upload dir, then upload
 //     (supports HTTP mode where clients send file content inline).
-//   - fileContentBase64 == "": read fileName from the uploads directory
+//   - fileContentBase64 == "": read fileName from the upload directory
 //     (supports stdio mode where files are placed on the shared filesystem).
 func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileName, fileContentBase64, contentType, toolName string) (*mcp.CallToolResult, error) {
 	var fileData []byte
@@ -557,7 +557,7 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileN
 		localPath := filepath.Join(uploadDir, filepath.Clean(fileName))
 		data, err := os.ReadFile(localPath)
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s from uploads directory: %v", localPath, err)), nil
+			return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s from upload directory: %v", localPath, err)), nil
 		}
 		fileData = data
 	}
@@ -648,7 +648,7 @@ func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileN
 	return mcp.NewToolResultText(string(body)), nil
 }
 
-// resolveUploadTmpDir returns the subdirectory under the downloads directory
+// resolveUploadTmpDir returns the subdirectory under the download directory
 // where files downloaded from URIs are temporarily staged before being
 // forwarded to the upstream via a multipart request.
 func resolveUploadTmpDir() (string, error) {
@@ -656,11 +656,11 @@ func resolveUploadTmpDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// IFS staging directory for FileRef downloads before multipart forwarding.
+	// IFS staging directory for FileRef download before multipart forwarding.
 	return filepath.Join(downloadDir, "ifs", time.Now().Format("20060102")), nil
 }
 
-// downloadFileFromURI downloads a file from the given URI to a local
+// downloadFileFromURI download a file from the given URI to a local
 // temporary file and returns the local file path and original filename.
 // The caller is responsible for removing the file when it is no longer needed.
 func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localPath string, originalName string, err error) {
@@ -729,7 +729,7 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 
 // ForwardMultipartRequest handles multipart/form-data requests where file
 // arguments are provided as URIs (the FileRef pattern). It:
-//  1. Downloads each file URI to a local temp directory (~/.{service}/downloads/tmp/)
+//  1. Downloads each file URI to a local temp directory (~/.{service}/download/tmp/)
 //  2. Builds a multipart/form-data request body with form fields and file parts
 //  3. Sends the request to the upstream service
 //  4. Cleans up temporary files
@@ -988,7 +988,7 @@ func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
-// HandleIFSUpload accepts binary file uploads to the IFS upload directory.
+// HandleIFSUpload accepts binary file upload to the IFS upload directory.
 // URL pattern: POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
 // The client can POST raw binary body (Content-Type: application/octet-stream)
 // or multipart/form-data with a "file" field.
