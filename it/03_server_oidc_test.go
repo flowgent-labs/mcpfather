@@ -656,7 +656,7 @@ func startMCPServer(t *testing.T, issuer, audience string) (baseURL string, clea
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -670,10 +670,10 @@ server:
       issuer: %s
       audience: %s
 `, mock.server.URL, issuer, audience)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
-	logProgress("[mcp-server] launching %s on port %s", binaryName, port)
+	logProgress("[mcp-server] launching %s on port %s", serviceName, port)
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	var stderrBuf strings.Builder
@@ -837,7 +837,7 @@ func TestServer_StdioNoAuth(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -851,7 +851,7 @@ server:
       issuer: %s
       audience: mcpfather-frontend-test
 `, mock.server.URL, issuer)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	cmd := exec.Command(binPath, "--transport", "stdio")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
@@ -892,7 +892,7 @@ func TestServer_DeviceCodeFlow_Keycloak(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -906,7 +906,7 @@ server:
       issuer: %s
       audience: mcpfather
 `, mock.server.URL, issuer)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
@@ -1024,7 +1024,7 @@ func TestServer_ClientCredentialsFlow_Keycloak(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -1038,7 +1038,7 @@ server:
       issuer: %s
       audience: mcpfather
 `, mock.server.URL, issuer)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
@@ -1272,7 +1272,7 @@ func TestServer_ClientTokenForwardingDisabled(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -1287,7 +1287,7 @@ server:
       audience: mcpfather
       enable_client_token_claim_forward: false
 `, mock.server.URL, issuer)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")

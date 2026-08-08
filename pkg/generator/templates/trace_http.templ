@@ -15,6 +15,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
 )
@@ -60,13 +61,17 @@ func InitTracing(cfg OtelConfig) {
 			sampler = sdktrace.TraceIDRatioBased(cfg.SampleRate)
 		}
 
+		res := resource.NewSchemaless(
+			attribute.String("service.name", resolveServiceName()),
+		)
 		traceProvider = sdktrace.NewTracerProvider(
 			sdktrace.WithBatcher(exp),
 			sdktrace.WithSampler(sampler),
+			sdktrace.WithResource(res),
 		)
 		otel.SetTracerProvider(traceProvider)
 		otel.SetTextMapPropagator(propagation.TraceContext{})
-		appTracer = traceProvider.Tracer("mcp-tools")
+		appTracer = traceProvider.Tracer(resolveServiceName())
 		traceReady = true
 	})
 }

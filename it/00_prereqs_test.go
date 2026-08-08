@@ -73,7 +73,7 @@ func helmBinary() string {
 	)
 }
 
-// ensureBinary downloads a tool to $CACHE/name if nothing was found.
+// ensureBinary download a tool to $CACHE/name if nothing was found.
 func ensureBinary(name, linuxURL, darwinURL string, extraDirs ...string) {
 	if p := lookPathMulti(name, extraDirs...); p != "" {
 		return // already available
@@ -204,7 +204,7 @@ func autoSetup() {
 	}
 }
 
-// installFromURL downloads a file to dest.
+// installFromURL download a file to dest.
 func installFromURL(dst, url string) error {
 	resp, err := http.Get(url)
 	if err != nil {
