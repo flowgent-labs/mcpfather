@@ -22,6 +22,11 @@ type Config struct {
 // ServerConfig holds the inbound-facing (AI agent client MCP request) configuration.
 type ServerConfig struct {
 	Auth ServerAuthConfig `yaml:"auth"`
+	// Override the default service name (derived from the binary name).
+	// Affects filesystem paths (~/.{serviceName}/config.yaml,
+	// ~/.{serviceName}/ifs/{download,upload}) and OpenTelemetry
+	// service.name resource attribute. Default (empty): uses the binary name.
+	ServiceName string `yaml:"service_name"`
 	// HTTP server timeouts in seconds. Zero means no timeout (use with
 	// caution: connections without timeouts can leak under slow-client attacks).
 	// write_timeout_seconds applies to each write; set to 0 for SSE/streaming
@@ -41,7 +46,7 @@ type ServerConfig struct {
 // data plane, separate from the JSON-RPC 2.0 control plane at /mcp.
 // Upload:  POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
 // Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-// Files are stored under ~/.{binaryName}/{downloads,uploads}/ifs/{yyyyMMdd}/.
+// Files are stored under ~/.{serviceName}/ifs/{download,upload}/{yyyyMMdd}/.
 type IFSConfig struct {
 	Enabled bool `yaml:"enabled"`
 }

@@ -235,7 +235,7 @@ func TestOIDCFullE2E(t *testing.T) {
 
 	projectDir := genProject(t, "", "")
 	binPath := buildServer(t, projectDir)
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	homeDir := t.TempDir()
 	configYAML := fmt.Sprintf(`
@@ -250,7 +250,7 @@ upstream:
         scopes: openid
     endpoint: %s
 `, issuer, mock.server.URL)
-	writeCoreVirtualConfig(t, homeDir, binaryName, configYAML)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
 
