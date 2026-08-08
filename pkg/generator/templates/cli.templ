@@ -48,7 +48,7 @@ func (r *virtualRegistry) CallTool(ctx context.Context, name string, args map[st
 
 // loadVirtualTools loads virtual tools from config and returns a name→entry map.
 func loadVirtualTools() map[string]pipeline.VirtualToolEntry {
-	cfgPath := mcputils.VirtualConfigPath("{{.BinaryName}}")
+	cfgPath := mcputils.VirtualConfigPath()
 	aggEngine, err := engine.New(cfgPath, &virtualRegistry{}, &mcputils.NamedUpstreamHTTPClient{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
@@ -69,7 +69,7 @@ func loadVirtualTools() map[string]pipeline.VirtualToolEntry {
 // ListTools prints all available tools as subcommands with one-line descriptions.
 // Respects the config.yaml tools.expose filter if present.
 func ListTools() {
-	cfg, _ := mcputils.LoadConfig("{{ .BinaryName }}")
+	cfg, _ := mcputils.LoadConfig("{{ .ServiceName }}")
 	enabled := resolveEnabledTools(cfg)
 
 	type toolInfo struct {
@@ -98,7 +98,7 @@ func ListTools() {
 	})
 
 	if len(nativeTools) == 0 {
-		fmt.Fprintf(os.Stderr, "Warning: no native tools are enabled. To expose native tools, set native_tools.expose.register_all_tools_by_default: true or add tool names to tools.expose.includes in ~/.{{ .BinaryName }}/config.yaml\n")
+		fmt.Fprintf(os.Stderr, "Warning: no native tools are enabled. To expose native tools, set native_tools.expose.register_all_tools_by_default: true or add tool names to tools.expose.includes in ~/.{{ .ServiceName }}/config.yaml\n")
 	}
 
 	fmt.Printf("Available subcommands (%d):\n", len(allTools))
@@ -152,7 +152,7 @@ func Call(binName, toolName string, args []string) error {
 }
 
 func callNative(binName, toolName string, args []string, entry mcptools.ToolEntry) error {
-	cfg, _ := mcputils.LoadConfig("{{.BinaryName}}")
+	cfg, _ := mcputils.LoadConfig("{{.ServiceName}}")
 	if cfg != nil {
 		mcputils.SetConfig(cfg)
 		if cfg.Tools.Expose != nil {

@@ -49,6 +49,15 @@
 
 # ---- Server (inbound auth) ----
 server:
+  # Override the default service name (derived from the binary name).
+  # Affects filesystem paths and OpenTelemetry service.name.
+  # service_name: ""
+
+  # HTTP server timeouts in seconds. 0 = disabled.
+  # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
+  read_timeout_seconds: 30
+  write_timeout_seconds: 0
+  idle_timeout_seconds: 120
   auth:
     oidc:
       enabled: false
@@ -61,15 +70,10 @@ server:
   # JSON-RPC 2.0 control plane at /mcp.
   # Upload:   POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
   # Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-  # Files stored under ~/.<app>/{download,upload}/ifs/{yyyyMMdd}/
+  # Files stored under ~/.<app>/ifs/{download,upload}/{yyyyMMdd}/
   # with UUID-based filenames to prevent collisions.
   ifs:
     enabled: true
-  # HTTP server timeouts in seconds. 0 = disabled.
-  # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
-  read_timeout_seconds: 30
-  write_timeout_seconds: 0
-  idle_timeout_seconds: 120
 
 # ---- Logging ----
 logging:

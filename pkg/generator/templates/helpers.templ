@@ -464,9 +464,9 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, e
 	if err != nil {
 		return "", 0, err
 	}
-	// IFS (Internal File System): store under ifs/{yyyyMMdd}/ with UUID.{suffix} naming
+	// IFS (Internal File System): store under {yyyyMMdd}/ with UUID.{suffix} naming
 	// to prevent collisions when the same file is downloaded multiple times.
-	dateDir := filepath.Join(downloadDir, "ifs", time.Now().Format("20060102"))
+	dateDir := filepath.Join(downloadDir, time.Now().Format("20060102"))
 	if err := os.MkdirAll(dateDir, 0755); err != nil {
 		return "", 0, fmt.Errorf("failed to create IFS download directory %s: %w", dateDir, err)
 	}
@@ -656,8 +656,8 @@ func resolveUploadTmpDir() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// IFS staging directory for FileRef download before multipart forwarding.
-	return filepath.Join(downloadDir, "ifs", time.Now().Format("20060102")), nil
+	// Staging directory for FileRef download before multipart forwarding.
+	return filepath.Join(downloadDir, time.Now().Format("20060102")), nil
 }
 
 // downloadFileFromURI download a file from the given URI to a local
@@ -939,11 +939,6 @@ func generateFileID(originalName string) string {
 	return uuid.New().String() + suffix
 }
 
-// ifsDateDir returns the date-stamped IFS subdirectory under baseDir.
-func ifsDateDir(baseDir string) string {
-	return filepath.Join(baseDir, "ifs", time.Now().Format("20060102"))
-}
-
 // ---- IFS Data Plane HTTP Handlers ----
 //
 // These built-in REST endpoints form the "data plane" for binary file transfer,
@@ -977,10 +972,10 @@ func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filePath := filepath.Join(downloadDir, "ifs", relPath)
+	filePath := filepath.Join(downloadDir, relPath)
 	// Prevent directory traversal
 	filePath = filepath.Clean(filePath)
-	if !strings.HasPrefix(filePath, filepath.Clean(filepath.Join(downloadDir, "ifs"))) {
+	if !strings.HasPrefix(filePath, filepath.Clean(downloadDir)) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -1013,13 +1008,13 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	downloadDir, err := resolveDownloadDir()
+	uploadDir, err := resolveUploadDir()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	dateDir := filepath.Join(downloadDir, "ifs", parts[0])
+	dateDir := filepath.Join(uploadDir, parts[0])
 	if err := os.MkdirAll(dateDir, 0755); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create upload directory: %v", err), http.StatusInternalServerError)
 		return
@@ -1028,7 +1023,7 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 	destPath := filepath.Join(dateDir, parts[1])
 	// Prevent directory traversal
 	destPath = filepath.Clean(destPath)
-	if !strings.HasPrefix(destPath, filepath.Clean(filepath.Join(downloadDir, "ifs"))) {
+	if !strings.HasPrefix(destPath, filepath.Clean(uploadDir)) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}

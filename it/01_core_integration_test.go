@@ -921,7 +921,7 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 	projectDir := genProject(t, "downloadReport", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -935,9 +935,9 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
+	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
 	// Walk the IFS date directories to find the downloaded file.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
+	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
 	found := false
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -970,7 +970,7 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 	projectDir := genProject(t, "downloadReport", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -991,8 +991,8 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 		t.Errorf("expected filename derived from URL path or content-type, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
+	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
+	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
 	found := false
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1035,7 +1035,7 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 	projectDir := genProjectWithSpec(t, "testdata/binary_spec.yaml", "downloadBytes", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -1049,8 +1049,8 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
 	}
 
-	// Files are saved under ~/.{binaryName}/download/ifs/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+binaryName, "download", "ifs")
+	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
+	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
 	found := 0
 	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
@@ -1081,7 +1081,7 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestUpload_CLI_FromUploadsDir verifies that an upload tool reads a file from
-// the upload directory (~/.{binaryName}/upload/) and sends it to the upstream.
+// the upload directory (~/.{serviceName}/upload/) and sends it to the upstream.
 func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterUploadScenario()
@@ -1090,11 +1090,11 @@ func TestUpload_CLI_FromUploadsDir(t *testing.T) {
 
 	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
 	binPath := buildServer(t, dir)
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 	homeDir := t.TempDir()
 
 	// Stage the file in the upload directory
-	uploadDir := filepath.Join(homeDir, "."+binaryName, "upload")
+	uploadDir := filepath.Join(homeDir, "."+serviceName, "upload")
 	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		t.Fatalf("failed to create upload dir: %v", err)
 	}
@@ -1944,7 +1944,7 @@ func TestE2E_Core_ChainedNativeTools(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	virtConfig := `
 virtual_tools:
@@ -1974,7 +1974,7 @@ virtual_tools:
         spec:
           from: $greet
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, virtConfig)
+	writeCoreVirtualConfig(t, homeDir, serviceName, virtConfig)
 
 	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
 	defer cleanup()
@@ -2047,7 +2047,7 @@ func TestConfig_RegisterAllToolsByDefault_True_WithExcludes(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2056,7 +2056,7 @@ native_tools:
     excludes:
       - DownloadReport
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2113,7 +2113,7 @@ func TestConfig_RegisterAllToolsByDefault_False_WithIncludes(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2123,7 +2123,7 @@ native_tools:
       - EchoHeaders
       - SayHello
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2160,7 +2160,7 @@ func TestConfig_RegisterAllToolsByDefault_False_Default_EmptyIncludes_NoTools(t 
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2168,7 +2168,7 @@ native_tools:
     register-all-tools-by-default: false
     includes: []
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, dir)
 	stdout, _ := runCLI(t, binPath,
@@ -2199,7 +2199,7 @@ func TestConfig_IncludesAndExcludes_Conflict_ServerFailsToStart(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2210,7 +2210,7 @@ native_tools:
     excludes:
       - EchoHeaders
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, dir)
 
@@ -2265,7 +2265,7 @@ func TestConfig_IncludesAndExcludes_NoConflict_Success(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2276,7 +2276,7 @@ native_tools:
     excludes:
       - DownloadReport
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2318,7 +2318,7 @@ func TestConfig_ExposeIncludes_WithAllDefaultFalse_AddsTools(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2329,7 +2329,7 @@ native_tools:
     excludes:
       - SayHello
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2374,7 +2374,7 @@ func TestConfig_CLI_ListRespectsConfig(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2383,7 +2383,7 @@ native_tools:
     includes:
       - EchoHeaders
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, dir)
 	stdout, _ := runCLI(t, binPath,
@@ -2416,7 +2416,7 @@ func TestConfig_CLI_CallRespectsConfig(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2425,7 +2425,7 @@ native_tools:
     includes:
       - EchoHeaders
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, dir)
 	env := []string{
@@ -2458,7 +2458,7 @@ func TestConfig_EmptyExpose_AllToolsAvailable(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	// Config file with upstream section only, no tools.expose
 	cfg := `
@@ -2466,7 +2466,7 @@ upstream:
     enable_mcp_session_forward: false
 runtime:
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2493,7 +2493,7 @@ func TestConfig_IncludesNotFoundInRegistry_NoError(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	cfg := `
 native_tools:
@@ -2503,7 +2503,7 @@ native_tools:
       - EchoHeaders
       - NonExistentTool
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
 	defer cleanup()
@@ -2584,7 +2584,7 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 	}
 
 	// Verify file exists on disk in the expected path (IFS uses download dir)
-	ifsDataDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "download", "ifs", dateStr)
+	ifsDataDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "download", dateStr)
 	stagedFile := filepath.Join(ifsDataDir, testFileName)
 	if _, err := os.Stat(stagedFile); os.IsNotExist(err) {
 		t.Errorf("expected IFS file at %s, but not found", stagedFile)
@@ -2601,14 +2601,14 @@ func TestIFS_DisabledByConfig(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	cfg := `
 server:
   ifs:
     enabled: false
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, projectDir)
 	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
@@ -2655,14 +2655,14 @@ func TestLoggingConfig_LevelFromConfig(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(projectDir)
+	serviceName := filepath.Base(projectDir)
 
 	cfg := `
 logging:
   level: 4
   auth_verbose: false
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, projectDir)
 	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
@@ -2762,7 +2762,7 @@ func TestEnvOverride_ArrayFields(t *testing.T) {
 
 	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
 	homeDir := t.TempDir()
-	binaryName := filepath.Base(dir)
+	serviceName := filepath.Base(dir)
 
 	// Write config with register_all_tools_by_default: false, no includes.
 	// Then override includes via ENV array vars.
@@ -2772,7 +2772,7 @@ native_tools:
     register-all-tools-by-default: false
     includes: []
 `
-	writeCoreVirtualConfig(t, homeDir, binaryName, cfg)
+	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, dir)
 	env := []string{
@@ -3013,11 +3013,11 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 }
 
 // writeCoreVirtualConfig writes an virtual tools config for core tests.
-func writeCoreVirtualConfig(t *testing.T, homeDir, binaryName, yamlContent string) {
+func writeCoreVirtualConfig(t *testing.T, homeDir, serviceName, yamlContent string) {
 	t.Helper()
-	logProgress("[config] writing config for %s (home=%s)", binaryName, homeDir)
+	logProgress("[config] writing config for %s (home=%s)", serviceName, homeDir)
 	t.Helper()
-	configDir := filepath.Join(homeDir, "."+binaryName)
+	configDir := filepath.Join(homeDir, "."+serviceName)
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		t.Fatalf("failed to create config dir: %v", err)
 	}

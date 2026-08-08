@@ -293,7 +293,7 @@ func TestForwardRequest_WithMockUpstream(t *testing.T) {
 	defer ts.Close()
 
 	t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-	LoadConfig("{{.BinaryName}}")
+	LoadConfig("{{.ServiceName}}")
 
 	t.Run("GET request", func(t *testing.T) {
 		ctx := context.Background()
@@ -437,7 +437,7 @@ func TestForwardUploadRequest(t *testing.T) {
 		tmpDir := t.TempDir()
 		oldCfg := GetConfig()
 		t.Setenv("MCP__RUNTIME__DOWNLOAD_DIR", tmpDir)
-		LoadConfig("{{.BinaryName}}")
+		LoadConfig("{{.ServiceName}}")
 		defer SetConfig(oldCfg)
 
 		content := "dGVzdCBjb250ZW50" // base64 of "test content"
