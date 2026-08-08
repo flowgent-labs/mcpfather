@@ -3012,6 +3012,85 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 	return
 }
 
+// TestEnvOverride_MgmtEnabledViaEnv verifies that MCP__MGMT__ENABLED=false
+// (pointer *bool field) disables the management server.
+func TestEnvOverride_MgmtEnabledViaEnv(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterEchoAuthScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	projectDir := genProject(t, "echoHeaders", "")
+	binPath := buildServer(t, projectDir)
+	homeDir := t.TempDir()
+	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
+	cmd.Env = append(os.Environ(),
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		// *bool field: mgmt.enabled = false
+		"MCP__MGMT__ENABLED=false",
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start HTTP server: %v", err)
+	}
+	defer func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}()
+
+	baseURL := "http://localhost:" + port
+	waitForServer(t, baseURL)
+
+	// Management server should be DISABLED — /health on default port must refuse
+	mgmtURL := fmt.Sprintf("http://localhost:%d/health", 9991)
+	resp, err := http.Get(mgmtURL)
+	if err == nil {
+		resp.Body.Close()
+		t.Error("mgmt /health should be unreachable when mgmt.enabled=false via ENV")
+	}
+}
+
+// TestEnvOverride_NativeToolsArrayViaEnv verifies that MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__0
+// properly sets array values when no config file exists (default nil *Expose pointer).
+func TestEnvOverride_NativeToolsArrayViaEnv(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterEchoAuthScenario()
+	mock.RegisterGreetingScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
+	binPath := buildServer(t, dir)
+	homeDir := t.TempDir()
+
+	// NO config file — rely entirely on ENV overrides, which must
+	// initialise the nil *NativeToolsExposeConfig pointer on demand.
+	env := []string{
+		"HOME=" + homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+		"MCP__NATIVE_TOOLS__EXPOSE__REGISTER_ALL_TOOLS_BY_DEFAULT=false",
+		"MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__0=EchoHeaders",
+		"MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__1=SayHello",
+	}
+
+	stdout, _ := runCLI(t, binPath, env, "-t", "cli", "list")
+
+	if !strings.Contains(stdout, "EchoHeaders") {
+		t.Error("CLI list should contain EchoHeaders (via array ENV override, no config file)")
+	}
+	if !strings.Contains(stdout, "SayHello") {
+		t.Error("CLI list should contain SayHello (via array ENV override, no config file)")
+	}
+	// DownloadReport was NOT included
+	if strings.Contains(stdout, "DownloadReport") {
+		t.Errorf("DownloadReport should NOT appear — not in includes array, got: %s", stdout)
+	}
+}
+
 // writeCoreVirtualConfig writes an virtual tools config for core tests.
 func writeCoreVirtualConfig(t *testing.T, homeDir, serviceName, yamlContent string) {
 	t.Helper()
