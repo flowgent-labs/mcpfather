@@ -24,7 +24,7 @@ server:
   # JSON-RPC 2.0 control plane at /mcp.
   # Upload:   POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
   # Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-  # Files stored under ~/.<app>/{downloads,uploads}/ifs/{yyyyMMdd}/
+  # Files stored under ~/.<app>/{download,upload}/ifs/{yyyyMMdd}/
   # with UUID-based filenames to prevent collisions.
   ifs:
     enabled: true

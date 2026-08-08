@@ -557,22 +557,22 @@ func loggingPrintAuth() bool {
 }
 
 // resolveUploadDir returns the directory where uploaded files are staged.
-// Defaults to ~/.{binaryName}/uploads.
+// Defaults to ~/.{binaryName}/upload.
 func resolveUploadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+binaryName, "uploads"), nil
+		return filepath.Join(home, "."+binaryName, "upload"), nil
 	}
-	return "." + binaryName + "/uploads", nil
+	return "." + binaryName + "/upload", nil
 }
 
 // resolveDownloadDir returns the directory for downloaded files.
-// Hardcoded to ~/.{binaryName}/downloads (users deploying on k8s can mount
+// Hardcoded to ~/.{binaryName}/download (users deploying on k8s can mount
 // a volume to this fixed path).
 func resolveDownloadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+binaryName, "downloads"), nil
+		return filepath.Join(home, "."+binaryName, "download"), nil
 	}
-	return "." + binaryName + "/downloads", nil
+	return "." + binaryName + "/download", nil
 }

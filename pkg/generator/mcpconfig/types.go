@@ -41,7 +41,7 @@ type ServerConfig struct {
 // data plane, separate from the JSON-RPC 2.0 control plane at /mcp.
 // Upload:  POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
 // Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-// Files are stored under ~/.{binaryName}/{downloads,uploads}/ifs/{yyyyMMdd}/.
+// Files are stored under ~/.{binaryName}/{download,upload}/ifs/{yyyyMMdd}/.
 type IFSConfig struct {
 	Enabled bool `yaml:"enabled"`
 }

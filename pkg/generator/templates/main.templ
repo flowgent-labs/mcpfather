@@ -166,7 +166,7 @@ func printDefaultConfigYAML() {
 	fmt.Println("  # JSON-RPC 2.0 control plane at /mcp.")
 	fmt.Println("  # Upload:   POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}")
 	fmt.Println("  # Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}")
-	fmt.Println("  # Files stored under ~/." + "{{.BinaryName}}" + "/{downloads,uploads}/ifs/{yyyyMMdd}/")
+	fmt.Println("  # Files stored under ~/." + "{{.BinaryName}}" + "/{download,upload}/ifs/{yyyyMMdd}/")
 	fmt.Println("  # with UUID-based filenames to prevent collisions.")
 	fmt.Println("  ifs:")
 	fmt.Println("    enabled: true")
