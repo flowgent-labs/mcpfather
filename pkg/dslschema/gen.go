@@ -36,7 +36,7 @@ func Generate() schemagen.Schema {
 		},
 		StepKinds: pipeline.StepKinds,
 		ExtraRootProps: map[string]schemagen.Schema{
-			"virtualTools": {
+			"virtual_tools": {
 				"type":     "array",
 				"minItems": 1,
 				"items":    schemagen.Schema{"$ref": "#/$defs/VirtualTool"},

@@ -11,25 +11,47 @@ package mcpconfig
 
 // Config is the root configuration for the MCP server.
 type Config struct {
-	Server    ServerConfig                   `yaml:"server"`
-	Upstream map[string]UpstreamEntryConfig `yaml:"upstream"`
-	Tools     NativeToolsConfig              `yaml:"nativeTools"`
-	Mgmt      MgmtConfig                     `yaml:"mgmt"`
-	Runtime   RuntimeConfig                  `yaml:"runtime"`
+	Server       ServerConfig                   `yaml:"server"`
+	Upstream     map[string]UpstreamEntryConfig `yaml:"upstream"`
+	Tools        NativeToolsConfig              `yaml:"native_tools"`
+	Mgmt         MgmtConfig                     `yaml:"mgmt"`
+	Logging      LoggingConfig                  `yaml:"logging"`
+	VirtualTools []VirtualToolPipelineConfig    `yaml:"virtual_tools"`
 }
 
 // ServerConfig holds the inbound-facing (AI agent client MCP request) configuration.
 type ServerConfig struct {
-	Auth                ServerAuthConfig `yaml:"auth"`
-	MaxParallelRequests int              `yaml:"max_parallel_requests"`
+	Auth ServerAuthConfig `yaml:"auth"`
+	// HTTP server timeouts in seconds. Zero means no timeout (use with
+	// caution: connections without timeouts can leak under slow-client attacks).
+	// write_timeout_seconds applies to each write; set to 0 for SSE/streaming
+	// endpoints where the response is written incrementally over long periods.
+	ReadTimeoutSeconds  int `yaml:"read_timeout_seconds"`
+	WriteTimeoutSeconds int `yaml:"write_timeout_seconds"`
+	IdleTimeoutSeconds  int `yaml:"idle_timeout_seconds"`
+	// Internal File System (IFS) REST API for binary data plane —
+	// provides built-in HTTP endpoints for uploading and downloading binary
+	// files, separating the data plane (IFS) from the control plane (JSON-RPC /mcp).
+	// Default: enabled. Set to false to disable for pure JSON-RPC deployments.
+	IFS IFSConfig `yaml:"ifs"`
+}
+
+// IFSConfig controls the Internal File System (IFS) REST API — built-in
+// HTTP endpoints that handle binary file upload/download as a dedicated
+// data plane, separate from the JSON-RPC 2.0 control plane at /mcp.
+// Upload:  POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
+// Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
+// Files are stored under ~/.{binaryName}/{downloads,uploads}/ifs/{yyyyMMdd}/.
+type IFSConfig struct {
+	Enabled bool `yaml:"enabled"`
 }
 
 // UpstreamEntryConfig configures a named upstream backend for http pipeline nodes
 // and native tool forwarding. The key "default" is the primary upstream.
 type UpstreamEntryConfig struct {
-	Endpoint                string              `yaml:"endpoint"`
-	EnableMCPSessionForward bool                `yaml:"enable_mcp_session_forward"`
-	Auth                    UpstreamAuthConfig  `yaml:"auth"`
+	Endpoint                string             `yaml:"endpoint"`
+	EnableMCPSessionForward bool               `yaml:"enable_mcp_session_forward"`
+	Auth                    UpstreamAuthConfig `yaml:"auth"`
 }
 
 // ---- auth ----
@@ -146,12 +168,31 @@ func (c MetricsConfig) IsEnabled() bool {
 	return *c.Enabled
 }
 
-// ---- runtime ----
+// ---- logging ----
 
-// RuntimeConfig holds operational runtime settings.
-type RuntimeConfig struct {
-	DownloadDir      string `yaml:"download_dir"`
-	LogAuthorization bool   `yaml:"log_authorization"`
+// LoggingConfig controls server-side request/response logging.
+type LoggingConfig struct {
+	// Level sets the logging verbosity level (0-10) from the config file,
+	// equivalent to the -v CLI flag. Priority: -v CLI > MCP__LOGGING__LEVEL ENV > logging.level in config.yaml.
+	// 0=silent, 1-3=status+duration, 4-7=+headers(names), 8-9=+headers(values)+body(len), 10=+body(content)
+	Level int `yaml:"level"`
+	// AuthVerbose enables logging of Authorization/Cookie header values.
+	// Default: false (values are redacted).
+	AuthVerbose bool `yaml:"auth_verbose"`
+}
+
+// ---- virtual tools ----
+
+// VirtualToolPipelineConfig holds a single virtual tool pipeline definition.
+// Virtual tools compose multiple native tools into a single AI-callable tool
+// via a declarative pipeline (call -> jq -> foreach -> emit -> return).
+// Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
+type VirtualToolPipelineConfig struct {
+	Name        string                   `yaml:"name"`
+	Description string                   `yaml:"description"`
+	InputSchema map[string]interface{}   `yaml:"input_schema"`
+	Pipeline    []map[string]interface{} `yaml:"pipeline"`
+	Annotations map[string]interface{}   `yaml:"annotations,omitempty"`
 }
 
 // ---- defaults ----
@@ -166,7 +207,12 @@ func DefaultConfig() *Config {
 					EnableClientTokenClaimForward: true,
 				},
 			},
-			MaxParallelRequests: 100,
+			ReadTimeoutSeconds:  30,
+			WriteTimeoutSeconds: 0, // 0 = disabled (required for SSE streaming)
+			IdleTimeoutSeconds:  120,
+			IFS: IFSConfig{
+				Enabled: true,
+			},
 		},
 		Upstream: map[string]UpstreamEntryConfig{
 			"default": {
@@ -186,6 +232,10 @@ func DefaultConfig() *Config {
 					"task": {0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 30, 60, 120},
 				},
 			},
+		},
+		Logging: LoggingConfig{
+			Level:       0,
+			AuthVerbose: false,
 		},
 	}
 	return cfg

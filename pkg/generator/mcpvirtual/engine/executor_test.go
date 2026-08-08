@@ -363,8 +363,8 @@ func TestExecutor_HTTPStep(t *testing.T) {
 			Kind: "http",
 			Spec: pipeline.StepSpec{
 				Upstream: "sonatypeiq",
-				Method:        "GET",
-				Path:          "/api/v2/components",
+				Method:   "GET",
+				Path:     "/api/v2/components",
 			},
 		},
 		{
@@ -394,8 +394,8 @@ func TestExecutor_HTTPStepNilClient(t *testing.T) {
 			Kind: "http",
 			Spec: pipeline.StepSpec{
 				Upstream: "sonatypeiq",
-				Method:        "GET",
-				Path:          "/api/v2/components",
+				Method:   "GET",
+				Path:     "/api/v2/components",
 			},
 		},
 	}
@@ -419,8 +419,8 @@ func TestExecutor_HTTPStepNon2xx(t *testing.T) {
 			Kind: "http",
 			Spec: pipeline.StepSpec{
 				Upstream: "sonatypeiq",
-				Method:        "GET",
-				Path:          "/api/v2/components",
+				Method:   "GET",
+				Path:     "/api/v2/components",
 			},
 		},
 	}
