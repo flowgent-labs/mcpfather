@@ -3377,7 +3377,7 @@ upstream:
       static:
         web_token: ""
 runtime:
-  download_dir: /tmp/downloads
+  download_dir: /tmp/download
   log_authorization: false
 mgmt:
   enabled: true

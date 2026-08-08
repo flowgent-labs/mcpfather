@@ -25,7 +25,7 @@ type Tool struct {
 	// For multipart/form-data with binary properties, prefer FileArgs (FileRef).
 	UploadContentType string
 	// FileArgs lists multipart file fields that should be accepted as URI
-	// references. When non-empty, the generated handler downloads files from
+	// references. When non-empty, the generated handler download files from
 	// these URIs, constructs a multipart/form-data request, and forwards it
 	// to upstream. This replaces the base64 file_content approach for
 	// multipart APIs to avoid token/memory explosion.
@@ -78,7 +78,7 @@ type MCPConfigTemplate struct {
 
 // FileArg represents a file-type property extracted from a multipart/form-data
 // request body schema. The generated handler accepts a URI for this arg,
-// downloads the file to a local temp directory, and includes it in the
+// download the file to a local temp directory, and includes it in the
 // multipart request forwarded to the upstream.
 type FileArg struct {
 	Name        string // e.g., "file"
