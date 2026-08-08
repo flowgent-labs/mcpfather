@@ -1,0 +1,38 @@
+openapi: "3.0.3"
+info:
+  title: Named Multipart Upload Test (SonatypeIQ SAML)
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /v2/config/saml:
+    put:
+      operationId: configSaml
+      summary: Enable SSO using SAML (multipart with named binary field)
+      description: Mirrors SonatypeIQ PUT /api/v2/config/saml. Uses multipart/form-data
+        with a named binary property identityProviderXml and a non-binary
+        samlConfiguration field.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - identityProviderXml
+                - samlConfiguration
+              properties:
+                identityProviderXml:
+                  type: string
+                  format: binary
+                  description: SAML metadata XML of the IdP
+                samlConfiguration:
+                  type: string
+                  description: JSON-serialised SAML configuration DTO
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

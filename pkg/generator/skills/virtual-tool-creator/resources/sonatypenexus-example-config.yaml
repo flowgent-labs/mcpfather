@@ -51,7 +51,6 @@
 server:
   # Override the default service name (derived from the binary name).
   # Affects filesystem paths and OpenTelemetry service.name.
-  # service_name: ""
 
   # HTTP server timeouts in seconds. 0 = disabled.
   # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.

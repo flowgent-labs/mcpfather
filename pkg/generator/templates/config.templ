@@ -76,9 +76,9 @@ func LoadConfig(name string) (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("home dir: %w", err)
 	}
-	// Allow MCP__SERVER__SERVICE_NAME env to point to a custom config location.
+	// Allow MCP__SERVER__NAME env to point to a custom config location.
 	configDir := serviceName
-	if env := os.Getenv("MCP__SERVER__SERVICE_NAME"); env != "" {
+	if env := os.Getenv("MCP__SERVER__NAME"); env != "" {
 		configDir = env
 	}
 	configPath := filepath.Join(home, "."+configDir, "config.yaml")
@@ -422,16 +422,12 @@ func normalizeConfigKey(s string) string {
 
 // resolveServiceName returns the effective service name for filesystem paths
 // and OpenTelemetry resource attributes. Resolution order:
-//  1. MCP__SERVER__SERVICE_NAME environment variable
+//  1. MCP__SERVER__NAME environment variable
 //  2. server.service_name in the loaded config (SetConfig must have been called)
 //  3. The default name passed to LoadConfig (the generated MCP server binary name)
 func resolveServiceName() string {
-	if env := os.Getenv("MCP__SERVER__SERVICE_NAME"); env != "" {
+	if env := os.Getenv("MCP__SERVER__NAME"); env != "" {
 		return env
-	}
-	cfg := GetConfig()
-	if cfg != nil && cfg.Server.ServiceName != "" {
-		return cfg.Server.ServiceName
 	}
 	return serviceName
 }

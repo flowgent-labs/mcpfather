@@ -252,7 +252,7 @@ upstream:
 `, issuer, mock.server.URL)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(),
@@ -291,5 +291,72 @@ upstream:
 		t.Errorf("expected Bearer token, got: %s", auth)
 	} else {
 		t.Logf("Upstream received valid Bearer token from real Keycloak (len=%d)", len(auth))
+	}
+}
+
+// TestOIDCClientSecretFileFullE2E verifies Kubernetes-style secret file mounts:
+// the generated server reads upstream.default.auth.oidc.client_secret_file and
+// uses that value for the OIDC client_credentials token exchange.
+func TestOIDCClientSecretFileFullE2E(t *testing.T) {
+	oidc := startMockOIDCServer(t)
+
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	binPath := buildServer(t, projectDir)
+	serviceName := filepath.Base(projectDir)
+
+	homeDir := t.TempDir()
+	secretFile := filepath.Join(homeDir, "oidc-client-secret")
+	if err := os.WriteFile(secretFile, []byte("test-secret\n"), 0600); err != nil {
+		t.Fatalf("write OIDC client secret file: %v", err)
+	}
+
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    auth:
+      oidc:
+        enabled: true
+        issuer: %s
+        client_id: test-client
+        client_secret_file: %s
+        scopes: openid
+    endpoint: %s
+`, oidc.Issuer(), secretFile, mock.server.URL)
+	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
+
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
+
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
+	cmd.Env = append(os.Environ(),
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET=",
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start HTTP server: %v", err)
+	}
+	defer func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}()
+
+	baseURL := "http://localhost:" + port
+	waitForServer(t, baseURL)
+
+	result := callNativeTool(t, baseURL, "EchoHeaders", map[string]interface{}{})
+	t.Logf("Tool result: %s", trimMsg(result, 300))
+
+	if mock.requestCount() == 0 {
+		t.Fatal("no request reached the mock upstream")
+	}
+	auth := mock.requests[0].Authorization
+	if auth == "" {
+		t.Fatal("expected Authorization header in upstream request")
+	}
+	if !strings.HasPrefix(auth, "Bearer ") {
+		t.Fatalf("expected Bearer token, got: %s", auth)
 	}
 }

@@ -53,6 +53,40 @@ curl -s localhost:8080/.well-known/oauth-protected-resource
 ./bin/{{ .ServiceName }} -v 1 -t cli <tool-name> [OPTIONS]
 ```
 
+#### Request body (`--body`)
+
+Use `--body` to send a JSON request body to the upstream API. Query/path
+parameters are passed as regular `--key value` flags.
+
+```sh
+# JSON body
+./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
+  --body '{"file":"@file:///tmp/report.pdf","note":"quarterly"}'
+```
+
+#### File uploads in `--body` (curl-style `@` prefix)
+
+When a JSON value in `--body` starts with `@file:///`, `@https://`, or `@http://`,
+the server automatically downloads the file to the IFS temp cache and forwards it
+as a **multipart/form-data** part (other fields become plain form fields):
+
+```sh
+# Local file
+./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
+  --body '{"file":"@file:///tmp/report.pdf"}'
+
+# Remote URL (server downloads, then forwards to upstream)
+./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
+  --body '{"file":"@https://cdn.example.com/reports/q1.pdf"}'
+```
+
+The same `--body` syntax works identically in HTTP mode via `mcpclient.sh`:
+
+```sh
+./mcpclient.sh call uploadScanReport --scanId 12345 \
+  --body '{"file":"@file:///tmp/report.pdf"}'
+```
+
 ## Options
 
 | Flag | Default | Description |
@@ -465,7 +499,7 @@ First generate a default config, then mount it when running:
     --set secret.static.oidcClientSecret="YOUR_OIDC_CLIENT_SECRET" \
     --set config.upstream.default.auth.oidc.enabled=true \
     --set config.upstream.default.auth.oidc.issuer="https://idp.example.com" \
-    --set config.upstream.default.auth.oidc.clientId="my-client" \
+    --set config.upstream.default.auth.oidc.client_id="my-client" \
     --set config.upstream.default.endpoint="https://api.example.com"
   ```
 

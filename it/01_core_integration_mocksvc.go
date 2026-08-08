@@ -20,11 +20,12 @@ import (
 
 // CoreMockService provides a mock upstream HTTP server with request recording.
 type CoreMockService struct {
-	mu          sync.Mutex
-	server      *httptest.Server
-	requests    []CoreMockRequest
-	routes      map[string]http.HandlerFunc
-	lastFileRef *FileRefRecord
+	mu              sync.Mutex
+	server          *httptest.Server
+	requests        []CoreMockRequest
+	routes          map[string]http.HandlerFunc
+	lastFileRef     *FileRefRecord
+	lastOctetStream *OctetStreamRecord
 }
 
 // CoreMockRequest records a request received by the mock upstream.
@@ -287,8 +288,8 @@ type FileRefFileRecord struct {
 
 // RegisterFileRefScenario registers:
 //   - GET  /files/* → serves a known file body for download
-//   - POST /multipart-resource → parses multipart form, records fields + files,
-//     echoes back what was received
+//   - POST /multipart-resource and /upload → parses multipart form, records
+//     fields + files, echoes back what was received
 //
 // Use LastFileRef to inspect multipart data after the call.
 func (m *CoreMockService) RegisterFileRefScenario() {
@@ -309,9 +310,80 @@ func (m *CoreMockService) RegisterFileRefScenario() {
 		w.Write([]byte("HELLO-FILEREF-" + fileName))
 	})
 
-	// Accept multipart upload
-	m.Handle("/multipart-resource", func(w http.ResponseWriter, r *http.Request) {
+	// Shared multipart handler for both paths.
+	multipartHandler := func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		record := &FileRefRecord{
+			FormFields: make(map[string]string),
+			Files:      make(map[string]FileRefFileRecord),
+		}
+
+		contentType := r.Header.Get("Content-Type")
+		if strings.Contains(contentType, "multipart/form-data") {
+			_ = r.ParseMultipartForm(32 << 20)
+			for name, values := range r.MultipartForm.Value {
+				if len(values) > 0 {
+					record.FormFields[name] = values[0]
+				}
+			}
+			for name, headers := range r.MultipartForm.File {
+				if len(headers) > 0 {
+					fh := headers[0]
+					f, err := fh.Open()
+					if err == nil {
+						data, _ := io.ReadAll(f)
+						f.Close()
+						record.Files[name] = FileRefFileRecord{
+							FileName:    fh.Filename,
+							ContentType: fh.Header.Get("Content-Type"),
+							Content:     data,
+							Size:        len(data),
+						}
+					}
+				}
+			}
+		}
+
+		m.mu.Lock()
+		m.lastFileRef = record
+		m.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		writeCoreJSON(w, map[string]interface{}{
+			"status":     "ok",
+			"fieldCount": len(record.FormFields),
+			"fileCount":  len(record.Files),
+		})
+	}
+
+	m.Handle("/multipart-resource", multipartHandler)
+	m.Handle("/upload", multipartHandler)
+}
+
+// LastFileRef returns the last recorded FileRef multipart upload data.
+func (m *CoreMockService) LastFileRef() *FileRefRecord {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.lastFileRef
+}
+
+// ===========================================================================
+// Case A: Named multipart (e.g. SonatypeIQ POST /api/v2/config/saml)
+// ===========================================================================
+
+// RegisterCaseANamedMultipart registers a handler for /v2/config/saml that
+// parses multipart form data and records the field "identityProviderXml"
+// (the named binary field) plus the "samlConfiguration" form field.
+func (m *CoreMockService) RegisterCaseANamedMultipart() {
+	m.mu.Lock()
+	m.lastFileRef = nil
+	m.mu.Unlock()
+
+	m.Handle("/v2/config/saml", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "PUT" {
 			w.WriteHeader(http.StatusMethodNotAllowed)
 			return
 		}
@@ -359,11 +431,134 @@ func (m *CoreMockService) RegisterFileRefScenario() {
 	})
 }
 
-// LastFileRef returns the last recorded FileRef multipart upload data.
-func (m *CoreMockService) LastFileRef() *FileRefRecord {
+// ===========================================================================
+// Case B: Plain binary multipart (e.g. Jira POST /api/2/issue/{id}/attachments)
+// ===========================================================================
+
+// RegisterCaseBPlainBinaryMultipart registers a handler for
+// /2/issue/*/attachments that parses multipart form data. The upstream
+// expects a form part named "file" (the universal fallback for schemas
+// without named properties).
+func (m *CoreMockService) RegisterCaseBPlainBinaryMultipart() {
+	m.mu.Lock()
+	m.lastFileRef = nil
+	m.mu.Unlock()
+
+	m.Handle("/2/issue/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" || !strings.HasSuffix(r.URL.Path, "/attachments") {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		record := &FileRefRecord{
+			FormFields: make(map[string]string),
+			Files:      make(map[string]FileRefFileRecord),
+		}
+
+		contentType := r.Header.Get("Content-Type")
+		if strings.Contains(contentType, "multipart/form-data") {
+			_ = r.ParseMultipartForm(32 << 20)
+			for name, values := range r.MultipartForm.Value {
+				if len(values) > 0 {
+					record.FormFields[name] = values[0]
+				}
+			}
+			for name, headers := range r.MultipartForm.File {
+				if len(headers) > 0 {
+					fh := headers[0]
+					f, err := fh.Open()
+					if err == nil {
+						data, _ := io.ReadAll(f)
+						f.Close()
+						record.Files[name] = FileRefFileRecord{
+							FileName:    fh.Filename,
+							ContentType: fh.Header.Get("Content-Type"),
+							Content:     data,
+							Size:        len(data),
+						}
+					}
+				}
+			}
+		}
+
+		m.mu.Lock()
+		m.lastFileRef = record
+		m.mu.Unlock()
+
+		// Echo back the issue key that was in the URL path so the test
+		// can confirm path-param substitution worked.
+		w.Header().Set("Content-Type", "application/json")
+		writeCoreJSON(w, map[string]interface{}{
+			"status":     "ok",
+			"fieldCount": len(record.FormFields),
+			"fileCount":  len(record.Files),
+			"path":       r.URL.Path,
+		})
+	})
+}
+
+// ===========================================================================
+// Case C: Octet-stream (e.g. Nexus POST /v1/system/license)
+// ===========================================================================
+
+// OctetStreamRecord holds metadata about an octet-stream upload received by
+// RegisterCaseCOctetStream.
+type OctetStreamRecord struct {
+	ContentType string
+	Body        []byte
+	Size        int
+}
+
+// RegisterCaseCOctetStream registers a handler for /v1/system/license that
+// reads the raw request body (application/octet-stream). It also serves a
+// /files/* endpoint so the mock can act as both file:// and https:// source
+// for the upload test.
+func (m *CoreMockService) RegisterCaseCOctetStream() {
+	m.mu.Lock()
+	m.lastOctetStream = nil
+	m.mu.Unlock()
+
+	// File server for download-before-upload
+	m.Handle("/files/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		fileName := strings.TrimPrefix(r.URL.Path, "/files/")
+		w.Header().Set("Content-Type", "application/octet-stream")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileName))
+		w.Write([]byte("HELLO-OCTET-STREAM-" + fileName))
+	})
+
+	// Octet-stream upload endpoint
+	m.Handle("/v1/system/license", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		record := &OctetStreamRecord{
+			ContentType: r.Header.Get("Content-Type"),
+			Body:        body,
+			Size:        len(body),
+		}
+
+		m.mu.Lock()
+		m.lastOctetStream = record
+		m.mu.Unlock()
+
+		w.Header().Set("Content-Type", "application/json")
+		writeCoreJSON(w, map[string]interface{}{
+			"status":   "ok",
+			"bodySize": record.Size,
+		})
+	})
+}
+
+// LastOctetStream returns the last recorded octet-stream upload data.
+func (m *CoreMockService) LastOctetStream() *OctetStreamRecord {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return m.lastFileRef
+	return m.lastOctetStream
 }
 
 func writeCoreJSON(w http.ResponseWriter, v interface{}) {

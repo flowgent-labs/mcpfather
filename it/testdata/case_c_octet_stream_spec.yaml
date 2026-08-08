@@ -1,0 +1,27 @@
+openapi: "3.0.3"
+info:
+  title: Octet-Stream Upload Test (Nexus License)
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0
+paths:
+  /v1/system/license:
+    post:
+      operationId: installLicense
+      summary: Upload a new license file
+      description: Mirrors Nexus POST /v1/system/license. Uses application/octet-stream
+        content type, so the converter creates a single "file" FileArg and
+        forwards the downloaded file as a raw binary body.
+      requestBody:
+        required: true
+        content:
+          application/octet-stream:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object

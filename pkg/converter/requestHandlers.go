@@ -194,63 +194,60 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 				tool.FileArgs = fileArgs
 			} else if isMultipartPlainBinary(operation) {
 				// Non-object multipart schema (e.g. "type: string, format: binary"):
-				// use the legacy file_name / file_content upload path.
-				tool.UploadContentType = ct
-				tool.Args = append(tool.Args,
-					Arg{
-						Name:        "file_name",
-						Description: "File name to upload (looked up in ~/.{project}/upload/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
-						Source:      "body",
-						Required:    false,
-					},
-					Arg{
-						Name:        "file_content",
-						Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
-						Source:      "body",
-						Required:    false,
-					},
-				)
-				for i := range tool.Args {
-					if tool.Args[i].Name == "body" {
-						tool.Args[i].Required = false
-						break
+				// treat as a single FileArg — unified file-ref approach (no base64).
+				fileArgs := []FileArg{{Name: "file", Description: "File to upload", Required: true}}
+				// Replace body arg with file URI arg
+				filteredArgs := make([]Arg, 0, len(tool.Args))
+				for _, a := range tool.Args {
+					if a.Name != "body" {
+						filteredArgs = append(filteredArgs, a)
 					}
 				}
+				tool.Args = filteredArgs
+				for _, fa := range fileArgs {
+					tool.Args = append(tool.Args, Arg{
+						Name:        fa.Name,
+						Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
+						Source:      "body",
+						Required:    fa.Required,
+						Schema: &Schema{
+							Types:  []string{"string"},
+							Format: "uri",
+						},
+					})
+				}
+				tool.FileArgs = fileArgs
 			}
 			// Object schema without binary properties: fall through to
 			// standard JSON body processing (no UploadContentType set).
 		} else {
 			// Non-multipart upload (application/octet-stream, image/*,
-			// video/*, audio/*): use file_name / file_content approach.
-			tool.UploadContentType = ct
-			// Upload tools accept file_name and file_content (both optional).
-			// - file_name: looked up in ~/.{project}/upload/ (stdio mode) or used when
-			//   staging file_content (HTTP mode).
-			// - file_content: base64-encoded file data (HTTP mode).
-			// When neither is provided, the tool falls back to standard JSON body.
-			tool.Args = append(tool.Args,
-				Arg{
-					Name:        "file_name",
-					Description: "File name to upload (looked up in ~/.{project}/upload/; also used when file_content is staged). When omitted, the tool sends a standard JSON request body instead.",
-					Source:      "body",
-					Required:    false,
-				},
-				Arg{
-					Name:        "file_content",
-					Description: "Base64-encoded file content (use this in HTTP mode to send file data inline)",
-					Source:      "body",
-					Required:    false,
-				},
-			)
-			// When upload content type is set, the original body arg (from
-			// convertRequestBody) should also be optional so that tools
-			// work without requiring a file or body.
-			for i := range tool.Args {
-				if tool.Args[i].Name == "body" {
-					tool.Args[i].Required = false
-					break
+			// video/*, audio/*): unified file-ref approach — single FileArg
+			// with URI reference. The handler downloads the file and
+			// forwards it as raw binary body with the original content type.
+			fileArgs := []FileArg{{Name: "file", Description: "File to upload", Required: true}}
+			// Replace body arg with file URI arg
+			filteredArgs := make([]Arg, 0, len(tool.Args))
+			for _, a := range tool.Args {
+				if a.Name != "body" {
+					filteredArgs = append(filteredArgs, a)
 				}
 			}
+			tool.Args = filteredArgs
+			for _, fa := range fileArgs {
+				tool.Args = append(tool.Args, Arg{
+					Name:        fa.Name,
+					Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
+					Source:      "body",
+					Required:    fa.Required,
+					Schema: &Schema{
+						Types:  []string{"string"},
+						Format: "uri",
+					},
+				})
+			}
+			tool.UploadContentType = ct
+			tool.FileArgs = fileArgs
 		}
 	}
 
@@ -312,8 +309,8 @@ func (c *Converter) extractMultipartFileArgs(operation *openapi3.Operation) ([]F
 		}
 		schema := mediaType.Schema.Value
 		// Only handle object schemas with named properties.
-		// A plain "type: string, format: binary" multipart body is handled by
-		// the legacy file_name/file_content path (UploadContentType).
+		// A plain "type: string, format: binary" multipart body is handled
+		// separately via isMultipartPlainBinary → single FileArg approach.
 		if schema.Type == nil || !contains(*schema.Type, "object") || schema.Properties == nil {
 			return nil, nil
 		}
@@ -362,8 +359,7 @@ func (c *Converter) extractMultipartFileArgs(operation *openapi3.Operation) ([]F
 
 // isMultipartPlainBinary returns true when the operation's multipart/form-data
 // schema is a plain binary type (not an object with named properties). This
-// case cannot use FileRef (there are no named file args to extract) and must
-// fall back to the legacy file_name / file_content approach.
+// case uses the unified file-ref approach with a single "file" FileArg.
 func isMultipartPlainBinary(operation *openapi3.Operation) bool {
 	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
 		return false
