@@ -34,13 +34,13 @@ func (g *Generator) GenerateServerFile(config *converter.MCPConfig) error {
 		MCPToolsImportPath string
 		HelpersImportPath  string
 		VirtualImportPath  string
-		BinaryName         string
+		ServiceName         string
 		Tools              []ToolTemplateData
 	}{
 		MCPToolsImportPath: importPath,
 		HelpersImportPath:  helperImportPath,
 		VirtualImportPath:  virtualImportPath,
-		BinaryName:         filepath.Base(g.outputDir),
+		ServiceName:         filepath.Base(g.outputDir),
 	}
 
 	for _, tool := range config.Tools {

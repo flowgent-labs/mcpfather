@@ -186,14 +186,14 @@ MCPFather solves this with a **dual-plane architecture**:
 
 1. **Generator stage** — MCPFather detects OpenAPI operations that produce/consume binary content (e.g. `produces: application/octet-stream`, multipart form upload). These become MCP tools that return a **FileRef** (`file://` URI) instead of inline base64 data.
 
-2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/download/ifs/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
+2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/ifs/download/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
    ```json
    {"fileRef": "http://localhost:8080/_/ifs/download/20260808/a1b2c3d4-....pdf"}
    ```
 
 3. **Upload reverse** — The MCP client upload a file via `POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
 
-**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/download/ifs/{yyyyMMdd}/`.
+**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/ifs/download/{yyyyMMdd}/`.
 
 **Configuration** (`config.yaml`):
 ```yaml
@@ -264,7 +264,7 @@ usecase/confluence-mcp/bin/confluence-mcp --print-default-config
 # Edit: ~/.confluence-mcp/config.yaml and list only the tools you want
 ```
 
-- `$HOME/.{binaryName}/config.yaml`:
+- `$HOME/.{serviceName}/config.yaml`:
 
 ```yaml
 # ---- Native MCP Tools ----
@@ -495,7 +495,7 @@ Configure via environment variables and a volume-mounted config file.
 mkdir -p ~/.my-mcp-server
 cp config.yaml ~/.my-mcp-server/config.yaml
 
-# 2. Run (HOME is required — the server resolves $HOME/.<binaryName>/config.yaml)
+# 2. Run (HOME is required — the server resolves $HOME/.<serviceName>/config.yaml)
 docker run -d --name my-mcp-server \
     --restart unless-stopped \
     -e HOME=/home/mcp \
@@ -526,7 +526,7 @@ helm upgrade --install --create-namespace \
 ```
 
 The Helm chart sets `ENV HOME=/home/mcp` via the Docker image and mounts the config
-at `/home/mcp/.<binaryName>/config.yaml` automatically.
+at `/home/mcp/.<serviceName>/config.yaml` automatically.
 
 Images are automatically built and pushed to e.g: `ghcr.io/<YOUR_ORG>/my-mcp-server`
 on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).

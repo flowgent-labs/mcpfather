@@ -189,7 +189,7 @@ func resolveEnabledTools(cfg *mcputils.Config) (map[string]bool, error) {
 // NewMCPServer creates and returns an MCP server with all tools registered.
 func NewMCPServer() (*server.MCPServer, error) {
 	s := server.NewMCPServer(
-		"{{.BinaryName}} MCP Server",
+		"{{.ServiceName}} MCP Server",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
@@ -210,7 +210,7 @@ func NewMCPServer() (*server.MCPServer, error) {
 	}
 
 	// Register virtual tools from config
-	aggConfigPath := mcputils.VirtualConfigPath("{{.BinaryName}}")
+	aggConfigPath := mcputils.VirtualConfigPath()
 	aggEngine, err := engine.New(aggConfigPath, &registryAdapter{}, &mcputils.NamedUpstreamHTTPClient{})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Warning: failed to load virtual tools: %v\n", err)
