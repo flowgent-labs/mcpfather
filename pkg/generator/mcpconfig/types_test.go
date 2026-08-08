@@ -127,6 +127,12 @@ func TestIFSConfig_Defaults(t *testing.T) {
 	if !cfg.Server.IFS.Enabled {
 		t.Error("server.ifs.enabled should default to true")
 	}
+	if cfg.Server.IFS.BaseURI != "" {
+		t.Errorf("server.ifs.base_uri = %q, want empty default", cfg.Server.IFS.BaseURI)
+	}
+	if cfg.Server.IFS.CleanJobTTLSeconds != "5m" {
+		t.Errorf("server.ifs.clean-job-ttl-seconds = %q, want 5m", cfg.Server.IFS.CleanJobTTLSeconds)
+	}
 }
 
 func TestLoggingConfig_Defaults(t *testing.T) {
@@ -178,9 +184,15 @@ func TestVirtualToolPipelineConfig_Fields(t *testing.T) {
 }
 
 func TestIFSConfig_Fields(t *testing.T) {
-	ifs := IFSConfig{Enabled: true}
+	ifs := IFSConfig{Enabled: true, BaseURI: "https://files.example.com/mcp", CleanJobTTLSeconds: "30s"}
 	if !ifs.Enabled {
 		t.Error("Enabled should be true")
+	}
+	if ifs.BaseURI != "https://files.example.com/mcp" {
+		t.Error("BaseURI mismatch")
+	}
+	if ifs.CleanJobTTLSeconds != "30s" {
+		t.Error("CleanJobTTLSeconds mismatch")
 	}
 	ifs2 := IFSConfig{Enabled: false}
 	if ifs2.Enabled {

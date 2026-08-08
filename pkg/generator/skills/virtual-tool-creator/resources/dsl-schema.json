@@ -132,6 +132,12 @@
     "IFSConfig": {
       "additionalProperties": false,
       "properties": {
+        "base_uri": {
+          "type": "string"
+        },
+        "clean-job-ttl-seconds": {
+          "type": "string"
+        },
         "enabled": {
           "type": "boolean"
         }
