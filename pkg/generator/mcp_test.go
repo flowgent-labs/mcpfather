@@ -80,6 +80,88 @@ func TestGenerateMCP(t *testing.T) {
 	if !strings.Contains(content, "package mcptools") {
 		t.Errorf("Generated tool file missing package declaration")
 	}
+
+	mainData, err := os.ReadFile(filepath.Join(tmpDir, "main.go"))
+	if err != nil {
+		t.Fatalf("Failed to read generated main.go: %v", err)
+	}
+	mainContent := string(mainData)
+	for _, want := range []string{
+		`version := flag.Bool("version", false, "Print version and exit")`,
+		`flag.BoolVar(version, "V", false, "Print version and exit")`,
+		`func printVersion()`,
+		`runtime.Version()`,
+	} {
+		if !strings.Contains(mainContent, want) {
+			t.Errorf("generated main.go missing %q", want)
+		}
+	}
+
+	makefileData, err := os.ReadFile(filepath.Join(tmpDir, "Makefile"))
+	if err != nil {
+		t.Fatalf("Failed to read generated Makefile: %v", err)
+	}
+	makefileContent := string(makefileData)
+	for _, want := range []string{
+		`LDFLAGS := -ldflags`,
+		`-X main.versionStr=$(VERSION)`,
+		`-X main.gitCommit=$(GIT_COMMIT)`,
+		`-X main.buildDate=$(BUILD_DATE)`,
+		`--build-arg VERSION=$(VERSION)`,
+	} {
+		if !strings.Contains(makefileContent, want) {
+			t.Errorf("generated Makefile missing %q", want)
+		}
+	}
+
+	dockerfileData, err := os.ReadFile(filepath.Join(tmpDir, "deploy", "docker", "Dockerfile"))
+	if err != nil {
+		t.Fatalf("Failed to read generated Dockerfile: %v", err)
+	}
+	dockerfileContent := string(dockerfileData)
+	for _, want := range []string{
+		`ARG VERSION=dev`,
+		`ARG GIT_COMMIT=unknown`,
+		`ARG BUILD_DATE=unknown`,
+		`-X main.versionStr=${VERSION}`,
+	} {
+		if !strings.Contains(dockerfileContent, want) {
+			t.Errorf("generated Dockerfile missing %q", want)
+		}
+	}
+
+	licenseData, err := os.ReadFile(filepath.Join(tmpDir, "LICENSE"))
+	if err != nil {
+		t.Fatalf("Failed to read generated LICENSE: %v", err)
+	}
+	licenseContent := string(licenseData)
+	for _, want := range []string{
+		`Apache License`,
+		`Version 2.0, January 2004`,
+		`TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION`,
+	} {
+		if !strings.Contains(licenseContent, want) {
+			t.Errorf("generated LICENSE missing %q", want)
+		}
+	}
+	if strings.Contains(licenseContent, "MIT License") || strings.Contains(licenseContent, "GNU AFFERO GENERAL PUBLIC LICENSE") {
+		t.Errorf("generated LICENSE should be Apache-2.0 only")
+	}
+
+	readmeData, err := os.ReadFile(filepath.Join(tmpDir, "README.md"))
+	if err != nil {
+		t.Fatalf("Failed to read generated README.md: %v", err)
+	}
+	readmeContent := string(readmeData)
+	for _, want := range []string{
+		`Apache License 2.0`,
+		`commercial use`,
+		`not subject to mcpfather's AGPL`,
+	} {
+		if !strings.Contains(readmeContent, want) {
+			t.Errorf("generated README.md missing license statement %q", want)
+		}
+	}
 }
 
 // TestBacktickInMarkdown verifies that backticks in markdown descriptions
@@ -144,7 +226,6 @@ Example:
 	}
 	buildEnv := append(os.Environ(),
 		"GOPROXY=https://goproxy.cn,direct",
-		"GONOSUMCHECK=*",
 		"GOSUMDB=off",
 		"GOTOOLCHAIN=local",
 	)

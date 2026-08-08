@@ -618,4 +618,3 @@ Built with these excellent open-source projects:
 - [Viper](https://github.com/spf13/viper) — Go configuration management
 - [go-jq](https://github.com/itchyny/gojq) — Pure Go implementation of jq
 - [Keycloak](https://www.keycloak.org/) — Open Source Identity and Access Management
-
