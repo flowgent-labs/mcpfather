@@ -15,12 +15,12 @@ set -euo pipefail
 # Environment variables:
 #   MCP_UPSTREAM_TOKEN    - Bearer token for MCP server auth
 #   MCP_SERVER_ENDPOINT        - Server URL (default: http://localhost:8080/mcp)
-#   MCP_SERVER_DOWNLOAD_DIR      - Directory for download responses (default: ./downloads)
+#   MCP_SERVER_DOWNLOAD_DIR      - Directory for download responses (default: ./download)
 # ============================================================
 
 SERVER_URL="${MCP_SERVER_ENDPOINT:-http://localhost:8080/mcp}"
 SESSION_ID=""
-DOWNLOAD_DIR="${MCP_SERVER_DOWNLOAD_DIR:-downloads}"
+DOWNLOAD_DIR="${MCP_SERVER_DOWNLOAD_DIR:-download}"
 
 usage() {
   cat <<'USAGE'
@@ -40,7 +40,7 @@ Commands:
 Environment:
   MCP_SERVER_ENDPOINT        Override server URL (default: http://localhost:8080/mcp)
   MCP_UPSTREAM_TOKEN    Bearer token for server auth
-  MCP_SERVER_DOWNLOAD_DIR      Directory for file downloads (default: ./downloads)
+  MCP_SERVER_DOWNLOAD_DIR      Directory for file download (default: ./download)
 
 Tips:
   - Always uses --noproxy '*' to avoid proxy issues with localhost
@@ -56,7 +56,7 @@ USAGE
 {{- range .Tools }}
   cat <<'EOEX'
   {{- if .UploadCT }}
-  # {{ .Name }} ({{ .Method }}) — uploads a file
+  # {{ .Name }} ({{ .Method }}) — upload a file
   ./mcpclient.sh call {{ .Name }} '{}' --file /path/to/file
   {{- else }}
   # {{ .Name }} ({{ .Method }})
@@ -191,7 +191,7 @@ call_tool() {
 
   # If --file is provided, send the file content as base64 via file_content,
   # using the basename as file_name. For stdio mode the server reads from
-  # ~/.{project}/uploads/; for HTTP mode the server decodes the base64 inline.
+  # ~/.{project}/upload/; for HTTP mode the server decodes the base64 inline.
   if [ -n "$file_path" ]; then
     if [ ! -f "$file_path" ]; then
       echo "[!] File not found: $file_path" >&2
@@ -212,7 +212,7 @@ args['file_content'] = '$file_b64'
 print(json.dumps(args))
 " 2>/dev/null || echo "$args")
     else
-      # Fallback: set file_name only, user must place file in uploads dir
+      # Fallback: set file_name only, user must place file in upload dir
       args=$(echo "$args" | sed 's/}$/}/' | sed "s/}\"$/,\"file_name\":\"$file_name\"}/" | sed "s/{}/{\"file_name\":\"$file_name\"}/")
     fi
   fi
