@@ -1,0 +1,93 @@
+openapi: "3.0.3"
+info:
+  title: Multipart AnyOf Test API
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /upload-report/{id}/v1:
+    post:
+      operationId: uploadReportV1
+      summary: Upload report with a required file field
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignored:
+                  type: string
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BodyUploadReportV1'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+  /upload-report/{id}/v2:
+    post:
+      operationId: uploadReportV2
+      summary: Upload report with an anyOf file field
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ignored:
+                  type: string
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BodyUploadReportV2'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+components:
+  schemas:
+    BodyUploadReportV1:
+      type: object
+      required:
+        - file
+      properties:
+        file:
+          type: string
+          format: binary
+          title: File
+        note:
+          type: string
+          title: Note
+    BodyUploadReportV2:
+      type: object
+      properties:
+        file:
+          anyOf:
+            - type: string
+              format: binary
+            - type: string
+          title: File
+        note:
+          type: string
+          title: Note

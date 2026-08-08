@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -76,6 +77,9 @@ func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 	}{
 		{name: "MCPFATHER_TEST_PROXY", value: os.Getenv("MCPFATHER_TEST_PROXY")},
 		{name: "HTTPS_PROXY", value: os.Getenv("HTTPS_PROXY")},
+		{name: "HTTP_PROXY", value: os.Getenv("HTTP_PROXY")},
+		{name: "https_proxy", value: os.Getenv("https_proxy")},
+		{name: "http_proxy", value: os.Getenv("http_proxy")},
 	} {
 		raw := strings.TrimSpace(candidate.value)
 		if raw == "" {
@@ -88,7 +92,12 @@ func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 		}
 		logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
 			os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), normalized)
-		return normalized, []string{"HTTPS_PROXY=" + normalized, "HTTP_PROXY=" + normalized}
+		return normalized, []string{
+			"HTTPS_PROXY=" + normalized,
+			"HTTP_PROXY=" + normalized,
+			"https_proxy=" + normalized,
+			"http_proxy=" + normalized,
+		}
 	}
 
 	logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set or invalid — build commands will use direct network")
@@ -1043,7 +1052,6 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 	projectDir := genProject(t, "downloadReport", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -1053,32 +1061,20 @@ func TestDownload_BinaryFileSavedLocally(t *testing.T) {
 		"-t", "cli", "DownloadReport",
 	)
 
-	if !strings.Contains(stdout, "Saved to:") {
-		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
+	result := mustDownloadResult(t, stdout)
+	if result["name"] != "report.pdf" {
+		t.Fatalf("name = %v, want report.pdf", result["name"])
 	}
-
-	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
-	// Walk the IFS date directories to find the downloaded file.
-	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
-	found := false
-	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		if strings.HasSuffix(d.Name(), ".pdf") {
-			found = true
-			data, _ := os.ReadFile(path)
-			if string(data) != "fake-binary-pdf-content" {
-				t.Errorf("downloaded content = %q, want %q", string(data), "fake-binary-pdf-content")
-			}
-		}
-		return nil
-	})
-	if !found {
-		t.Errorf("downloaded .pdf file not found in %s", ifsDir)
+	localPath := mustFileURIPath(t, result["url"].(string))
+	if !strings.Contains(localPath, filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "download")) {
+		t.Fatalf("download local path %q is not under test HOME %q", localPath, homeDir)
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("failed to read downloaded file %s: %v", localPath, err)
+	}
+	if string(data) != "fake-binary-pdf-content" {
+		t.Errorf("downloaded content = %q, want %q", string(data), "fake-binary-pdf-content")
 	}
 }
 
@@ -1092,7 +1088,6 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 	projectDir := genProject(t, "downloadReport", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -1102,36 +1097,25 @@ func TestDownload_NoContentDisposition_UsesDefaultName(t *testing.T) {
 		"-t", "cli", "DownloadReport",
 	)
 
-	if !strings.Contains(stdout, "Saved to:") {
-		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
-	}
+	result := mustDownloadResult(t, stdout)
 	// When no Content-Disposition is set, DetermineFileName falls back to
 	// the URL path last segment ("download" from /download endpoint) or
 	// Content-Type-based extension. The IFS layer wraps it in a UUID name,
 	// so verify the content was saved correctly rather than the exact name.
-	if !strings.Contains(stdout, "download") {
-		t.Errorf("expected filename derived from URL path or content-type, got: %s", stdout)
+	if fileName, _ := result["name"].(string); !strings.Contains(fileName, "download") {
+		t.Errorf("expected filename derived from URL path or content-type, got: %q", fileName)
 	}
 
-	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
-	found := false
-	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		found = true
-		data, _ := os.ReadFile(path)
-		if string(data) != "fake-zip-content" {
-			t.Errorf("downloaded content = %q, want %q", string(data), "fake-zip-content")
-		}
-		return nil
-	})
-	if !found {
-		t.Errorf("downloaded file not found in %s", ifsDir)
+	localPath := mustFileURIPath(t, result["url"].(string))
+	if !strings.Contains(localPath, filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "download")) {
+		t.Fatalf("download local path %q is not under test HOME %q", localPath, homeDir)
+	}
+	data, err := os.ReadFile(localPath)
+	if err != nil {
+		t.Fatalf("failed to read downloaded file %s: %v", localPath, err)
+	}
+	if string(data) != "fake-zip-content" {
+		t.Errorf("downloaded content = %q, want %q", string(data), "fake-zip-content")
 	}
 }
 
@@ -1157,7 +1141,6 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 	projectDir := genProjectWithSpec(t, "testdata/binary_spec.yaml", "downloadBytes", "")
 	bin := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	serviceName := filepath.Base(projectDir)
 
 	stdout, _ := runCLI(t, bin,
 		[]string{
@@ -1167,34 +1150,25 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 		"-t", "cli", "DownloadBytes",
 	)
 
-	if !strings.Contains(stdout, "Saved to:") {
-		t.Fatalf("expected 'Saved to:' in stdout, got: %s", stdout)
+	result := mustDownloadResult(t, stdout)
+	if got, _ := result["size"].(float64); got != 1024 {
+		t.Fatalf("download size = %v, want 1024", result["size"])
 	}
-
-	// Files are saved under ~/.{serviceName}/ifs/download/{yyyyMMdd}/ with UUID naming.
-	ifsDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
-	found := 0
-	filepath.WalkDir(ifsDir, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
-		}
-		if d.IsDir() {
-			return nil
-		}
-		found++
-		info, _ := d.Info()
-		t.Logf("Downloaded file: %s (%d bytes)", d.Name(), info.Size())
-		if info.Size() != 1024 {
-			t.Errorf("expected 1024 bytes, got %d", info.Size())
-		}
-		data, _ := os.ReadFile(path)
-		if len(data) != 1024 {
-			t.Errorf("expected 1024 bytes on disk, got %d", len(data))
-		}
-		return nil
-	})
-	if found == 0 {
-		t.Fatalf("no files found in %s", ifsDir)
+	localPath := mustFileURIPath(t, result["url"].(string))
+	if !strings.Contains(localPath, filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "download")) {
+		t.Fatalf("download local path %q is not under test HOME %q", localPath, homeDir)
+	}
+	info, err := os.Stat(localPath)
+	if err != nil {
+		t.Fatalf("downloaded file not found at %s: %v", localPath, err)
+	}
+	t.Logf("Downloaded file: %s (%d bytes)", filepath.Base(localPath), info.Size())
+	if info.Size() != 1024 {
+		t.Errorf("expected 1024 bytes, got %d", info.Size())
+	}
+	data, _ := os.ReadFile(localPath)
+	if len(data) != 1024 {
+		t.Errorf("expected 1024 bytes on disk, got %d", len(data))
 	}
 }
 
@@ -1289,6 +1263,64 @@ func TestUpload_HTTP_FileRef(t *testing.T) {
 	}
 	if string(fileRec.Content) != testContent {
 		t.Errorf("uploaded content = %q, want %q", string(fileRec.Content), testContent)
+	}
+}
+
+func TestUpload_HTTP_IFSUploadSourceRemovedAfterForwarding(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	testUUID := "feedface-feed-face-feed-feedfacefeed"
+	testContent := "ifs-upload-file-ref-content"
+	uploadResp, err := http.Post(baseURL+"/_/ifs/upload/"+testUUID, "application/octet-stream", strings.NewReader(testContent))
+	if err != nil {
+		t.Fatalf("IFS upload failed: %v", err)
+	}
+	uploadBody, _ := io.ReadAll(uploadResp.Body)
+	uploadResp.Body.Close()
+	if uploadResp.StatusCode != http.StatusCreated {
+		t.Fatalf("expected IFS upload 201, got %d: %s", uploadResp.StatusCode, string(uploadBody))
+	}
+	var uploadResult map[string]interface{}
+	if err := json.Unmarshal(uploadBody, &uploadResult); err != nil {
+		t.Fatalf("IFS upload response is not JSON: %v\n%s", err, string(uploadBody))
+	}
+	fileURI, _ := uploadResult["path"].(string)
+	stagedFile := mustFileURIPath(t, fileURI)
+	if wantDir := filepath.Join(homeDir, "."+filepath.Base(dir), "ifs", "upload"); filepath.Dir(stagedFile) != wantDir {
+		t.Fatalf("IFS upload path dir = %q, want %q", filepath.Dir(stagedFile), wantDir)
+	}
+	if _, err := os.Stat(stagedFile); err != nil {
+		t.Fatalf("expected IFS upload source before forwarding at %s: %v", stagedFile, err)
+	}
+
+	result := callNativeTool(t, baseURL, "UploadFile", map[string]interface{}{
+		"file": "@" + fileURI,
+	})
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Errorf("HTTP IFS upload file-ref forwarding failed: %s", result)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from IFS upload file-ref")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files")
+	}
+	if string(fileRec.Content) != testContent {
+		t.Errorf("uploaded content = %q, want %q", string(fileRec.Content), testContent)
+	}
+	if _, err := os.Stat(stagedFile); !os.IsNotExist(err) {
+		t.Fatalf("IFS upload source should be removed after forwarding, stat err=%v", err)
 	}
 }
 
@@ -1576,6 +1608,124 @@ func TestFileRef_NoFileProvided_MultipartWithEmptyPart(t *testing.T) {
 	}
 	if fileRec.Size != 0 {
 		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	}
+}
+
+func TestMultipartAnyOfFileRef_CLI(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV1", "")
+	assertGeneratedToolUsesMultipart(t, dir, "UploadReportV1")
+	binPath := buildServer(t, dir)
+
+	fileURL := mockURL + "/files/report-v1.txt"
+	stdout, _ := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "UploadReportV1",
+		"--id=101",
+		"--note=with-file",
+		"--file="+fileURL,
+	)
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("multipart V1 call failed: %s", stdout)
+	}
+
+	assertLastRequestIsMultipart(t, mock)
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from multipart V1")
+	}
+	if record.FormFields["note"] != "with-file" {
+		t.Errorf("expected note form field, got %q", record.FormFields["note"])
+	}
+	if _, ok := record.FormFields["id"]; ok {
+		t.Error("path parameter id should not be forwarded as a multipart form field")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files")
+	}
+	if fileRec.FileName != "report-v1.txt" {
+		t.Errorf("expected uploaded file name report-v1.txt, got %q", fileRec.FileName)
+	}
+	if string(fileRec.Content) != "HELLO-FILEREF-report-v1.txt" {
+		t.Errorf("unexpected uploaded file content: %q", string(fileRec.Content))
+	}
+}
+
+func TestMultipartAnyOfFile_NoFileProvidedSendsEmptyPart(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV2", "")
+	assertGeneratedToolUsesMultipart(t, dir, "UploadReportV2")
+	binPath := buildServer(t, dir)
+
+	stdout, _ := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "UploadReportV2",
+		"--id=202",
+		"--note=no-file",
+	)
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("multipart V2 no-file call failed: %s", stdout)
+	}
+
+	assertLastRequestIsMultipart(t, mock)
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from multipart V2")
+	}
+	if record.FormFields["note"] != "no-file" {
+		t.Errorf("expected note form field, got %q", record.FormFields["note"])
+	}
+	if _, ok := record.FormFields["id"]; ok {
+		t.Error("path parameter id should not be forwarded as a multipart form field")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected empty 'file' part even when file arg is omitted")
+	}
+	if fileRec.Size != 0 {
+		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	}
+}
+
+func assertGeneratedToolUsesMultipart(t *testing.T, dir, toolName string) {
+	t.Helper()
+	toolFile := filepath.Join(dir, "pkg", "mcptools", toolName+".go")
+	data, err := os.ReadFile(toolFile)
+	if err != nil {
+		t.Fatalf("read generated tool %s: %v", toolName, err)
+	}
+	src := string(data)
+	if !strings.Contains(src, "ForwardMultipartRequest") {
+		t.Fatalf("generated %s should use ForwardMultipartRequest; source:\n%s", toolName, src)
+	}
+	if strings.Contains(src, "ForwardAndParseResponse") {
+		t.Fatalf("generated %s should not use ForwardAndParseResponse for multipart file fields", toolName)
+	}
+}
+
+func assertLastRequestIsMultipart(t *testing.T, mock *CoreMockService) {
+	t.Helper()
+	requests := mock.Requests()
+	if len(requests) == 0 {
+		t.Fatal("expected upstream request")
+	}
+	contentType := requests[len(requests)-1].Headers.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "multipart/form-data") {
+		t.Fatalf("expected multipart/form-data Content-Type, got %q", contentType)
+	}
+	if !strings.Contains(contentType, "boundary=") {
+		t.Fatalf("expected multipart boundary in Content-Type, got %q", contentType)
 	}
 }
 
@@ -2528,9 +2678,60 @@ func TestE2E_Core_BinaryContentType(t *testing.T) {
 	defer cleanup()
 
 	result := callNativeTool(t, baseURL, "DownloadReport", map[string]interface{}{})
-	// Binary download should be saved to file, result contains "Saved to:"
-	if !strings.Contains(result, "Saved to:") {
-		t.Errorf("binary download should save to file, got: %s", trimMsg(result, 200))
+	data := mustDownloadResult(t, result)
+	if got, _ := data["url"].(string); !strings.HasPrefix(got, baseURL+"/_/ifs/download/") {
+		t.Errorf("download url = %q, want %s/_/ifs/download/...", got, baseURL)
+	}
+	downloadURL, _ := data["url"].(string)
+	if downloadURL != "" {
+		fileID := path.Base(downloadURL)
+		localPath := filepath.Join(homeDir, "."+filepath.Base(dir), "ifs", "download", fileID)
+		if _, err := os.Stat(localPath); err != nil {
+			t.Fatalf("expected local download file before GET at %s: %v", localPath, err)
+		}
+		resp, err := http.Get(downloadURL)
+		if err != nil {
+			t.Fatalf("failed to GET returned download url %s: %v", downloadURL, err)
+		}
+		defer resp.Body.Close()
+		body, _ := io.ReadAll(resp.Body)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("download url status = %d, body=%s", resp.StatusCode, string(body))
+		}
+		if !bytes.Equal(body, []byte{0x00, 0x01, 0x02, 0x03, 0x04, 0x05}) {
+			t.Fatalf("download url body = %v, want original binary payload", body)
+		}
+		if _, err := os.Stat(localPath); !os.IsNotExist(err) {
+			t.Fatalf("download file should be removed after one GET, stat err=%v", err)
+		}
+		resp2, err := http.Get(downloadURL)
+		if err != nil {
+			t.Fatalf("failed second GET returned download url %s: %v", downloadURL, err)
+		}
+		resp2.Body.Close()
+		if resp2.StatusCode != http.StatusNotFound {
+			t.Fatalf("second download URL GET status = %d, want 404", resp2.StatusCode)
+		}
+	}
+}
+
+func TestE2E_Core_BinaryDownloadBaseURIOverride(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterContentTypeScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	dir := genProject(t, "downloadReport", "")
+	homeDir := t.TempDir()
+	baseURI := "https://files.example.test/mcp"
+
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "", "MCP__SERVER__IFS__BASE_URI="+baseURI+"/")
+	defer cleanup()
+
+	result := callNativeTool(t, baseURL, "DownloadReport", map[string]interface{}{})
+	data := mustDownloadResult(t, result)
+	if got, _ := data["url"].(string); !strings.HasPrefix(got, baseURI+"/_/ifs/download/") || strings.Contains(got, "?") {
+		t.Errorf("download url = %q, want %s/_/ifs/download/{uuid} without query", got, baseURI)
 	}
 }
 
@@ -2620,8 +2821,8 @@ func TestE2E_Core_ContentTypeXML(t *testing.T) {
 	result := callNativeTool(t, baseURL, "EchoHeaders", map[string]interface{}{
 		"format": "xml",
 	})
-	// XML response should be returned as text (not saved to file)
-	if strings.Contains(result, "Saved to:") {
+	// XML response should be returned as text (not binary download JSON)
+	if strings.Contains(result, `"kind":"dl.ifs.mcpfather.com/v1"`) {
 		t.Error("XML should be treated as text, not binary download")
 	}
 	// Should contain XML content
@@ -3220,8 +3421,8 @@ native_tools:
 // ---------------------------------------------------------------------------
 
 // TestIFS_UploadAndDownload verifies the IFS REST API:
-//  1. Upload a file via POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
-//  2. Download via GET /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
+//  1. Upload a file via POST /_/ifs/upload/{uuid}
+//  2. Download once via GET /_/ifs/download/{uuid}
 //  3. The downloaded content matches what was uploaded.
 func TestIFS_UploadAndDownload(t *testing.T) {
 	mock := NewCoreMockService()
@@ -3250,24 +3451,40 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 	baseURL := "http://localhost:" + port
 	waitForServer(t, baseURL)
 
-	dateStr := time.Now().Format("20060102")
 	testUUID := "deadbeef-dead-dead-dead-deaddeadbeef"
-	testFileName := testUUID + ".test"
 	testContent := "IFS upload test content"
-	uploadURL := baseURL + "/_/ifs/upload/" + dateStr + "/" + testFileName
+	uploadURL := baseURL + "/_/ifs/upload/" + testUUID
 
 	// Upload
 	uploadResp, err := http.Post(uploadURL, "application/octet-stream", strings.NewReader(testContent))
 	if err != nil {
 		t.Fatalf("IFS upload failed: %v", err)
 	}
+	uploadBody, _ := io.ReadAll(uploadResp.Body)
 	uploadResp.Body.Close()
 	if uploadResp.StatusCode != http.StatusCreated {
 		t.Fatalf("expected 201 Created, got %d", uploadResp.StatusCode)
 	}
+	var uploadResult map[string]interface{}
+	if err := json.Unmarshal(uploadBody, &uploadResult); err != nil {
+		t.Fatalf("IFS upload response is not JSON: %v\n%s", err, string(uploadBody))
+	}
+	if got, _ := uploadResult["path"].(string); !strings.HasPrefix(got, "file://") {
+		t.Fatalf("IFS upload path = %q, want file:// absolute URI", got)
+	}
+	if got, _ := uploadResult["download_url"].(string); got != baseURL+"/_/ifs/download/"+testUUID {
+		t.Fatalf("IFS upload download_url = %q, want %q", got, baseURL+"/_/ifs/download/"+testUUID)
+	}
+	stagedFile := mustFileURIPath(t, uploadResult["path"].(string))
+	if wantDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "upload"); filepath.Dir(stagedFile) != wantDir {
+		t.Fatalf("IFS upload path dir = %q, want %q", filepath.Dir(stagedFile), wantDir)
+	}
+	if _, err := os.Stat(stagedFile); err != nil {
+		t.Fatalf("expected IFS file before download at %s: %v", stagedFile, err)
+	}
 
 	// Download
-	downloadURL := baseURL + "/_/ifs/download/" + dateStr + "/" + testFileName
+	downloadURL := baseURL + "/_/ifs/download/" + testUUID
 	downloadResp, err := http.Get(downloadURL)
 	if err != nil {
 		t.Fatalf("IFS download failed: %v", err)
@@ -3281,12 +3498,98 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 	if string(downloaded) != testContent {
 		t.Errorf("downloaded content = %q, want %q", string(downloaded), testContent)
 	}
+	if _, err := os.Stat(stagedFile); !os.IsNotExist(err) {
+		t.Fatalf("IFS download should delete file after first GET, stat err=%v", err)
+	}
+	second, err := http.Get(downloadURL)
+	if err != nil {
+		t.Fatalf("IFS second download failed: %v", err)
+	}
+	second.Body.Close()
+	if second.StatusCode != http.StatusNotFound {
+		t.Fatalf("IFS second download status = %d, want 404", second.StatusCode)
+	}
+}
 
-	// Verify file exists on disk in the expected path (IFS uses download dir)
-	ifsDataDir := filepath.Join(homeDir, "."+filepath.Base(projectDir), "ifs", "download", dateStr)
-	stagedFile := filepath.Join(ifsDataDir, testFileName)
-	if _, err := os.Stat(stagedFile); os.IsNotExist(err) {
-		t.Errorf("expected IFS file at %s, but not found", stagedFile)
+func TestIFS_CleanJobRemovesExpiredFormalFiles(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterEchoAuthScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	projectDir := genProject(t, "echoHeaders", "")
+	binPath := buildServer(t, projectDir)
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(projectDir)
+	downloadDir := filepath.Join(homeDir, "."+serviceName, "ifs", "download")
+	uploadDir := filepath.Join(homeDir, "."+serviceName, "ifs", "upload")
+	for _, dir := range []string{downloadDir, uploadDir} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			t.Fatalf("create IFS dir %s: %v", dir, err)
+		}
+	}
+
+	oldFiles := []string{
+		filepath.Join(downloadDir, "old-download"),
+		filepath.Join(uploadDir, "old-upload"),
+	}
+	keepFiles := []string{
+		filepath.Join(downloadDir, "old-download.inprogress"),
+		filepath.Join(uploadDir, "old-upload.inprogress"),
+		filepath.Join(downloadDir, "young-download"),
+		filepath.Join(uploadDir, "young-upload"),
+	}
+	for _, file := range append(append([]string{}, oldFiles...), keepFiles...) {
+		if err := os.WriteFile(file, []byte("x"), 0644); err != nil {
+			t.Fatalf("write %s: %v", file, err)
+		}
+	}
+	oldTime := time.Now().Add(-10 * time.Second)
+	for _, file := range append(append([]string{}, oldFiles...), keepFiles[:2]...) {
+		if err := os.Chtimes(file, oldTime, oldTime); err != nil {
+			t.Fatalf("chtimes %s: %v", file, err)
+		}
+	}
+
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__SERVER__IFS__CLEAN_JOB_TTL_SECONDS=1s",
+	)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start HTTP server: %v", err)
+	}
+	defer func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}()
+
+	waitForServer(t, "http://localhost:"+port)
+	deadline := time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		removed := true
+		for _, file := range oldFiles {
+			if _, err := os.Stat(file); !os.IsNotExist(err) {
+				removed = false
+				break
+			}
+		}
+		if removed {
+			break
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	for _, file := range oldFiles {
+		if _, err := os.Stat(file); !os.IsNotExist(err) {
+			t.Fatalf("expired formal file should be removed: %s stat err=%v", file, err)
+		}
+	}
+	for _, file := range keepFiles {
+		if _, err := os.Stat(file); err != nil {
+			t.Fatalf("clean job should keep %s: %v", file, err)
+		}
 	}
 }
 
@@ -3676,22 +3979,24 @@ func callNativeTool(t *testing.T, baseURL string, toolName string, args map[stri
 
 // startCoreForwardTestServer builds and starts a native MCP server with
 // custom environment for authentication/header forwarding tests.
-func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, token, cookie string) (cleanup func(), baseURL string) {
+func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, token, cookie string, extraEnv ...string) (cleanup func(), baseURL string) {
 	t.Helper()
 	binPath := buildServer(t, projectDir)
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = testProcessEnv(
-		"HOME="+homeDir,
-		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
-	)
+	env := []string{
+		"HOME=" + homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL,
+	}
 	if token != "" {
-		cmd.Env = append(cmd.Env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN="+token)
+		env = append(env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN="+token)
 	}
 	if cookie != "" {
-		cmd.Env = append(cmd.Env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN="+cookie)
+		env = append(env, "MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN="+cookie)
 	}
+	env = append(env, extraEnv...)
+	cmd.Env = testProcessEnv(env...)
 
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
@@ -3810,6 +4115,38 @@ func trimMsg(s string, max int) string {
 		return s[:max] + "..."
 	}
 	return s
+}
+
+func mustDownloadResult(t *testing.T, s string) map[string]interface{} {
+	t.Helper()
+	data := mustJSON(t, strings.TrimSpace(s))
+	if kind, _ := data["kind"].(string); kind != "dl.ifs.mcpfather.com/v1" {
+		t.Fatalf("download result kind = %q, want dl.ifs.mcpfather.com/v1; result=%s", kind, s)
+	}
+	for _, key := range []string{"url", "name", "type", "sha1", "createdAt"} {
+		if v, _ := data[key].(string); v == "" {
+			t.Fatalf("download result %s is empty; result=%s", key, s)
+		}
+	}
+	if _, ok := data["size"].(float64); !ok {
+		t.Fatalf("download result size is missing or non-numeric; result=%s", s)
+	}
+	return data
+}
+
+func mustFileURIPath(t *testing.T, raw string) string {
+	t.Helper()
+	u, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("invalid file URI %q: %v", raw, err)
+	}
+	if u.Scheme != "file" {
+		t.Fatalf("local path URI scheme = %q, want file", u.Scheme)
+	}
+	if !filepath.IsAbs(u.Path) {
+		t.Fatalf("file URI path = %q, want absolute path", u.Path)
+	}
+	return u.Path
 }
 
 // logProgress writes a timestamped progress message to stderr for real-time visibility

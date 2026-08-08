@@ -10,6 +10,23 @@ LDFLAGS := -ldflags "-s -w -X main.versionStr=$(VERSION) -X main.gitCommit=$(GIT
 BUILD_FLAGS := -v -trimpath
 
 GOPROXY ?= https://goproxy.cn,direct
+IT_GOMAXPROCS ?= 2
+IT_GOFLAGS ?= -p=1
+IT_TEST_FLAGS ?= -v -count=1 -timeout 600s -parallel 1
+IT_BATCH_TOTAL := 12
+
+IT_CORE_GEN_AUTH_RE := ^Test(Generator_|Auth_).*$$
+IT_CORE_LOG_DOWNLOAD_RE := ^Test(Logging_|Download_).*$$
+IT_CORE_UPLOAD_FORM_RE := ^Test(Upload_|Form|Multipart|FileRef).*$$
+IT_CORE_CASE_CLIENT_RE := ^Test(Case|Mcpclient).*$$
+IT_CORE_RUNTIME_RE := ^Test(CLI_|CyclicRef_|Regression_|E2E_Core_).*$$
+IT_CORE_CONFIG_RE := ^Test(Config_|IFS_|LoggingConfig_|EnvOverride_).*$$
+IT_VIRTUAL_DSL_RE := ^Test(Scenario_|DSLSchema_).*$$
+IT_VIRTUAL_E2E_RE := ^Test(E2E_SonarQube_|E2E_VirtualTool_|E2E_MCP_|E2E_SonatypeIQ_|E2E_NexusFirewall_|E2E_HTTPStep_).*$$
+IT_OIDC_SERVER_RE := ^TestServer_.*$$
+IT_OIDC_UPSTREAM_RE := ^TestOIDC.*$$
+IT_DEPLOY_FULL_RE := ^TestDeploy_FullE2E$$
+IT_DEPLOY_MISC_RE := ^TestDeploy_(HelmDefaultValues|SecretGCP|IngressEnvoy).*$$
 
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
@@ -48,7 +65,18 @@ test-ut:
 	GOPROXY=$(GOPROXY) go test -v -count=1 -timeout 300s ./pkg/... ./cmd/...
 
 test-it:
-	go test -v -count=1 -timeout 600s ./it/
+	IT_BATCH='01/$(IT_BATCH_TOTAL) core-generator-auth' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_GEN_AUTH_RE)'
+	IT_BATCH='02/$(IT_BATCH_TOTAL) core-logging-download' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_LOG_DOWNLOAD_RE)'
+	IT_BATCH='03/$(IT_BATCH_TOTAL) core-upload-form-file' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_UPLOAD_FORM_RE)'
+	IT_BATCH='04/$(IT_BATCH_TOTAL) core-case-mcpclient' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_CASE_CLIENT_RE)'
+	IT_BATCH='05/$(IT_BATCH_TOTAL) core-runtime-e2e' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_RUNTIME_RE)'
+	IT_BATCH='06/$(IT_BATCH_TOTAL) core-config-env-ifs' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_CONFIG_RE)'
+	IT_BATCH='07/$(IT_BATCH_TOTAL) virtual-dsl-schema' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_VIRTUAL_DSL_RE)'
+	IT_BATCH='08/$(IT_BATCH_TOTAL) virtual-e2e-usecases' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_VIRTUAL_E2E_RE)'
+	IT_BATCH='09/$(IT_BATCH_TOTAL) oidc-resource-server' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_OIDC_SERVER_RE)'
+	IT_BATCH='10/$(IT_BATCH_TOTAL) oidc-upstream-client' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_OIDC_UPSTREAM_RE)'
+	IT_BATCH='11/$(IT_BATCH_TOTAL) deploy-full-e2e' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_DEPLOY_FULL_RE)'
+	IT_BATCH='12/$(IT_BATCH_TOTAL) deploy-helm-ingress' GOPROXY=$(GOPROXY) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_DEPLOY_MISC_RE)'
 
 install:
 	go install $(BUILD_FLAGS) $(LDFLAGS) $(CMD_PATH)

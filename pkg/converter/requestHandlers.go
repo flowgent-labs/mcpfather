@@ -155,68 +155,20 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 	}
 	tool.Responses = responseTemplate
 
-	// Detect upload-type API (request body expects file).
+	// Detect upload-type APIs. An operation may define multiple request body
+	// media types. Use explicit media type selection rather than inferring
+	// multipart from arbitrary JSON schemas: multipart/form-data wins when
+	// present, otherwise raw binary media types use the single FileRef path.
 	if ct := detectUploadContentType(operation); ct != "" {
 		if ct == "multipart/form-data" {
-			// For multipart/form-data, prefer the FileRef approach: binary file
-			// properties are converted to URI (string) arguments. The generated
-			// handler download each URI to a local temp directory and builds a
-			// proper multipart/form-data request to the upstream. This avoids
-			// the token/memory explosion of base64-encoding file content.
 			fileArgs, formArgs := c.extractMultipartFileArgs(operation)
 			if len(fileArgs) > 0 {
-				// Replace the single body arg (from convertRequestBody) with
-				// individual form field args + file ref args.
-				filteredArgs := make([]Arg, 0, len(tool.Args))
-				for _, a := range tool.Args {
-					if a.Name != "body" {
-						filteredArgs = append(filteredArgs, a)
-					}
-				}
-				tool.Args = filteredArgs
-
-				// Add non-file form field args
-				tool.Args = append(tool.Args, formArgs...)
-
-				// Add file ref args (URI type)
-				for _, fa := range fileArgs {
-					tool.Args = append(tool.Args, Arg{
-						Name:        fa.Name,
-						Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
-						Source:      "body",
-						Required:    fa.Required,
-						Schema: &Schema{
-							Types:  []string{"string"},
-							Format: "uri",
-						},
-					})
-				}
-				tool.FileArgs = fileArgs
+				replaceBodyWithFileRefArgs(tool, fileArgs, formArgs)
 			} else if isMultipartPlainBinary(operation) {
 				// Non-object multipart schema (e.g. "type: string, format: binary"):
 				// treat as a single FileArg — unified file-ref approach (no base64).
 				fileArgs := []FileArg{{Name: "file", Description: "File to upload", Required: true}}
-				// Replace body arg with file URI arg
-				filteredArgs := make([]Arg, 0, len(tool.Args))
-				for _, a := range tool.Args {
-					if a.Name != "body" {
-						filteredArgs = append(filteredArgs, a)
-					}
-				}
-				tool.Args = filteredArgs
-				for _, fa := range fileArgs {
-					tool.Args = append(tool.Args, Arg{
-						Name:        fa.Name,
-						Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
-						Source:      "body",
-						Required:    fa.Required,
-						Schema: &Schema{
-							Types:  []string{"string"},
-							Format: "uri",
-						},
-					})
-				}
-				tool.FileArgs = fileArgs
+				replaceBodyWithFileRefArgs(tool, fileArgs, nil)
 			}
 			// Object schema without binary properties: fall through to
 			// standard JSON body processing (no UploadContentType set).
@@ -226,28 +178,8 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 			// with URI reference. The handler downloads the file and
 			// forwards it as raw binary body with the original content type.
 			fileArgs := []FileArg{{Name: "file", Description: "File to upload", Required: true}}
-			// Replace body arg with file URI arg
-			filteredArgs := make([]Arg, 0, len(tool.Args))
-			for _, a := range tool.Args {
-				if a.Name != "body" {
-					filteredArgs = append(filteredArgs, a)
-				}
-			}
-			tool.Args = filteredArgs
-			for _, fa := range fileArgs {
-				tool.Args = append(tool.Args, Arg{
-					Name:        fa.Name,
-					Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
-					Source:      "body",
-					Required:    fa.Required,
-					Schema: &Schema{
-						Types:  []string{"string"},
-						Format: "uri",
-					},
-				})
-			}
+			replaceBodyWithFileRefArgs(tool, fileArgs, nil)
 			tool.UploadContentType = ct
-			tool.FileArgs = fileArgs
 		}
 	}
 
@@ -279,82 +211,195 @@ func detectUploadContentType(operation *openapi3.Operation) string {
 	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
 		return ""
 	}
-	for ct := range operation.RequestBody.Value.Content {
-		if ct == "multipart/form-data" ||
-			ct == "application/octet-stream" ||
-			strings.HasPrefix(ct, "image/") || strings.HasPrefix(ct, "video/") ||
-			strings.HasPrefix(ct, "audio/") {
+	contentTypes := sortedContentTypes(operation.RequestBody.Value.Content)
+	for _, ct := range contentTypes {
+		if isMultipartContentType(ct) {
+			return "multipart/form-data"
+		}
+	}
+	for _, ct := range contentTypes {
+		baseCT := baseContentType(ct)
+		if baseCT == "application/octet-stream" ||
+			strings.HasPrefix(baseCT, "image/") || strings.HasPrefix(baseCT, "video/") ||
+			strings.HasPrefix(baseCT, "audio/") {
 			return ct
 		}
 	}
 	return ""
 }
 
-// extractMultipartFileArgs parses a multipart/form-data request body schema to
-// extract file-type properties (format: binary) as FileArgs and non-file
-// properties as regular Args. Returns nil slices when the schema is not an
-// object with properties (e.g., a plain binary string schema without named
-// fields cannot be decomposed into individual FileRef args).
+func baseContentType(ct string) string {
+	base, _, _ := strings.Cut(ct, ";")
+	return strings.ToLower(strings.TrimSpace(base))
+}
+
+func isMultipartContentType(ct string) bool {
+	return baseContentType(ct) == "multipart/form-data"
+}
+
+// extractMultipartFileArgs parses multipart/form-data object schemas to extract
+// file-type properties as FileArgs and non-file properties as regular Args.
+// Binary file properties may be direct fields or hidden behind anyOf/oneOf/allOf
+// wrappers, but only explicit multipart/form-data request bodies take this path.
 func (c *Converter) extractMultipartFileArgs(operation *openapi3.Operation) ([]FileArg, []Arg) {
 	if operation == nil || operation.RequestBody == nil || operation.RequestBody.Value == nil {
 		return nil, nil
 	}
 
-	for ct, mediaType := range operation.RequestBody.Value.Content {
-		if ct != "multipart/form-data" {
+	for _, ct := range sortedContentTypes(operation.RequestBody.Value.Content) {
+		if !isMultipartContentType(ct) {
 			continue
 		}
+		mediaType := operation.RequestBody.Value.Content[ct]
 		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
 			continue
 		}
-		schema := mediaType.Schema.Value
-		// Only handle object schemas with named properties.
-		// A plain "type: string, format: binary" multipart body is handled
-		// separately via isMultipartPlainBinary → single FileArg approach.
-		if schema.Type == nil || !contains(*schema.Type, "object") || schema.Properties == nil {
-			return nil, nil
+		fileArgs, formArgs := c.extractMultipartFileArgsFromSchema(mediaType.Schema.Value)
+		if len(fileArgs) > 0 {
+			return fileArgs, formArgs
 		}
-
-		var fileArgs []FileArg
-		var formArgs []Arg
-		requiredSet := make(map[string]bool)
-		for _, r := range schema.Required {
-			requiredSet[r] = true
-		}
-
-		visited := make(map[*openapi3.Schema]bool)
-		for name, propRef := range schema.Properties {
-			if propRef == nil || propRef.Value == nil {
-				continue
-			}
-			prop := propRef.Value
-			if prop.Format == "binary" {
-				fileArgs = append(fileArgs, FileArg{
-					Name:        name,
-					Description: prop.Description,
-					Required:    requiredSet[name],
-				})
-			} else {
-				// Non-file form field — convert to a regular body arg.
-				propSchema, err := c.applySchema(prop, visited)
-				if err != nil {
-					continue
-				}
-				formArg := Arg{
-					Name:        name,
-					Description: prop.Description,
-					Source:      "body",
-					Required:    requiredSet[name],
-				}
-				if propSchema != nil {
-					formArg.Schema = propSchema
-				}
-				formArgs = append(formArgs, formArg)
-			}
-		}
-		return fileArgs, formArgs
 	}
 	return nil, nil
+}
+
+func replaceBodyWithFileRefArgs(tool *Tool, fileArgs []FileArg, formArgs []Arg) {
+	filteredArgs := make([]Arg, 0, len(tool.Args)+len(fileArgs)+len(formArgs))
+	for _, a := range tool.Args {
+		if a.Name != "body" {
+			filteredArgs = append(filteredArgs, a)
+		}
+	}
+	filteredArgs = append(filteredArgs, formArgs...)
+	for _, fa := range fileArgs {
+		filteredArgs = append(filteredArgs, Arg{
+			Name:        fa.Name,
+			Description: fa.Description + " (URI reference — the file will be downloaded and uploaded to the upstream service)",
+			Source:      "body",
+			Required:    fa.Required,
+			Schema: &Schema{
+				Types:  []string{"string"},
+				Format: "uri",
+			},
+		})
+	}
+	tool.Args = filteredArgs
+	tool.FileArgs = fileArgs
+}
+
+func (c *Converter) extractMultipartFileArgsFromSchema(schema *openapi3.Schema) ([]FileArg, []Arg) {
+	properties := make(map[string]*openapi3.Schema)
+	requiredSet := make(map[string]bool)
+	collectObjectProperties(schema, properties, requiredSet, true, make(map[*openapi3.Schema]bool))
+	if len(properties) == 0 {
+		return nil, nil
+	}
+
+	propNames := make([]string, 0, len(properties))
+	for name := range properties {
+		propNames = append(propNames, name)
+	}
+	sort.Strings(propNames)
+
+	var fileArgs []FileArg
+	var formArgs []Arg
+	for _, name := range propNames {
+		prop := properties[name]
+		if prop == nil {
+			continue
+		}
+		if isBinaryFileSchema(prop, make(map[*openapi3.Schema]bool)) {
+			fileArgs = append(fileArgs, FileArg{
+				Name:        name,
+				Description: prop.Description,
+				Required:    requiredSet[name],
+			})
+			continue
+		}
+
+		propSchema, err := c.applySchema(prop, make(map[*openapi3.Schema]bool))
+		if err != nil {
+			continue
+		}
+		formArg := Arg{
+			Name:        name,
+			Description: prop.Description,
+			Source:      "body",
+			Required:    requiredSet[name],
+		}
+		if propSchema != nil {
+			formArg.Schema = propSchema
+		}
+		formArgs = append(formArgs, formArg)
+	}
+	return fileArgs, formArgs
+}
+
+func collectObjectProperties(schema *openapi3.Schema, properties map[string]*openapi3.Schema, required map[string]bool, requiredApplies bool, visited map[*openapi3.Schema]bool) {
+	if schema == nil || visited[schema] {
+		return
+	}
+	visited[schema] = true
+
+	if len(schema.Properties) > 0 {
+		if requiredApplies {
+			for _, name := range schema.Required {
+				required[name] = true
+			}
+		}
+		for name, ref := range schema.Properties {
+			if ref != nil && ref.Value != nil {
+				properties[name] = ref.Value
+			}
+		}
+	}
+
+	for _, ref := range schema.AllOf {
+		if ref != nil && ref.Value != nil {
+			collectObjectProperties(ref.Value, properties, required, requiredApplies, visited)
+		}
+	}
+	for _, ref := range schema.OneOf {
+		if ref != nil && ref.Value != nil {
+			collectObjectProperties(ref.Value, properties, required, false, visited)
+		}
+	}
+	for _, ref := range schema.AnyOf {
+		if ref != nil && ref.Value != nil {
+			collectObjectProperties(ref.Value, properties, required, false, visited)
+		}
+	}
+}
+
+func isBinaryFileSchema(schema *openapi3.Schema, visited map[*openapi3.Schema]bool) bool {
+	if schema == nil || visited[schema] {
+		return false
+	}
+	visited[schema] = true
+
+	if schema.Format == "binary" && (schema.Type == nil || contains(*schema.Type, "string")) {
+		return true
+	}
+	if hasArrayType(schema) && schema.Items != nil && schema.Items.Value != nil {
+		if isBinaryFileSchema(schema.Items.Value, visited) {
+			return true
+		}
+	}
+	for _, ref := range schema.AllOf {
+		if ref != nil && ref.Value != nil && isBinaryFileSchema(ref.Value, visited) {
+			return true
+		}
+	}
+	for _, ref := range schema.OneOf {
+		if ref != nil && ref.Value != nil && isBinaryFileSchema(ref.Value, visited) {
+			return true
+		}
+	}
+	for _, ref := range schema.AnyOf {
+		if ref != nil && ref.Value != nil && isBinaryFileSchema(ref.Value, visited) {
+			return true
+		}
+	}
+	return false
 }
 
 // isMultipartPlainBinary returns true when the operation's multipart/form-data
@@ -365,7 +410,7 @@ func isMultipartPlainBinary(operation *openapi3.Operation) bool {
 		return false
 	}
 	for ct, mediaType := range operation.RequestBody.Value.Content {
-		if ct != "multipart/form-data" {
+		if !isMultipartContentType(ct) {
 			continue
 		}
 		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
