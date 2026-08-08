@@ -1,18 +1,18 @@
 [submodule "usecase/confluence-mcp"]
 	path = usecase/confluence-mcp
-	url = git@github.com:flowgent-labs/confluence-mcp.git
+	url = ../confluence-mcp.git
 [submodule "usecase/jira-mcp"]
         path = usecase/jira-mcp
-	url = git@github.com:flowgent-labs/jira-mcp.git
+	url = ../jira-mcp.git
 [submodule "usecase/sonarqube-mcp"]
         path = usecase/sonarqube-mcp
-	url = git@github.com:flowgent-labs/sonarqube-mcp.git
+	url = ../sonarqube-mcp.git
 [submodule "usecase/sonatypeiq-mcp"]
         path = usecase/sonatypeiq-mcp
-	url = git@github.com:flowgent-labs/sonatypeiq-mcp.git
+	url = ../sonatypeiq-mcp.git
 [submodule "usecase/nexus-mcp"]
         path = usecase/nexus-mcp
-	url = git@github.com:flowgent-labs/nexus-mcp.git
+	url = ../nexus-mcp.git
 [submodule "usecase/telegram-mcp"]
         path = usecase/telegram-mcp
-        url = git@github.com:flowgent-labs/telegram-mcp.git
+        url = ../telegram-mcp.git
