@@ -1008,13 +1008,15 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	uploadDir, err := resolveUploadDir()
+	// Save uploaded files to the download directory — they are immediately
+	// available for retrieval via the download URL returned below.
+	downloadDir, err := resolveDownloadDir()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	dateDir := filepath.Join(uploadDir, parts[0])
+	dateDir := filepath.Join(downloadDir, parts[0])
 	if err := os.MkdirAll(dateDir, 0755); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create upload directory: %v", err), http.StatusInternalServerError)
 		return
@@ -1023,7 +1025,7 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 	destPath := filepath.Join(dateDir, parts[1])
 	// Prevent directory traversal
 	destPath = filepath.Clean(destPath)
-	if !strings.HasPrefix(destPath, filepath.Clean(uploadDir)) {
+	if !strings.HasPrefix(destPath, filepath.Clean(downloadDir)) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
