@@ -1,10 +1,10 @@
-{{- if (include "__BINARY_NAME__.useNginxIngress" .) }}
+{{- if (include "__MCP_SERVER_NAME__.useNginxIngress" .) }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: {{ include "__BINARY_NAME__.fullname" . }}
+  name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
   labels:
-    {{- include "__BINARY_NAME__.labels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.labels" . | nindent 4 }}
   {{- with .Values.ingress.nginx.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
@@ -29,11 +29,11 @@ spec:
       http:
         paths:
           {{- range .paths }}
-          - path: {{ .path }}
-            pathType: {{ .pathType }}
+          - path: {{ .path | quote }}
+            pathType: {{ .pathType | quote }}
             backend:
               service:
-                name: {{ include "__BINARY_NAME__.fullname" $ }}
+                name: {{ include "__MCP_SERVER_NAME__.fullname" $ }}
                 port:
                   number: {{ $.Values.service.port }}
           {{- end }}

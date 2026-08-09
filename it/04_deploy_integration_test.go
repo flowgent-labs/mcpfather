@@ -396,7 +396,7 @@ func deployPortForward(t *testing.T, kubectl, ns, k8sName string, remotePort int
 	}
 	t.Logf("Pod: %s", podName)
 
-	localPort = 18080 + int(time.Now().UnixNano()%1000)
+	localPort = unusedTCPPort(t)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	pfCmd := exec.CommandContext(ctx, kubectl, "port-forward", "-n", ns, podName,
@@ -532,24 +532,157 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 	}
 	t.Logf("helm lint: %s", string(lintOut))
 
-	// helm template with dummy image values (no real deploy needed)
-	tmplCmd := exec.Command(helm, "template", filepath.Base(projectDir), chartDir,
-		"-n", "default",
-		"--set", "image.repository=example.com/mcp",
-		"--set", "image.tag=v1.0.0",
-		"--set", "config.upstream.default.endpoint=http://example.com",
+	tmplOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"config.upstream.default.endpoint=http://example.com",
 	)
-	tmplOut, err := tmplCmd.CombinedOutput()
-	if err != nil {
-		t.Errorf("helm template failed: %v\n%s", err, tmplOut)
-	}
 	t.Logf("helm template: generated %d bytes", len(tmplOut))
 
 	for _, kind := range []string{"Deployment", "Service", "ConfigMap"} {
-		if !strings.Contains(string(tmplOut), fmt.Sprintf("\nkind: %s\n", kind)) {
+		if !strings.Contains(tmplOut, fmt.Sprintf("\nkind: %s\n", kind)) {
 			t.Errorf("expected kind %s in helm template output", kind)
 		}
 	}
+	for _, want := range []string{
+		"command:\n            - /usr/local/bin/server",
+		"- --port\n            - \"8080\"",
+		"port: 9991\n      pprof:",
+	} {
+		if !strings.Contains(tmplOut, want) {
+			t.Errorf("default helm template missing %q", want)
+		}
+	}
+
+	staticExternalOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"secret.provider=static",
+		"secret.static.externalName=external-mcp-secret",
+		"config.upstream.default.auth.oidc.enabled=true",
+		"config.upstream.default.auth.oidc.issuer=https://idp.example.com",
+		"config.upstream.default.auth.oidc.client_id=mcp-client",
+		"config.upstream.default.auth.oidc.grant_type=password",
+		"config.upstream.default.auth.oidc.username=mcp-user",
+	)
+	for _, want := range []string{
+		"name: external-mcp-secret",
+		"key: oidc_client_secret",
+		"name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__PASSWORD",
+		"key: oidc_password",
+		"client_id: \"mcp-client\"",
+		"grant_type: \"password\"",
+		"username: \"mcp-user\"",
+		"password: \"\"",
+	} {
+		if !strings.Contains(staticExternalOut, want) {
+			t.Errorf("static external secret template missing %q", want)
+		}
+	}
+	if strings.Contains(staticExternalOut, "clientId") || strings.Contains(staticExternalOut, "tokenUrl") || strings.Contains(staticExternalOut, "sampleRate") {
+		t.Error("helm template contains stale camelCase value keys")
+	}
+
+	gcpOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"secret.provider=gcp",
+		"secret.gcp.projectId=my-gcp-project",
+		"secret.gcp.secretId=mcp-secrets",
+		"config.upstream.default.auth.oidc.enabled=true",
+		"config.upstream.default.auth.oidc.client_id=mcp-client",
+	)
+	for _, want := range []string{
+		"kind: SecretProviderClass",
+		"provider: \"gke\"",
+		"driver: \"secrets-store-gke.csi.k8s.io\"",
+		"path: \"oidc_client_secret\"",
+		"client_secret_file: \"/mnt/secrets/oidc_client_secret\"",
+		"web_token_file: \"/mnt/secrets/web_token\"",
+		"cookie_token_file: \"/mnt/secrets/cookie_token\"",
+		"mountPath: /mnt/secrets",
+	} {
+		if !strings.Contains(gcpOut, want) {
+			t.Errorf("gcp secret template missing %q", want)
+		}
+	}
+	if strings.Contains(gcpOut, "secretObjects:") || strings.Contains(gcpOut, "kind: Secret\n") {
+		t.Error("provider=gcp should mount files via CSI and not render/sync k8s Secrets")
+	}
+
+	mgmtDisabledOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"config.mgmt.enabled=false",
+	)
+	if strings.Contains(mgmtDisabledOut, "name: mgmt") || strings.Contains(mgmtDisabledOut, "path: /health") {
+		t.Error("mgmt disabled template should not render mgmt port or health probes")
+	}
+
+	customPortOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"service.port=18889",
+	)
+	for _, want := range []string{
+		"- --port\n            - \"18889\"",
+		"containerPort: 18889",
+		"port: 18889",
+	} {
+		if !strings.Contains(customPortOut, want) {
+			t.Errorf("custom service.port template missing %q", want)
+		}
+	}
+
+	persistenceOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"persistence.enabled=true",
+	)
+	expectedIFSMount := fmt.Sprintf("mountPath: /home/mcp/.%s/ifs", filepath.Base(projectDir))
+	if !strings.Contains(persistenceOut, expectedIFSMount) {
+		t.Errorf("persistence template missing IFS mount %q", expectedIFSMount)
+	}
+
+	nginxOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"ingress.nginx.enabled=true",
+		"ingress.nginx.hosts[0].host=mcp.example.com",
+		"ingress.nginx.hosts[0].paths[0].path=/mcp",
+	)
+	for _, want := range []string{"kind: Ingress", "host: \"mcp.example.com\"", "path: \"/mcp\""} {
+		if !strings.Contains(nginxOut, want) {
+			t.Errorf("nginx ingress template missing %q", want)
+		}
+	}
+
+	envoyOut := helmTemplate(t, helm, chartDir,
+		"image.repository=example.com/mcp",
+		"image.tag=v1.0.0",
+		"ingress.envoy.enabled=true",
+		"ingress.envoy.hosts[0].host=mcp.example.com",
+		"ingress.envoy.hosts[0].paths[0].path=/mcp",
+	)
+	for _, want := range []string{"kind: Gateway", "kind: HTTPRoute", "hostnames:\n    - \"mcp.example.com\"", "value: \"/mcp\""} {
+		if !strings.Contains(envoyOut, want) {
+			t.Errorf("envoy gateway template missing %q", want)
+		}
+	}
+}
+
+func helmTemplate(t *testing.T, helm, chartDir string, setValues ...string) string {
+	t.Helper()
+	args := []string{"template", filepath.Base(filepath.Dir(filepath.Dir(chartDir))), chartDir, "-n", "default"}
+	for _, setValue := range setValues {
+		args = append(args, "--set", setValue)
+	}
+	tmplCmd := exec.Command(helm, args...)
+	tmplOut, err := tmplCmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("helm template failed: %v\n%s", err, tmplOut)
+	}
+	return string(tmplOut)
 }
 
 // deployRealInstall builds, deploys, and returns (namespace, releaseName).
@@ -646,6 +779,11 @@ func TestDeploy_IngressEnvoy_HasGatewayAndRoute(t *testing.T) {
 	// Gateway API CRDs are required; skip if not installed.
 	if out, err := exec.Command(kubectl, "get", "crd", "gateways.gateway.networking.k8s.io").CombinedOutput(); err != nil {
 		t.Skipf("Gateway API CRDs not installed — skipping: %v\n%s", err, out)
+	}
+	for _, resource := range []string{"gateways.gateway.networking.k8s.io", "httproutes.gateway.networking.k8s.io"} {
+		if out, err := exec.Command(kubectl, "get", resource, "-A", "--request-timeout=5s").CombinedOutput(); err != nil {
+			t.Skipf("Gateway API %s is not healthy — skipping real install: %v\n%s", resource, err, out)
+		}
 	}
 
 	projectDir := genProject(t, "echoHeaders", "")

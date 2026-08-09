@@ -1,4 +1,4 @@
-# Contributing to __BINARY_NAME__
+# Contributing to __MCP_SERVER_NAME__
 
 Thank you for your interest in contributing!
 

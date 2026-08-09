@@ -231,10 +231,10 @@ func (g *Generator) GenerateMainGo() error {
 	serviceName := filepath.Base(g.outputDir)
 
 	data := struct {
-		ModuleName string
+		ModuleName  string
 		ServiceName string
 	}{
-		ModuleName: moduleName,
+		ModuleName:  moduleName,
 		ServiceName: serviceName,
 	}
 
@@ -299,7 +299,8 @@ type ClientToolInfo struct {
 	Description string
 	Method      string
 	ExampleArgs string
-	UploadCT    string // non-empty if this is an upload tool
+	UploadCT    string // non-empty if this is a binary upload tool
+	FileArgs    bool   // true when tool has file-ref arguments (multipart or binary)
 }
 
 // GenerateClientSh creates a mcpclient.sh script for quick manual testing
@@ -321,6 +322,7 @@ func (g *Generator) GenerateClientSh(config *converter.MCPConfig) error {
 			Method:      tool.RequestTemplate.Method,
 			ExampleArgs: generateExampleArgs(tool),
 			UploadCT:    tool.UploadContentType,
+			FileArgs:    len(tool.FileArgs) > 0,
 		}
 		tools = append(tools, info)
 	}
@@ -364,7 +366,7 @@ func (g *Generator) GenerateMakefile() error {
 
 .PHONY: build build-all build-with-otel build-with-otel-grpc build-with-otel-http run clean test-ut coverage build-image build-image-with-otel build-image-with-otel-grpc build-image-with-otel-http deploy help gen-dsl-schema
 
-BINARY_NAME := %s
+MCP_SERVER_NAME := %s
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -v -trimpath
 
@@ -373,7 +375,7 @@ GOPROXY ?= https://goproxy.cn,direct
 GOOS ?= $(shell go env GOOS)
 GOARCH ?= $(shell go env GOARCH)
 
-BIN := bin/$(BINARY_NAME)-$(GOOS)-$(GOARCH)-$(VERSION)$(if $(filter windows,$(GOOS)),.exe,)
+BIN := bin/$(MCP_SERVER_NAME)-$(GOOS)-$(GOARCH)-$(VERSION)$(if $(filter windows,$(GOOS)),.exe,)
 
 help:
 	@echo "Usage:"
@@ -396,24 +398,24 @@ help:
 
 build: go.sum
 	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build $(BUILD_FLAGS) -o $(BIN) .
-	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
+	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 build-all:
-	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-amd64-$(VERSION)   .
-	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-linux-arm64-$(VERSION)   .
-	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-amd64-$(VERSION)  .
-	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-darwin-arm64-$(VERSION)  .
-	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-amd64-$(VERSION).exe .
-	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(BINARY_NAME)-windows-arm64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-linux-amd64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=linux   GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-linux-arm64-$(VERSION)   .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-amd64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=darwin  GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-darwin-arm64-$(VERSION)  .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=amd64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-windows-amd64-$(VERSION).exe .
+	GOPROXY=$(GOPROXY) GOOS=windows GOARCH=arm64 go build $(BUILD_FLAGS) -o bin/$(MCP_SERVER_NAME)-windows-arm64-$(VERSION).exe .
 
 go.sum: go.mod
 	GOPROXY=$(GOPROXY) go mod tidy
 
 run: build
-	@bin/$(BINARY_NAME)
+	@bin/$(MCP_SERVER_NAME)
 
 clean:
-	@rm -f bin/$(BINARY_NAME)*
+	@rm -f bin/$(MCP_SERVER_NAME)*
 
 test-ut:
 	@go test ./...
@@ -429,15 +431,15 @@ build-with-otel: build-with-otel-grpc
 
 build-with-otel-grpc: go.sum
 	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_grpc $(BUILD_FLAGS) -o $(BIN) .
-	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
+	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 build-with-otel-http: go.sum
 	GOPROXY=$(GOPROXY) GOOS=$(GOOS) GOARCH=$(GOARCH) go build -tags otel_http $(BUILD_FLAGS) -o $(BIN) .
-	@ln -sf $(notdir $(BIN)) bin/$(BINARY_NAME)
+	@ln -sf $(notdir $(BIN)) bin/$(MCP_SERVER_NAME)
 
 # ---- Container & Kubernetes ----
 
-IMAGE_REPO ?= ghcr.io/$(GITHUB_REPOSITORY_OWNER)/$(BINARY_NAME)
+IMAGE_REPO ?= ghcr.io/$(GITHUB_REPOSITORY_OWNER)/$(MCP_SERVER_NAME)
 GITHUB_REPOSITORY_OWNER ?= flowgent-labs
 IMAGE_TAG  ?= $(VERSION)
 MCP_UPSTREAM_ENDPOINT  ?= $(MCP_UPSTREAM_ENDPOINT)
@@ -458,15 +460,15 @@ build-image-with-otel-http: build-with-otel-http
 build-image-with-otel: build-image-with-otel-grpc
 
 deploy: build-image
-	helm upgrade -i $(BINARY_NAME) deploy/helm \
+	helm upgrade -i $(MCP_SERVER_NAME) deploy/helm \
 		--set image.repository=$(IMAGE_REPO) \
 		--set image.tag=$(IMAGE_TAG) \
-		--set config.upstream.endpoint=$(MCP_UPSTREAM_ENDPOINT) \
+		--set config.upstream.default.endpoint=$(MCP_UPSTREAM_ENDPOINT) \
 		--set secret.static.create=true \
 		--set secret.static.webToken=$(MCP_UPSTREAM_TOKEN) \
 		--set config.upstream.default.auth.oidc.enabled=true \
 		--set config.upstream.default.auth.oidc.issuer=$(MCP_OIDC_ISSUER_URL) \
-		--set config.upstream.default.auth.oidc.clientId=$(MCP_OIDC_CLIENT_ID) \
+		--set config.upstream.default.auth.oidc.client_id=$(MCP_OIDC_CLIENT_ID) \
 		--set secret.static.oidcClientSecret=$(MCP_OIDC_CLIENT_SECRET)
 `, serviceName)
 
@@ -545,12 +547,12 @@ func (g *Generator) GenerateCLI() error {
 		MCPToolsImportPath string
 		HelpersImportPath  string
 		VirtualImportPath  string
-		ServiceName         string
+		ServiceName        string
 	}{
 		MCPToolsImportPath: importPath,
 		HelpersImportPath:  helpersImportPath,
 		VirtualImportPath:  virtualImportPath,
-		ServiceName:         filepath.Base(g.outputDir),
+		ServiceName:        filepath.Base(g.outputDir),
 	}
 
 	var body bytes.Buffer
@@ -580,7 +582,7 @@ type readmeToolEntry struct {
 
 // readmeTemplateData is the data passed to readme.templ.
 type readmeTemplateData struct {
-	ServiceName          string
+	ServiceName         string
 	UpstreamServiceName string
 	ToolCount           int
 	Tools               []readmeToolEntry
@@ -612,7 +614,7 @@ func (g *Generator) GenerateReadme() error {
 	}
 
 	data := readmeTemplateData{
-		ServiceName:          serviceName,
+		ServiceName:         serviceName,
 		UpstreamServiceName: svcName,
 		ToolCount:           len(g.tools),
 		Tools:               tools,

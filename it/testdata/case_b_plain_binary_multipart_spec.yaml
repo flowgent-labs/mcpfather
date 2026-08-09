@@ -1,0 +1,36 @@
+openapi: "3.0.3"
+info:
+  title: Plain Binary Multipart Upload Test (Jira Attachments)
+  version: "1.0.0"
+servers:
+  - url: http://localhost:0/api
+paths:
+  /2/issue/{issueIdOrKey}/attachments:
+    post:
+      operationId: addAttachment
+      summary: Add one or more attachments to an issue
+      description: >-
+        Mirrors Jira POST /api/2/issue/{issueIdOrKey}/attachments. The multipart
+        schema has no named properties (type string, format binary), so the
+        converter falls back to a single FileArg named file.
+      parameters:
+        - name: issueIdOrKey
+          in: path
+          description: The ID or key of the issue
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
