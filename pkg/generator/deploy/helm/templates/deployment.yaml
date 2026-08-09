@@ -1,16 +1,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ include "__BINARY_NAME__.fullname" . }}
+  name: {{ include "__MCP_SERVER_NAME__.fullname" . }}
   labels:
-    {{- include "__BINARY_NAME__.labels" . | nindent 4 }}
+    {{- include "__MCP_SERVER_NAME__.labels" . | nindent 4 }}
 spec:
   {{- if not .Values.autoscaling.enabled }}
   replicas: {{ .Values.replicaCount }}
   {{- end }}
   selector:
     matchLabels:
-      {{- include "__BINARY_NAME__.selectorLabels" . | nindent 6 }}
+      {{- include "__MCP_SERVER_NAME__.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -18,119 +18,75 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "__BINARY_NAME__.labels" . | nindent 8 }}
+        {{- include "__MCP_SERVER_NAME__.labels" . | nindent 8 }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "__BINARY_NAME__.serviceAccountName" . }}
+      serviceAccountName: {{ include "__MCP_SERVER_NAME__.serviceAccountName" . }}
       {{- with .Values.podSecurityContext }}
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       containers:
-        - name: {{ include "__BINARY_NAME__.name" . }}
+        - name: {{ include "__MCP_SERVER_NAME__.name" . }}
           {{- with .Values.securityContext }}
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command:
+            - /usr/local/bin/server
+          args:
+            - --transport
+            - http
+            - --port
+            - {{ .Values.service.port | quote }}
           ports:
             - name: http
               containerPort: {{ .Values.service.port }}
               protocol: TCP
+            {{- if .Values.config.mgmt.enabled }}
             - name: mgmt
-              containerPort: {{ .Values.service.mgmtPort }}
+              containerPort: {{ .Values.config.mgmt.port }}
               protocol: TCP
+            {{- end }}
           env:
             - name: HOME
               value: "/home/mcp"
-            - name: MCP__UPSTREAM__DEFAULT__ENDPOINT
-              value: {{ .Values.config.upstream.default.endpoint | quote }}
-            {{- if .Values.config.server.auth.oidc.enabled }}
-            - name: MCP__SERVER__AUTH__OIDC__ENABLED
-              value: "true"
-            - name: MCP__SERVER__AUTH__OIDC__ISSUER
-              value: {{ .Values.config.server.auth.oidc.issuer | quote }}
-            {{- if .Values.config.server.auth.oidc.jwksUri }}
-            - name: MCP__SERVER__AUTH__OIDC__JWKS_URI
-              value: {{ .Values.config.server.auth.oidc.jwksUri | quote }}
-            {{- end }}
-            - name: MCP__SERVER__AUTH__OIDC__AUDIENCE
-              value: {{ .Values.config.server.auth.oidc.audience | quote }}
-            - name: MCP__SERVER__AUTH__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD
-              value: {{ .Values.config.server.auth.oidc.enableClientTokenClaimForward | quote }}
-            {{- if .Values.config.server.auth.oidc.additionalClientTokenClaimForward }}
-            - name: MCP__SERVER__AUTH__OIDC__ADDITIONAL_CLIENT_TOKEN_CLAIM_FORWARD
-              value: {{ join "," .Values.config.server.auth.oidc.additionalClientTokenClaimForward | quote }}
-            {{- end }}
-            {{- end }}
-            {{- if .Values.config.upstream.default.auth.oidc.enabled }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ENABLED
-              value: "true"
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ISSUER
-              value: {{ .Values.config.upstream.default.auth.oidc.issuer | quote }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_ID
-              value: {{ .Values.config.upstream.default.auth.oidc.clientId | quote }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__SCOPES
-              value: {{ .Values.config.upstream.default.auth.oidc.scopes | quote }}
-            {{- if .Values.config.upstream.default.auth.oidc.tokenUrl }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__TOKEN_URL
-              value: {{ .Values.config.upstream.default.auth.oidc.tokenUrl | quote }}
-            {{- end }}
-            {{- if .Values.secret.static.create }}
+            {{- if and (eq .Values.secret.provider "static") .Values.config.upstream.default.auth.oidc.enabled (not .Values.config.upstream.default.auth.oidc.client_secret_file) }}
             - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "__BINARY_NAME__.secretName" . }}
+                  name: {{ include "__MCP_SERVER_NAME__.secretName" . }}
                   key: oidc_client_secret
             {{- end }}
+            {{- if and (eq .Values.secret.provider "static") (eq .Values.config.upstream.default.auth.oidc.grant_type "password") }}
+            - name: MCP__UPSTREAM__DEFAULT__AUTH__OIDC__PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "__MCP_SERVER_NAME__.secretName" . }}
+                  key: oidc_password
             {{- end }}
-            {{- if and .Values.secret.static.create (eq .Values.secret.provider "static") }}
-            {{- if .Values.secret.static.webToken }}
+            {{- if and (eq .Values.secret.provider "static") (or .Values.secret.static.create .Values.secret.static.externalName .Values.secret.static.webToken) }}
             - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "__BINARY_NAME__.secretName" . }}
+                  name: {{ include "__MCP_SERVER_NAME__.secretName" . }}
                   key: web_token
+                  optional: true
             {{- end }}
-            {{- if .Values.secret.static.cookieToken }}
+            {{- if and (eq .Values.secret.provider "static") (or .Values.secret.static.create .Values.secret.static.externalName .Values.secret.static.cookieToken) }}
             - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "__BINARY_NAME__.secretName" . }}
+                  name: {{ include "__MCP_SERVER_NAME__.secretName" . }}
                   key: cookie_token
+                  optional: true
             {{- end }}
-            {{- else if and (eq .Values.secret.provider "gcp") }}
-            {{- if .Values.secret.static.webToken }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "__BINARY_NAME__.secretName" . }}
-                  key: web_token
-            {{- end }}
-            {{- if .Values.secret.static.cookieToken }}
-            - name: MCP__UPSTREAM__DEFAULT__AUTH__STATIC__COOKIE_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ include "__BINARY_NAME__.secretName" . }}
-                  key: cookie_token
-            {{- end }}
-            {{- end }}
-            - name: MCP__LOGGING__AUTH_VERBOSE
-              value: {{ .Values.config.logging.auth_verbose | quote }}
-          {{- if .Values.config.mgmt.otel.enabled }}
-            - name: MCP__MGMT__OTEL__ENABLED
-              value: "true"
-            - name: MCP__MGMT__OTEL__ENDPOINT
-              value: {{ .Values.config.mgmt.otel.endpoint | quote }}
-            - name: MCP__MGMT__OTEL__PROTOCOL
-              value: {{ .Values.config.mgmt.otel.protocol | quote }}
-            - name: MCP__MGMT__OTEL__SAMPLE_RATE
-              value: {{ .Values.config.mgmt.otel.sampleRate | quote }}
-          {{- end }}
+          {{- if .Values.config.mgmt.enabled }}
           livenessProbe:
             httpGet:
               path: /health
@@ -143,9 +99,10 @@ spec:
               port: mgmt
             initialDelaySeconds: 5
             periodSeconds: 10
+          {{- end }}
           volumeMounts:
             - name: config
-              mountPath: /home/mcp/.__BINARY_NAME__/config.yaml
+              mountPath: /home/mcp/.__MCP_SERVER_NAME__/config.yaml
               subPath: config.yaml
             {{- if eq .Values.secret.provider "gcp" }}
             - name: secrets
@@ -154,26 +111,26 @@ spec:
             {{- end }}
             {{- if .Values.persistence.enabled }}
             - name: data
-              mountPath: /home/mcp/download
+              mountPath: /home/mcp/.__MCP_SERVER_NAME__/ifs
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
         - name: config
           configMap:
-            name: {{ include "__BINARY_NAME__.fullname" . }}-config
+            name: {{ include "__MCP_SERVER_NAME__.fullname" . }}-config
         {{- if eq .Values.secret.provider "gcp" }}
         - name: secrets
           csi:
-            driver: secrets-store.csi.k8s.io
+            driver: {{ .Values.secret.gcp.csiDriver | quote }}
             readOnly: true
             volumeAttributes:
-              secretProviderClass: {{ include "__BINARY_NAME__.fullname" . }}-spc
+              secretProviderClass: {{ include "__MCP_SERVER_NAME__.fullname" . }}-spc
         {{- end }}
         {{- if .Values.persistence.enabled }}
         - name: data
           persistentVolumeClaim:
-            claimName: {{ include "__BINARY_NAME__.fullname" . }}-data
+            claimName: {{ include "__MCP_SERVER_NAME__.fullname" . }}-data
         {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:

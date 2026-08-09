@@ -7,7 +7,6 @@
 server:
   # Override the default service name (derived from the binary name).
   # Affects filesystem paths and OpenTelemetry service.name.
-  # service_name: ""
 
   # Maximum number of concurrent AI agent client MCP requests.
   # HTTP server timeouts in seconds. 0 = disabled.
@@ -191,8 +190,7 @@ virtual_tools:
             ps: $opts.limit
         require:
           field: "issues"
-          nonEmpty: true
-          message: No issues found for the given project, branch and pull request.
+          message: SonarQube issues search response is missing the issues field.
       - id: enriched
         kind: foreach
         spec:
@@ -323,8 +321,7 @@ virtual_tools:
             ps: $opts.limit
         require:
           field: "issues"
-          nonEmpty: true
-          message: No issues found for the given project and branch.
+          message: SonarQube issues search response is missing the issues field.
       - id: enriched
         kind: foreach
         spec:

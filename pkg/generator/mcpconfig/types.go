@@ -22,11 +22,6 @@ type Config struct {
 // ServerConfig holds the inbound-facing (AI agent client MCP request) configuration.
 type ServerConfig struct {
 	Auth ServerAuthConfig `yaml:"auth"`
-	// Override the default service name (derived from the binary name).
-	// Affects filesystem paths (~/.{serviceName}/config.yaml,
-	// ~/.{serviceName}/ifs/{download,upload}) and OpenTelemetry
-	// service.name resource attribute. Default (empty): uses the binary name.
-	ServiceName string `yaml:"service_name"`
 	// HTTP server timeouts in seconds. Zero means no timeout (use with
 	// caution: connections without timeouts can leak under slow-client attacks).
 	// write_timeout_seconds applies to each write; set to 0 for SSE/streaming
@@ -92,11 +87,14 @@ type UpstreamOIDCConfig struct {
 	Issuer       string `yaml:"issuer"`
 	ClientID     string `yaml:"client_id"`
 	ClientSecret string `yaml:"client_secret"`
-	Scopes       string `yaml:"scopes"`
-	GrantType    string `yaml:"grant_type"`
-	TokenURL     string `yaml:"token_url"`
-	Username     string `yaml:"username"`
-	Password     string `yaml:"password"`
+	// ClientSecretFile points to a file containing the OIDC client secret.
+	// It is primarily used by Kubernetes CSI secret mounts.
+	ClientSecretFile string `yaml:"client_secret_file"`
+	Scopes           string `yaml:"scopes"`
+	GrantType        string `yaml:"grant_type"`
+	TokenURL         string `yaml:"token_url"`
+	Username         string `yaml:"username"`
+	Password         string `yaml:"password"`
 }
 
 // StaticAuthConfig holds static credentials for legacy / simple upstream APIs.

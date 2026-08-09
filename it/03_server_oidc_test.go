@@ -672,7 +672,7 @@ server:
 `, mock.server.URL, issuer, audience)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	logProgress("[mcp-server] launching %s on port %s", serviceName, port)
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
@@ -908,7 +908,7 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	var stderrBuf strings.Builder
@@ -1040,7 +1040,7 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	var stderrBuf strings.Builder
@@ -1289,7 +1289,7 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
 	cmd.Env = append(os.Environ(), "HOME="+homeDir)
 	var stderrBuf strings.Builder
