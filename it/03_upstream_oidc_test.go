@@ -255,7 +255,7 @@ upstream:
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		// Override any MCP__ env from the parent test process (e.g. source .env)
 		// so the YAML config takes precedence.
@@ -330,10 +330,9 @@ upstream:
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
-		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET=",
 	)
 	if err := cmd.Start(); err != nil {
 		t.Fatalf("failed to start HTTP server: %v", err)
