@@ -111,6 +111,44 @@ func (m *VirtualMockService) Reset() {
 // Pre-defined Scenario Response Data
 // ===========================================================================
 
+const (
+	sonarQubeProject        = "rengine"
+	sonarQubeBranch         = "main"
+	sonarQubeComponent      = "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java"
+	sonarQubeEmptyComponent = "rengine:__mcpfather_it_missing__.go"
+	sonarQubeIssueKey       = "94d52855-937e-4ff7-8ccf-86ebc3e53c87"
+)
+
+// RegisterSonarQubeRealScenario registers the two SonarQube API endpoints used
+// by the issue-enrichment virtual tools. Payloads are captured, unmodified
+// responses from the real API so the mock preserves the production schema.
+func (m *VirtualMockService) RegisterSonarQubeRealScenario(issues, emptyIssues, snippets []byte) {
+	m.Handle("/api/issues/search", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		payload := issues
+		if r.URL.Query().Get("components") == sonarQubeEmptyComponent {
+			payload = emptyIssues
+		}
+		writeRawJSON(w, payload)
+	})
+
+	m.Handle("/api/sources/issue_snippets", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Query().Get("issueKey") != sonarQubeIssueKey {
+			http.Error(w, "issue not found", http.StatusNotFound)
+			return
+		}
+		writeRawJSON(w, snippets)
+	})
+}
+
 // RegisterSonatypeIQScenario registers mock handlers that simulate the
 // SonatypeIQ API pattern: app info → violations list → component details.
 //
@@ -566,4 +604,9 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	if err := json.NewEncoder(w).Encode(v); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func writeRawJSON(w http.ResponseWriter, payload []byte) {
+	w.Header().Set("Content-Type", "application/json")
+	_, _ = w.Write(payload)
 }

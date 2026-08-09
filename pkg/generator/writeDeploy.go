@@ -9,10 +9,10 @@ import (
 )
 
 // GenerateDeploy writes the deploy/ directory (helm chart + Dockerfile) to the
-// generated MCP server project. Placeholder __BINARY_NAME__ is replaced with the
-// actual binary name throughout all files.
+// generated MCP server project. Placeholder __MCP_SERVER_NAME__ is replaced with the
+// actual MCP server name throughout all files.
 func (g *Generator) GenerateDeploy() error {
-	binName := filepath.Base(g.outputDir)
+	serverName := filepath.Base(g.outputDir)
 
 	return fs.WalkDir(templatesFS, "deploy", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -35,7 +35,7 @@ func (g *Generator) GenerateDeploy() error {
 			return fmt.Errorf("read embedded %s: %w", path, err)
 		}
 
-		content := strings.ReplaceAll(string(data), "__BINARY_NAME__", binName)
+		content := strings.ReplaceAll(string(data), "__MCP_SERVER_NAME__", serverName)
 
 		outPath := filepath.Join(g.outputDir, path)
 		if err := os.WriteFile(outPath, []byte(content), 0644); err != nil {
@@ -49,9 +49,9 @@ func (g *Generator) GenerateDeploy() error {
 // Files under .github/ (workflows, ISSUE_TEMPLATE, PULL_REQUEST_TEMPLATE) are
 // placed in .github/; root-level files (CONTRIBUTING, SECURITY, LICENSE, etc.)
 // are placed at the project root.
-// Placeholder __BINARY_NAME__ is replaced with the actual binary name.
+// Placeholder __MCP_SERVER_NAME__ is replaced with the actual MCP server name.
 func (g *Generator) GenerateGitHubCI() error {
-	binName := filepath.Base(g.outputDir)
+	serverName := filepath.Base(g.outputDir)
 
 	return fs.WalkDir(templatesFS, "deploy/github", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -66,7 +66,7 @@ func (g *Generator) GenerateGitHubCI() error {
 			return fmt.Errorf("read embedded %s: %w", path, err)
 		}
 
-		content := strings.ReplaceAll(string(data), "__BINARY_NAME__", binName)
+		content := strings.ReplaceAll(string(data), "__MCP_SERVER_NAME__", serverName)
 
 		rel := strings.TrimPrefix(path, "deploy/github/")
 

@@ -5,7 +5,6 @@ package mcputils
 import (
 	"bytes"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -40,6 +39,7 @@ func GetHTTPHeaders(ctx context.Context) http.Header {
 	}
 	return nil
 }
+
 
 // ForwardRequest sends an HTTP request to the upstream endpoint and returns the response.
 // All HTTP headers stored in ctx are forwarded to the upstream service.
@@ -520,50 +520,59 @@ func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path str
 	return mcp.NewToolResultText(string(body)), nil
 }
 
-// ForwardUploadRequest reads file data (from upload directory or base64 content)
-// and sends it as the request body to the upstream service.
+// ForwardBinaryUploadRequest handles non-multipart file uploads (octet-stream,
+// image/*, video/*, audio/*). It downloads the file URI to the IFS temp cache
+// and forwards it as a raw binary request body to the upstream service.
 //
-// Two modes:
-//   - fileContentBase64 != "": decode and stage in upload dir, then upload
-//     (supports HTTP mode where clients send file content inline).
-//   - fileContentBase64 == "": read fileName from the upload directory
-//     (supports stdio mode where files are placed on the shared filesystem).
-func ForwardUploadRequest(ctx context.Context, upstreamBase, method, path, fileName, fileContentBase64, contentType, toolName string) (*mcp.CallToolResult, error) {
-	var fileData []byte
+// Like ForwardMultipartRequest, empty file refs are handled gracefully — when
+// the URI is empty, an empty request body is sent.
+func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, contentType, toolName string) (*mcp.CallToolResult, error) {
+	// Build URL with query parameters, excluding file refs and path params.
+	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
+	query := url.Values{}
+	for key, val := range args {
+		if key == "body" {
+			continue
+		}
+		if _, isFile := fileRefs[key]; isFile {
+			continue
+		}
+		placeholder := "{" + key + "}"
+		if strings.Contains(upstreamURL, placeholder) {
+			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, valueToString(val))
+			continue
+		}
+		if strVal, ok := val.(string); ok {
+			query.Set(key, strVal)
+		} else {
+			query.Set(key, valueToString(val))
+		}
+	}
+	if len(query) > 0 {
+		upstreamURL += "?" + query.Encode()
+	}
 
-	if fileContentBase64 != "" {
-		decoded, err := base64.StdEncoding.DecodeString(fileContentBase64)
+	// Download the first file ref to IFS temp cache.
+	var fileData []byte
+	uri := fileRefs["file"]
+	if uri != "" {
+		tmpDir, err := resolveUploadTmpDir()
 		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to decode base64 file content: %v", err)), nil
+			return nil, fmt.Errorf("failed to resolve upload tmp dir: %w", err)
 		}
-		uploadDir, err := resolveUploadDir()
+		localPath, _, err := downloadFileFromURI(ctx, uri, tmpDir)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve upload dir: %w", err)
+			return mcp.NewToolResultError(fmt.Sprintf("failed to download file from %s: %v", uri, err)), nil
 		}
-		if err := os.MkdirAll(uploadDir, 0755); err != nil {
-			return nil, fmt.Errorf("failed to create upload directory %s: %w", uploadDir, err)
-		}
-		fileID := generateFileID(filepath.Clean(fileName))
-		stagedPath := filepath.Join(uploadDir, fileID)
-		if err := os.WriteFile(stagedPath, decoded, 0644); err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to stage uploaded file %s: %v", stagedPath, err)), nil
-		}
-		fileData = decoded
-	} else {
-		uploadDir, err := resolveUploadDir()
+		defer os.Remove(localPath)
+
+		fileData, err = os.ReadFile(localPath)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve upload dir: %w", err)
+			return nil, fmt.Errorf("failed to read downloaded file %s: %w", localPath, err)
 		}
-		localPath := filepath.Join(uploadDir, filepath.Clean(fileName))
-		data, err := os.ReadFile(localPath)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("failed to read file %s from upload directory: %v", localPath, err)), nil
-		}
-		fileData = data
 	}
 
 	startTime := time.Now()
-	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
 
 	req, err := http.NewRequestWithContext(ctx, method, upstreamURL, bytes.NewReader(fileData))
 	if err != nil {
@@ -662,8 +671,42 @@ func resolveUploadTmpDir() (string, error) {
 
 // downloadFileFromURI download a file from the given URI to a local
 // temporary file and returns the local file path and original filename.
+// Supports file:/// (local filesystem) and http(s):// (remote download).
 // The caller is responsible for removing the file when it is no longer needed.
 func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localPath string, originalName string, err error) {
+	// Handle file:/// URIs — copy directly from local filesystem.
+	if strings.HasPrefix(uri, "file://") {
+		filePath := strings.TrimPrefix(uri, "file://")
+		// Also handle file://localhost/... and file:///...
+		filePath = strings.TrimPrefix(filePath, "localhost")
+		if !strings.HasPrefix(filePath, "/") {
+			return "", "", fmt.Errorf("invalid file URI: %s", uri)
+		}
+		if err := os.MkdirAll(tmpDir, 0755); err != nil {
+			return "", "", fmt.Errorf("create tmp dir %s: %w", tmpDir, err)
+		}
+		origName := filepath.Base(filePath)
+		fileID := generateFileID(origName)
+		localPath = filepath.Join(tmpDir, fileID)
+
+		src, err := os.Open(filePath)
+		if err != nil {
+			return "", "", fmt.Errorf("open %s: %w", filePath, err)
+		}
+		defer src.Close()
+
+		dst, err := os.Create(localPath)
+		if err != nil {
+			return "", "", fmt.Errorf("create %s: %w", localPath, err)
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, src); err != nil {
+			return "", "", fmt.Errorf("copy %s: %w", filePath, err)
+		}
+		return localPath, origName, nil
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", uri, nil)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create download request for %s: %w", uri, err)
@@ -734,6 +777,9 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 //  3. Sends the request to the upstream service
 //  4. Cleans up temporary files
 //  5. Returns the upstream response (or saves it as a binary download)
+//
+// Empty file refs (uri == "") produce empty file parts so the upstream
+// receives a well-formed multipart request even for optional files.
 func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, pathKeys []string, toolName string) (*mcp.CallToolResult, error) {
 	startTime := time.Now()
 
@@ -764,36 +810,44 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		upstreamURL += "?" + query.Encode()
 	}
 
-	// Download each file URI to a local temp file
-	tmpDir, err := resolveUploadTmpDir()
-	if err != nil {
-		return nil, fmt.Errorf("failed to resolve upload tmp dir: %w", err)
-	}
-
-	localFiles := make(map[string]string)   // fieldName → localPath
-	origNames := make(map[string]string)    // fieldName → original filename
-	for fieldName, uri := range fileRefs {
-		if uri == "" {
-			continue
+	// Download each non-empty file URI to a local temp file.
+	hasDownloads := false
+	for _, uri := range fileRefs {
+		if uri != "" {
+			hasDownloads = true
+			break
 		}
-		localPath, origName, err := downloadFileFromURI(ctx, uri, tmpDir)
+	}
+	var localFiles map[string]string
+	var origNames map[string]string
+	if hasDownloads {
+		tmpDir, err := resolveUploadTmpDir()
 		if err != nil {
-			// Clean up any files already downloaded
+			return nil, fmt.Errorf("failed to resolve upload tmp dir: %w", err)
+		}
+		localFiles = make(map[string]string)
+		origNames = make(map[string]string)
+		for fieldName, uri := range fileRefs {
+			if uri == "" {
+				continue
+			}
+			localPath, origName, err := downloadFileFromURI(ctx, uri, tmpDir)
+			if err != nil {
+				for _, lp := range localFiles {
+					os.Remove(lp)
+				}
+				return mcp.NewToolResultError(fmt.Sprintf("failed to download %s from %s: %v", fieldName, uri, err)), nil
+			}
+			localFiles[fieldName] = localPath
+			origNames[fieldName] = origName
+		}
+		// Clean up temp files when done
+		defer func() {
 			for _, lp := range localFiles {
 				os.Remove(lp)
 			}
-			return mcp.NewToolResultError(fmt.Sprintf("failed to download %s from %s: %v", fieldName, uri, err)), nil
-		}
-		localFiles[fieldName] = localPath
-		origNames[fieldName] = origName
+		}()
 	}
-
-	// Clean up temp files when done
-	defer func() {
-		for _, lp := range localFiles {
-			os.Remove(lp)
-		}
-	}()
 
 	// Build multipart form body
 	var buf bytes.Buffer
@@ -813,25 +867,34 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		writer.WriteField(key, valueToString(val))
 	}
 
-	// Add file parts
-	for fieldName, localPath := range localFiles {
-		origName := origNames[fieldName]
-		if origName == "" {
-			origName = filepath.Base(localPath)
-		}
-		part, err := writer.CreateFormFile(fieldName, origName)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create form file for %s: %w", fieldName, err)
-		}
-		f, err := os.Open(localPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to open local file %s: %w", localPath, err)
-		}
-		if _, err := io.Copy(part, f); err != nil {
+	// Add file parts (non-empty: downloaded content; empty: 0-byte part)
+	for fieldName := range fileRefs {
+		if localPath, ok := localFiles[fieldName]; ok {
+			origName := origNames[fieldName]
+			if origName == "" {
+				origName = filepath.Base(localPath)
+			}
+			part, err := writer.CreateFormFile(fieldName, origName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create form file for %s: %w", fieldName, err)
+			}
+			f, err := os.Open(localPath)
+			if err != nil {
+				return nil, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+			}
+			if _, err := io.Copy(part, f); err != nil {
+				f.Close()
+				return nil, fmt.Errorf("failed to copy file data for %s: %w", fieldName, err)
+			}
 			f.Close()
-			return nil, fmt.Errorf("failed to copy file data for %s: %w", fieldName, err)
+		} else {
+			// Empty file argument — emit an empty file part so the
+			// upstream receives a well-formed multipart request.
+			_, err := writer.CreateFormFile(fieldName, fieldName)
+			if err != nil {
+				return nil, fmt.Errorf("failed to create empty form file for %s: %w", fieldName, err)
+			}
 		}
-		f.Close()
 	}
 	writer.Close()
 

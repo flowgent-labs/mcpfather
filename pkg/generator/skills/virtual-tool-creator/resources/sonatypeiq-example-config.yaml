@@ -10,7 +10,6 @@
 server:
   # Override the default service name (derived from the binary name).
   # Affects filesystem paths and OpenTelemetry service.name.
-  # service_name: ""
 
   # Maximum number of concurrent AI agent client MCP requests.
   # HTTP server timeouts in seconds. 0 = disabled.
