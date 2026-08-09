@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,23 +34,93 @@ func unusedTCPPort(t *testing.T) int {
 	return listener.Addr().(*net.TCPAddr).Port
 }
 
+// testProcessEnv returns a child-process environment suitable for generated
+// MCP server runtime tests. Parent shells often source .env files that contain
+// MCP__* overrides; those must not leak into tests that intentionally validate
+// YAML config behavior.
+func testProcessEnv(overrides ...string) []string {
+	overrideKeys := map[string]struct{}{}
+	for _, kv := range overrides {
+		if key, _, ok := strings.Cut(kv, "="); ok {
+			overrideKeys[key] = struct{}{}
+		}
+	}
+
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, kv := range os.Environ() {
+		key, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(key, "MCP__") {
+			continue
+		}
+		if _, overridden := overrideKeys[key]; overridden {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, overrides...)
+}
+
 // testProxyEnv returns the proxy URL and env vars for build subcommands.
 // It checks MCPFATHER_TEST_PROXY first, then HTTPS_PROXY.
 // If neither is set, no proxy is configured — suitable for environments
 // where Go can reach module proxies directly.
 func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 	t.Helper()
-	proxyURL = os.Getenv("MCPFATHER_TEST_PROXY")
-	if proxyURL == "" {
-		proxyURL = os.Getenv("HTTPS_PROXY")
+
+	for _, candidate := range []struct {
+		name  string
+		value string
+	}{
+		{name: "MCPFATHER_TEST_PROXY", value: os.Getenv("MCPFATHER_TEST_PROXY")},
+		{name: "HTTPS_PROXY", value: os.Getenv("HTTPS_PROXY")},
+	} {
+		raw := strings.TrimSpace(candidate.value)
+		if raw == "" {
+			continue
+		}
+		normalized, ok := normalizeTestProxyURL(raw)
+		if !ok {
+			logProgress("[proxy] ignoring invalid %s=%q", candidate.name, raw)
+			continue
+		}
+		logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+			os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), normalized)
+		return normalized, []string{"HTTPS_PROXY=" + normalized, "HTTP_PROXY=" + normalized}
 	}
-	if proxyURL == "" {
-		logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
-		return "", nil
+
+	logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set or invalid — build commands will use direct network")
+	return "", nil
+}
+
+func normalizeTestProxyURL(raw string) (string, bool) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" {
+		return "", false
 	}
-	logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
-		os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
-	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return "", false
+	}
+	if parsed.Hostname() == "" && parsed.Port() != "" {
+		parsed.Host = net.JoinHostPort("127.0.0.1", parsed.Port())
+	}
+	if parsed.Hostname() == "" {
+		return "", false
+	}
+	return parsed.String(), true
+}
+
+func testBuildEnv(t *testing.T) []string {
+	t.Helper()
+	_, envVars := testProxyEnv(t)
+	if os.Getenv("GOMAXPROCS") == "" {
+		envVars = append(envVars, "GOMAXPROCS=2")
+	}
+	return envVars
 }
 
 // mcpfatherBin returns the path to the mcpfather binary, building it if needed.
@@ -61,9 +132,9 @@ func mcpfatherBin(t *testing.T) string {
 	}
 	bin := filepath.Join(root, "bin", "mcpfather")
 	if mcpfatherBuildRequired(t, root, bin) {
-		_, proxyEnv := testProxyEnv(t)
+		buildEnv := testBuildEnv(t)
 		cmd := exec.Command("make", "-C", root, "build")
-		cmd.Env = append(os.Environ(), proxyEnv...)
+		cmd.Env = append(os.Environ(), buildEnv...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make build failed: %v\n%s", err, out)
 		}
@@ -246,17 +317,17 @@ func buildServer(t *testing.T, projectDir string) string {
 	}
 
 	logProgress("[build] go mod tidy + go build in %s", projectDir)
-	_, proxyEnv := testProxyEnv(t)
+	buildEnv := testBuildEnv(t)
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), proxyEnv...)
+	cmd.Env = append(os.Environ(), buildEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
 	}
 	logProgress("[build] go mod tidy OK — building binary %s", binName)
-	cmd = exec.Command("go", "build", "-o", filepath.Join("bin", binName), ".")
+	cmd = exec.Command("go", "build", "-p", "1", "-o", filepath.Join("bin", binName), ".")
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), proxyEnv...)
+	cmd.Env = append(os.Environ(), buildEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
@@ -328,7 +399,7 @@ func okHandler() http.HandlerFunc {
 func runCLI(t *testing.T, binPath string, env []string, args ...string) (string, string) {
 	t.Helper()
 	cmd := exec.Command(binPath, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = testProcessEnv(env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -880,7 +951,7 @@ func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 	port := "19876"
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Basic httpToken456",
 	)
@@ -923,7 +994,7 @@ func TestLogging_HTTPTransportRedactsAuthByDefault(t *testing.T) {
 	port := "19878"
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "10")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=shouldBeHidden",
 	)
@@ -1863,7 +1934,7 @@ func TestMcpclientSh_FileFlag_SetsRefURI(t *testing.T) {
 		"--description=new-syntax",
 		"--file", testFile,
 	)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
 		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
 	)
@@ -1910,7 +1981,7 @@ func TestMcpclientSh_KeyValueBodySyntax(t *testing.T) {
 	cmd := exec.Command("bash", clientSh, "call", "CreatePost",
 		"--body", `{"title":"hello","body":"world"}`,
 	)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
 		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
 	)
@@ -1952,7 +2023,7 @@ func TestMcpclientSh_NoFile_EmptyPart(t *testing.T) {
 		"--name=empty-file",
 		"--description=no file arg at all",
 	)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
 		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
 	)
@@ -2003,7 +2074,7 @@ func TestMcpclientSh_NestedJSONBody(t *testing.T) {
 	cmd := exec.Command("bash", clientSh, "call", "CreatePost",
 		"--body", nestedJSON,
 	)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
 		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
 	)
@@ -2845,7 +2916,7 @@ native_tools:
 	// Start the server — it should fail due to conflict
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -3164,7 +3235,7 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -3242,7 +3313,7 @@ server:
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -3297,7 +3368,7 @@ logging:
 
 	// Start with -v 0 (or no -v) — config's logging.level=4 should activate
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -3342,7 +3413,7 @@ func TestLoggingConfig_AuthVerboseEnvOverride(t *testing.T) {
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "10")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=shouldBeVisible",
 		"MCP__LOGGING__AUTH_VERBOSE=true",
@@ -3442,7 +3513,7 @@ func TestEnvOverride_ServerIFSDisabledViaEnv(t *testing.T) {
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Deep struct bool: server.ifs.enabled = false
@@ -3488,7 +3559,7 @@ func TestEnvOverride_LoggingLevelViaEnv(t *testing.T) {
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Logging level via ENV (no config file)
@@ -3540,7 +3611,7 @@ func TestEnvOverride_MgmtPortViaEnv(t *testing.T) {
 	mgmtPort := unusedTCPPort(t)
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Override mgmt port via ENV
@@ -3611,7 +3682,7 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
@@ -3652,7 +3723,7 @@ func TestEnvOverride_MgmtEnabledViaEnv(t *testing.T) {
 	mgmtPort := unusedTCPPort(t)
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// *bool field: mgmt.enabled = false
