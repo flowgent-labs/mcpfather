@@ -548,8 +548,8 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 }
 
 // testSpecSimpleBinaryMultipart is a multipart spec with a plain binary string
-// schema (not an object). This path should still use UploadContentType and
-// file_name/file_content (legacy behavior), NOT FileRef.
+// schema (not an object). With the unified file-ref approach, this now uses
+// FileArgs (single "file" arg) even for plain binary multipart.
 const testSpecSimpleBinaryMultipart = `openapi: "3.0.3"
 info:
   title: Simple Binary Upload
@@ -593,38 +593,37 @@ func TestSimpleBinaryMultipart_UsesUploadContentType(t *testing.T) {
 	}
 	tool := config.Tools[0]
 
-	// Plain binary multipart (non-object schema) should use UploadContentType
-	if tool.UploadContentType == "" {
-		t.Error("plain binary multipart should have UploadContentType set")
+	// Plain binary multipart now uses unified file-ref approach (FileArgs)
+	if tool.UploadContentType != "" {
+		t.Error("plain binary multipart should NOT have UploadContentType (uses FileArgs)")
 	}
 
-	// Should NOT have FileArgs (non-object schema can't extract named file args)
-	if len(tool.FileArgs) != 0 {
-		t.Error("plain binary multipart should NOT have FileArgs")
+	// Should have single FileArgs entry for the "file" ref
+	if len(tool.FileArgs) != 1 {
+		t.Fatalf("expected 1 FileArg for plain binary multipart, got %d", len(tool.FileArgs))
+	}
+	if tool.FileArgs[0].Name != "file" {
+		t.Errorf("expected FileArgs[0].Name = 'file', got %q", tool.FileArgs[0].Name)
 	}
 
-	// Should have file_name and file_content args
-	hasFileName := false
-	hasFileContent := false
+	// Should have "file" arg (URI type), NOT file_name/file_content
+	hasFile := false
 	for _, arg := range tool.Args {
-		if arg.Name == "file_name" {
-			hasFileName = true
-			if arg.Required {
-				t.Error("file_name should be optional")
+		if arg.Name == "file" {
+			hasFile = true
+			if !arg.Required {
+				t.Error("file arg should be required")
 			}
+		}
+		if arg.Name == "file_name" {
+			t.Error("should NOT have legacy file_name arg")
 		}
 		if arg.Name == "file_content" {
-			hasFileContent = true
-			if arg.Required {
-				t.Error("file_content should be optional")
-			}
+			t.Error("should NOT have legacy file_content arg")
 		}
 	}
-	if !hasFileName {
-		t.Error("plain binary multipart should have file_name arg")
-	}
-	if !hasFileContent {
-		t.Error("plain binary multipart should have file_content arg")
+	if !hasFile {
+		t.Error("plain binary multipart should have 'file' URI arg")
 	}
 }
 

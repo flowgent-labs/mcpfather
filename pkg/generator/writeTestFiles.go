@@ -12,12 +12,12 @@ import (
 // GenerateCommonTestFiles writes common _test.go files for all shared packages.
 func (g *Generator) GenerateCommonTestFiles() error {
 	moduleName := BuildModuleName(g.outputDir)
-	binName := filepath.Base(g.outputDir)
+	serverName := filepath.Base(g.outputDir)
 
 	data := struct {
 		ModuleName string
 		ServiceName string
-	}{ModuleName: moduleName, ServiceName: binName}
+	}{ModuleName: moduleName, ServiceName: serverName}
 
 	templatesToGenerate := []struct {
 		tmplName string

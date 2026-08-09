@@ -2,7 +2,7 @@
 replicaCount: 1
 
 image:
-  repository: __BINARY_NAME__
+  repository: __MCP_SERVER_NAME__
   pullPolicy: IfNotPresent
   tag: "latest"
 
@@ -14,7 +14,7 @@ serviceAccount:
   create: true
   annotations:
     # GCP Workload Identity — bind a GCP service account to the k8s SA.
-    # iam.gke.io/gcp-service-account: __BINARY_NAME__-mcp-sa@PROJECT_ID.iam.gserviceaccount.com
+    # iam.gke.io/gcp-service-account: __MCP_SERVER_NAME__-mcp-sa@PROJECT_ID.iam.gserviceaccount.com
   name: ""
 
 podAnnotations: {}
@@ -32,7 +32,7 @@ ingress:
     className: ""
     annotations: {}
     hosts:
-      - host: __BINARY_NAME__.local
+      - host: __MCP_SERVER_NAME__.local
         paths:
           - path: /
             pathType: Prefix
@@ -42,7 +42,7 @@ ingress:
     gatewayClassName: "envoy-gateway"
     gatewayPort: 80
     hosts:
-      - host: __BINARY_NAME__.local
+      - host: __MCP_SERVER_NAME__.local
         paths:
           - path: /
             pathType: Prefix
@@ -66,7 +66,9 @@ autoscaling:
 
 # -- Secret injection mechanism for auth credentials.
 #   provider: "static" = native k8s Secret (secret.static.create controls creation).
-#   provider: "gcp"    = GCP Secret Manager via CSI driver (requires GKE + SecretProviderClass).
+#   provider: "gcp"    = GCP Secret Manager via CSI driver. Secrets are mounted as
+#                        files under /mnt/secrets; the chart does not depend on
+#                        SecretProviderClass syncing to Kubernetes Secret objects.
 secret:
   provider: "static"
   static:
@@ -81,14 +83,23 @@ secret:
     cookieToken: ""
     # -- OIDC client secret (used with config.upstream.default.auth.oidc).
     oidcClientSecret: ""
+    # -- OIDC password grant password (only used when grant_type=password).
+    oidcPassword: ""
   gcp:
+    # -- SecretProviderClass provider name. Use "gke" for the managed GKE Secret
+    # Manager add-on, or "gcp" for the open-source Google provider.
+    providerName: "gke"
+    # -- CSI driver name. The managed GKE add-on uses secrets-store-gke.csi.k8s.io;
+    # the open-source driver uses secrets-store.csi.k8s.io.
+    csiDriver: "secrets-store-gke.csi.k8s.io"
     # -- GCP project ID where the Secret Manager secret lives.
     projectId: ""
-    # -- Secret Manager secret ID (the secret resource name, not the full path).
+    # -- Secret Manager secret IDs for each credential. When a specific ID is
+    # empty, secretId is used as a fallback for backward compatibility.
     secretId: ""
-    # -- Path to the GCP service account key file (mounted via k8s Secret).
-    # Set to empty string to rely on Workload Identity.
-    credentialsFile: ""
+    oidcClientSecretId: ""
+    webTokenSecretId: ""
+    cookieTokenSecretId: ""
 
 # -- MCP server configuration (mounted as ConfigMap)
 config:
@@ -156,8 +167,14 @@ config:
           issuer: ""
           client_id: ""
           client_secret: ""
+          client_secret_file: ""
           scopes: "openid"
+          grant_type: ""
           token_url: ""
+          username: ""
+          # -- Do not store production passwords in ConfigMap values; use
+          # secret.static.oidcPassword with provider=static instead.
+          password: ""
         static:
           web_token: ""
           web_token_file: ""
