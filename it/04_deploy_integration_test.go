@@ -189,17 +189,37 @@ func deployBuildImage(t *testing.T, docker, projectDir string) string {
 		t.Fatalf("Dockerfile not found at %s", dockerfile)
 	}
 
-	// Build args: behind GFW, route Go module traffic through goproxy.cn
-	// (a public CDN in China) and disable sumdb checks so `go mod download`
-	// inside the container does not hang. podman-remote --network host does
-	// NOT map 127.0.0.1 to the host, so a localhost proxy is invisible here.
+	// Build args: route Go module traffic through a stable GOPROXY inside the
+	// container. Do this unconditionally because the Docker build environment
+	// may not inherit the host's Go env, and proxy.golang.org can be unreachable
+	// from CI/dev hosts even when general internet checks pass.
 	buildArgs := []string{"build", "--network", "host", "-t", imageTag, "-f", dockerfile}
-	if os.Getenv("IN_CN_GFW") == "true" {
-		buildArgs = append(buildArgs,
-			"--build-arg", "GOPROXY=https://goproxy.cn,direct",
-			"--build-arg", "GONOSUMDB=*",
-			"--build-arg", "GONOSUMCHECK=*",
-		)
+	goProxy := os.Getenv("GOPROXY")
+	if goProxy == "" {
+		goProxy = "https://goproxy.cn,direct"
+	}
+	goNoSumDB := os.Getenv("GONOSUMDB")
+	if goNoSumDB == "" {
+		goNoSumDB = "*"
+	}
+	goNoSumCheck := os.Getenv("GONOSUMCHECK")
+	if goNoSumCheck == "" {
+		goNoSumCheck = "*"
+	}
+	buildArgs = append(buildArgs,
+		"--build-arg", "GOPROXY="+goProxy,
+		"--build-arg", "GONOSUMDB="+goNoSumDB,
+		"--build-arg", "GONOSUMCHECK="+goNoSumCheck,
+	)
+	if proxyURL, _ := testProxyEnv(t); proxyURL != "" {
+		for _, key := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
+			buildArgs = append(buildArgs, "--build-arg", key+"="+proxyURL)
+		}
+	}
+	for _, key := range []string{"NO_PROXY", "no_proxy"} {
+		if val := os.Getenv(key); val != "" {
+			buildArgs = append(buildArgs, "--build-arg", key+"="+val)
+		}
 	}
 	buildArgs = append(buildArgs, projectDir)
 	cmd := exec.Command(docker, buildArgs...)
@@ -536,6 +556,8 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 		"image.repository=example.com/mcp",
 		"image.tag=v1.0.0",
 		"config.upstream.default.endpoint=http://example.com",
+		"config.server.ifs.base_uri=https://files.example.test/mcp",
+		"config.server.ifs.clean_job_ttl_seconds=45s",
 	)
 	t.Logf("helm template: generated %d bytes", len(tmplOut))
 
@@ -547,6 +569,8 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 	for _, want := range []string{
 		"command:\n            - /usr/local/bin/server",
 		"- --port\n            - \"8080\"",
+		"base_uri: \"https://files.example.test/mcp\"",
+		"clean-job-ttl-seconds: \"45s\"",
 		"port: 9991\n      pprof:",
 	} {
 		if !strings.Contains(tmplOut, want) {

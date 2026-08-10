@@ -130,6 +130,11 @@ Create `~/.{{ .ServiceName }}/config.yaml` (run `--print-default-config` for a f
 # Resource Server role per RFC 9728 / MCP Authorization spec.
 # Only enforced on the http transport; stdio has no network boundary.
 server:
+  # HTTP server timeouts in seconds. 0 = disabled.
+  # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
+  read_timeout_seconds: 30
+  write_timeout_seconds: 0
+  idle_timeout_seconds: 120
   auth:
     oidc:
       enabled: false
@@ -142,11 +147,20 @@ server:
       # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
       # e.g. ["given_name", "family_name", "preferred_username"]
       # additional_client_token_claim_forward: []
-  # HTTP server timeouts in seconds. 0 = disabled.
-  # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
-  read_timeout_seconds: 30
-  write_timeout_seconds: 0
-  idle_timeout_seconds: 120
+  # ---- Internal File System (IFS) Data Plane ----
+  # Built-in REST API for binary file transfer, separate from the
+  # JSON-RPC 2.0 control plane at /mcp.
+  # Files stored under ~/.binance-mcp/ifs/{download,upload}/
+  ifs:
+    enabled: true
+    # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
+    base_uri: ""
+    # Completed temporary files older than this are removed by the background clean job.
+    clean-job-ttl-seconds: "5m"
+
+logging:
+  level: 0
+  auth_verbose: false
 
 # ---- Upstream (outbound) ----
 # Credentials the server uses to call upstream APIs.
@@ -168,10 +182,6 @@ upstream:
       # Static credentials for legacy / simple APIs
       static:
         web_token: "${MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN}"   # or set cookie_token
-
-logging:
-  level: 0
-  auth_verbose: false
 
 native_tools:
   expose:
