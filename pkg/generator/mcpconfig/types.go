@@ -39,11 +39,20 @@ type ServerConfig struct {
 // IFSConfig controls the Internal File System (IFS) REST API — built-in
 // HTTP endpoints that handle binary file upload/download as a dedicated
 // data plane, separate from the JSON-RPC 2.0 control plane at /mcp.
-// Upload:  POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
-// Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-// Files are stored under ~/.{serviceName}/ifs/{download,upload}/{yyyyMMdd}/.
+// Upload:  POST /_/ifs/upload/{uuid}
+// Download: GET  /_/ifs/download/{uuid}
+// Files are stored under ~/.{serviceName}/ifs/{download,upload}/.
 type IFSConfig struct {
 	Enabled bool `yaml:"enabled"`
+	// BaseURI is the public server base URI used to build IFS download URLs
+	// returned by tools after binary upstream downloads. Empty means derive it
+	// from the inbound /mcp HTTP request Host/X-Forwarded-* headers when
+	// available; non-HTTP transports fall back to file:// absolute local URIs.
+	BaseURI string `yaml:"base_uri"`
+	// CleanJobTTLSeconds controls how long completed IFS temporary files remain
+	// on disk before the background clean job removes them. It accepts Go
+	// duration strings such as "5m" or an integer number of seconds.
+	CleanJobTTLSeconds string `yaml:"clean-job-ttl-seconds"`
 }
 
 // UpstreamEntryConfig configures a named upstream backend for http pipeline nodes
@@ -214,7 +223,9 @@ func DefaultConfig() *Config {
 			WriteTimeoutSeconds: 0, // 0 = disabled (required for SSE streaming)
 			IdleTimeoutSeconds:  120,
 			IFS: IFSConfig{
-				Enabled: true,
+				Enabled:            true,
+				BaseURI:            "",
+				CleanJobTTLSeconds: "5m",
 			},
 		},
 		Upstream: map[string]UpstreamEntryConfig{

@@ -34,12 +34,17 @@ server:
   # ---- Internal File System (IFS) Data Plane ----
   # Built-in REST API for binary file transfer, separate from the
   # JSON-RPC 2.0 control plane at /mcp.
-  # Upload:   POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
-  # Download: GET  /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
-  # Files stored under ~/.<app>/ifs/{download,upload}/{yyyyMMdd}/
+  # Upload:   POST /_/ifs/upload/{uuid}
+  # Download: GET  /_/ifs/download/{uuid}
+  # Files stored under ~/.<app>/ifs/{download,upload}/
   # with UUID-based filenames to prevent collisions.
   ifs:
     enabled: true
+    # Public base URI used to build returned IFS download URLs.
+    # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
+    base_uri: ""
+    # Completed temporary files older than this are removed by the background clean job.
+    clean-job-ttl-seconds: "5m"
 
 # ---- Logging ----
 logging:
