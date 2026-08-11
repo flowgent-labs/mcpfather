@@ -177,15 +177,15 @@ func printDefaultConfigYAML() {
 	fmt.Println("      # e.g. [\"given_name\", \"family_name\", \"preferred_username\"]")
 	fmt.Println("      # additional_client_token_claim_forward: []")
 	fmt.Println()
-	fmt.Println("  # ---- Internal File System (IFS) Data Plane ----")
+	fmt.Println("  # ---- Temporary File System (TFS) Data Plane ----")
 	fmt.Println("  # Built-in REST API for binary file transfer, separate from the")
 	fmt.Println("  # JSON-RPC 2.0 control plane at /mcp.")
-	fmt.Println("  # Upload:   POST /_/ifs/upload/{uuid}")
-	fmt.Println("  # Download: GET  /_/ifs/download/{uuid}")
-	fmt.Println("  # Files stored under ~/." + "{{.ServiceName}}" + "/ifs/{download,upload}/")
-	fmt.Println("  ifs:")
+	fmt.Println("  # Upload:   POST /_/tfs/upload/{uuid}")
+	fmt.Println("  # Download: GET  /_/tfs/download/{uuid}")
+	fmt.Println("  # Files stored under ~/." + "{{.ServiceName}}" + "/tfs/{download,upload}/")
+	fmt.Println("  tfs:")
 	fmt.Println("    enabled: true")
-	fmt.Println("    # Public base URI used to build returned IFS download URLs.")
+	fmt.Println("    # Public base URI used to build returned TFS download URLs.")
 	fmt.Println("    # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.")
 	fmt.Println("    base_uri: \"\"")
 	fmt.Println("    # Completed temporary files older than this are removed by the background clean job.")
@@ -396,13 +396,13 @@ func main() {
 		}
 		mux.Handle("/mcp", mcpHandler)
 
-		// IFS (Internal File System) data plane: built-in REST endpoints for
+		// TFS (Temporary File System) data plane: built-in REST endpoints for
 		// binary file upload/download, separate from the JSON-RPC control plane.
-		if cfg.Server.IFS.Enabled {
-			mcputils.StartIFSCleanJob(ctx)
-			mux.HandleFunc("/_/ifs/download/", mcputils.HandleIFSDownload)
-			mux.HandleFunc("/_/ifs/upload/", mcputils.HandleIFSUpload)
-			fmt.Fprintf(os.Stderr, "IFS data plane enabled: /_/ifs/download/ and /_/ifs/upload/\n")
+		if cfg.Server.TFS.Enabled {
+			mcputils.StartTFSCleanJob(ctx)
+			mux.HandleFunc("/_/tfs/download/", mcputils.HandleTFSDownload)
+			mux.HandleFunc("/_/tfs/upload/", mcputils.HandleTFSUpload)
+			fmt.Fprintf(os.Stderr, "TFS data plane enabled: /_/tfs/download/ and /_/tfs/upload/\n")
 		}
 
 		addr := fmt.Sprintf(":%d", *port)

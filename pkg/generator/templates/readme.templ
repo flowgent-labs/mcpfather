@@ -68,7 +68,7 @@ parameters are passed as regular `--key value` flags.
 
 For file upload tools, pass file fields as normal tool arguments. Values starting
 with `@file:///`, `@https://`, or `@http://` are fileRef URLs: the server downloads
-the file to the IFS temp cache and forwards it to upstream. Other multipart
+the file to the TFS temp cache and forwards it to upstream. Other multipart
 fields are passed as regular `--key value` flags.
 
 ```sh
@@ -154,15 +154,17 @@ server:
       # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
       # e.g. ["given_name", "family_name", "preferred_username"]
       # additional_client_token_claim_forward: []
-  # ---- Internal File System (IFS) Data Plane ----
+  # ---- Temporary File System (TFS) Data Plane ----
   # Built-in REST API for binary file transfer, separate from the
   # JSON-RPC 2.0 control plane at /mcp.
-  # Files stored under ~/.binance-mcp/ifs/{download,upload}/
-  ifs:
+  # Files stored under ~/.<service-name>/tfs/{download,upload}/
+  tfs:
     enabled: true
     # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
     base_uri: ""
-    # Completed temporary files older than this are removed by the background clean job.
+    # Download URLs are one-shot: after a successful GET from /_/tfs/download/{id},
+    # the temporary file is immediately removed. Files that are never downloaded
+    # are removed by the background clean job after this TTL.
     clean-job-ttl-seconds: "5m"
 
 logging:

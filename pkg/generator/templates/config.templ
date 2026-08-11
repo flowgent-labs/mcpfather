@@ -34,7 +34,7 @@ type PprofConfig = mcpconfig.PprofConfig
 type OtelConfig = mcpconfig.OtelConfig
 type MetricsConfig = mcpconfig.MetricsConfig
 type LoggingConfig = mcpconfig.LoggingConfig
-type IFSConfig = mcpconfig.IFSConfig
+type TFSConfig = mcpconfig.TFSConfig
 type VirtualToolPipelineConfig = mcpconfig.VirtualToolPipelineConfig
 
 // ---- singleton config access ----
@@ -586,22 +586,22 @@ func loggingPrintAuth() bool {
 }
 
 // resolveUploadDir returns the directory where uploaded files are staged.
-// Defaults to ~/.{serviceName}/ifs/upload.
+// Defaults to ~/.{serviceName}/tfs/upload.
 func resolveUploadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+resolveServiceName(), "ifs", "upload"), nil
+		return filepath.Join(home, "."+resolveServiceName(), "tfs", "upload"), nil
 	}
-	return filepath.Join("."+resolveServiceName(), "ifs", "upload"), nil
+	return filepath.Join("."+resolveServiceName(), "tfs", "upload"), nil
 }
 
 // resolveDownloadDir returns the directory for downloaded files.
-// Hardcoded to ~/.{serviceName}/ifs/download (users deploying on k8s can mount
+// Hardcoded to ~/.{serviceName}/tfs/download (users deploying on k8s can mount
 // a volume to this fixed path).
 func resolveDownloadDir() (string, error) {
 	home, err := os.UserHomeDir()
 	if err == nil {
-		return filepath.Join(home, "."+resolveServiceName(), "ifs", "download"), nil
+		return filepath.Join(home, "."+resolveServiceName(), "tfs", "download"), nil
 	}
-	return filepath.Join("."+resolveServiceName(), "ifs", "download"), nil
+	return filepath.Join("."+resolveServiceName(), "tfs", "download"), nil
 }

@@ -129,7 +129,7 @@
       ],
       "type": "object"
     },
-    "IFSConfig": {
+    "TFSConfig": {
       "additionalProperties": false,
       "properties": {
         "base_uri": {
@@ -341,8 +341,8 @@
         "idle_timeout_seconds": {
           "type": "integer"
         },
-        "ifs": {
-          "$ref": "#/$defs/IFSConfig"
+        "tfs": {
+          "$ref": "#/$defs/TFSConfig"
         },
         "read_timeout_seconds": {
           "type": "integer"

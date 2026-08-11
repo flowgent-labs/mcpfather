@@ -15,13 +15,13 @@ set -euo pipefail
 # This table is intentionally kept in source comments, not only in usage(),
 # so generated mcpclient.sh remains self-explanatory when opened in an editor.
 #
-# | User input                | MCP params.arguments          | Upstream mapping                                      |
-# |---------------------------|-------------------------------|-------------------------------------------------------|
-# | --id 123                  | {"id":123}                    | Generated handler maps by OpenAPI: path/query/header/form |
-# | --body '{"configId":123}' | {"body":{"configId":123}}     | application/json requestBody only                    |
-# | --file /tmp/a.pdf         | {"file":"@file:///tmp/a.pdf"} | multipart file field named "file"                    |
-# | --file1 @file:///tmp/a.pdf | {"file1":"@file:///tmp/a.pdf"} | named/multiple multipart file fields                |
-# | download tool response    | unchanged JSON-RPC result     | server returns fileRef/url; client does not invent a body |
+# | User input                 | MCP params.arguments           | Upstream mapping                                          |
+# |----------------------------|--------------------------------|-----------------------------------------------------------|
+# | --id 123                   | {"id":123}                     | Generated handler maps by OpenAPI: path/query/header/form |
+# | --body '{"configId":123}'  | {"body":{"configId":123}}      | application/json requestBody only                         |
+# | --file /tmp/a.pdf          | {"file":"@file:///tmp/a.pdf"}  | multipart file field named "file"                         |
+# | --file1 @file:///tmp/a.pdf | {"file1":"@file:///tmp/a.pdf"} | named/multiple multipart file fields                      |
+# | download tool response     | unchanged JSON-RPC result      | server returns fileRef/url; client does not invent a body |
 #
 # Rules:
 #   - --arg flags are MCP tool arguments; mcpclient.sh does not force them into query/path.

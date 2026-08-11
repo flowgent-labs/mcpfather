@@ -111,7 +111,7 @@ spec:
             {{- end }}
             {{- if .Values.persistence.enabled }}
             - name: data
-              mountPath: /home/mcp/.__MCP_SERVER_NAME__/ifs
+              mountPath: /home/mcp/.__MCP_SERVER_NAME__/tfs
             {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}

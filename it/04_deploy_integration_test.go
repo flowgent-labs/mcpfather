@@ -553,8 +553,8 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 		"image.repository=example.com/mcp",
 		"image.tag=v1.0.0",
 		"config.upstream.default.endpoint=http://example.com",
-		"config.server.ifs.base_uri=https://files.example.test/mcp",
-		"config.server.ifs.clean_job_ttl_seconds=45s",
+		"config.server.tfs.base_uri=https://files.example.test/mcp",
+		"config.server.tfs.clean_job_ttl_seconds=45s",
 	)
 	t.Logf("helm template: generated %d bytes", len(tmplOut))
 
@@ -660,9 +660,9 @@ func TestDeploy_HelmDefaultValues_LintsAndInstalls(t *testing.T) {
 		"image.tag=v1.0.0",
 		"persistence.enabled=true",
 	)
-	expectedIFSMount := fmt.Sprintf("mountPath: /home/mcp/.%s/ifs", filepath.Base(projectDir))
-	if !strings.Contains(persistenceOut, expectedIFSMount) {
-		t.Errorf("persistence template missing IFS mount %q", expectedIFSMount)
+	expectedTFSMount := fmt.Sprintf("mountPath: /home/mcp/.%s/tfs", filepath.Base(projectDir))
+	if !strings.Contains(persistenceOut, expectedTFSMount) {
+		t.Errorf("persistence template missing TFS mount %q", expectedTFSMount)
 	}
 
 	nginxOut := helmTemplate(t, helm, chartDir,

@@ -26,7 +26,7 @@ IT_CORE_LOG_DOWNLOAD_RE := ^Test(Logging_|Download_).*$$
 IT_CORE_UPLOAD_FORM_RE := ^Test(Upload_|Form|Multipart|FileRef).*$$
 IT_CORE_CASE_CLIENT_RE := ^Test(Case|Mcpclient).*$$
 IT_CORE_RUNTIME_RE := ^Test(CLI_|CyclicRef_|Regression_|E2E_Core_).*$$
-IT_CORE_CONFIG_RE := ^Test(Config_|IFS_|LoggingConfig_|EnvOverride_).*$$
+IT_CORE_CONFIG_RE := ^Test(Config_|TFS_|LoggingConfig_|EnvOverride_).*$$
 IT_VIRTUAL_DSL_RE := ^Test(Scenario_|DSLSchema_).*$$
 IT_VIRTUAL_E2E_RE := ^Test(E2E_SonarQube_|E2E_VirtualTool_|E2E_MCP_|E2E_SonatypeIQ_|E2E_NexusFirewall_|E2E_HTTPStep_).*$$
 IT_OIDC_SERVER_RE := ^TestServer_.*$$
@@ -76,7 +76,7 @@ test-it:
 	IT_BATCH='03/$(IT_BATCH_TOTAL) core-upload-form-file' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_UPLOAD_FORM_RE)'
 	IT_BATCH='04/$(IT_BATCH_TOTAL) core-case-mcpclient' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_CASE_CLIENT_RE)'
 	IT_BATCH='05/$(IT_BATCH_TOTAL) core-runtime-e2e' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_RUNTIME_RE)'
-	IT_BATCH='06/$(IT_BATCH_TOTAL) core-config-env-ifs' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_CONFIG_RE)'
+	IT_BATCH='06/$(IT_BATCH_TOTAL) core-config-env-tfs' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_CORE_CONFIG_RE)'
 	IT_BATCH='07/$(IT_BATCH_TOTAL) virtual-dsl-schema' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_VIRTUAL_DSL_RE)'
 	IT_BATCH='08/$(IT_BATCH_TOTAL) virtual-e2e-usecases' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_VIRTUAL_E2E_RE)'
 	IT_BATCH='09/$(IT_BATCH_TOTAL) oidc-resource-server' $(TEST_GO_NETWORK_ENV) GOMAXPROCS=$(IT_GOMAXPROCS) GOFLAGS=$(IT_GOFLAGS) go test $(IT_TEST_FLAGS) ./it/ -run '$(IT_OIDC_SERVER_RE)'
