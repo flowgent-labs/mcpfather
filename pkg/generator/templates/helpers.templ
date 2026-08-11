@@ -13,6 +13,7 @@ import (
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -1050,6 +1051,99 @@ func cleanupIFSUploadSourceURI(uri string) {
 	ifsDownloadMeta.Delete(filepath.Base(path))
 }
 
+func isDownloadableFileURI(uri string) bool {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "file":
+		return u.Path != "" && filepath.IsAbs(u.Path) && (u.Host == "" || u.Host == "localhost")
+	case "http", "https":
+		return u.Host != ""
+	default:
+		return false
+	}
+}
+
+func filePartContentType(fileName string) string {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	switch ext {
+	case ".zip":
+		return "application/zip"
+	case ".war", ".jar", ".ear":
+		return "application/java-archive"
+	}
+	if ext != "" {
+		if ct := mime.TypeByExtension(ext); ct != "" {
+			if mediaType, _, err := mime.ParseMediaType(ct); err == nil && mediaType != "" {
+				return mediaType
+			}
+			return ct
+		}
+	}
+	return "application/octet-stream"
+}
+
+func multipartPartContentType(partContentTypes map[string]string, fieldName string) string {
+	if partContentTypes == nil {
+		return ""
+	}
+	return strings.TrimSpace(partContentTypes[fieldName])
+}
+
+func isJSONContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	mediaType = strings.ToLower(mediaType)
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
+}
+
+func createMultipartValuePart(writer *multipart.Writer, fieldName string, val interface{}, contentType string) error {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return writer.WriteField(fieldName, valueToString(val))
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{
+		"name": fieldName,
+	}))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	if isJSONContentType(contentType) {
+		data, err := json.Marshal(sanitizeForJSON(val))
+		if err != nil {
+			return err
+		}
+		_, err = part.Write(data)
+		return err
+	}
+	_, err = io.WriteString(part, valueToString(val))
+	return err
+}
+
+func createMultipartFilePart(writer *multipart.Writer, fieldName string, fileName string, contentType string) (io.Writer, error) {
+	if fileName == "" {
+		fileName = fieldName
+	}
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		contentType = filePartContentType(fileName)
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{
+		"name":     fieldName,
+		"filename": filepath.Base(fileName),
+	}))
+	header.Set("Content-Type", contentType)
+	return writer.CreatePart(header)
+}
+
 // ForwardMultipartRequest handles multipart/form-data requests where file
 // arguments are provided as URIs (the FileRef pattern). It:
 //  1. Downloads each file URI to a local temp directory (~/.{service}/download/tmp/)
@@ -1058,12 +1152,15 @@ func cleanupIFSUploadSourceURI(uri string) {
 //  4. Cleans up temporary files
 //  5. Returns the upstream response (or saves it as a binary download)
 //
-// Empty file refs (uri == "") produce empty file parts so the upstream
-// receives a well-formed multipart request even for optional files.
-func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, pathKeys []string, toolName string) (*mcp.CallToolResult, error) {
+// Empty optional file refs are omitted. Non-empty file refs with file/http(s)
+// schemes become file parts; other values are forwarded as normal text form
+// fields so anyOf binary|string multipart schemas remain usable.
+func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, pathKeys []string, queryKeys []string, partContentTypes map[string]string, toolName string) (*mcp.CallToolResult, error) {
 	startTime := time.Now()
 
-	// Build URL with path parameter substitution
+	// Build URL with path parameter substitution and declared query parameters.
+	// Body/form fields must not be mirrored into the query string; multipart
+	// forwarding should match a normal HTTP client call for the OpenAPI operation.
 	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
 	query := url.Values{}
 	for key, val := range args {
@@ -1077,8 +1174,7 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		placeholder := "{" + key + "}"
 		if strings.Contains(upstreamURL, placeholder) {
 			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, valueToString(val))
-		} else if !isPathKey(key, pathKeys) {
-			// Non-path, non-file args go to query string
+		} else if isPathKey(key, queryKeys) {
 			if strVal, ok := val.(string); ok {
 				query.Set(key, strVal)
 			} else {
@@ -1093,7 +1189,7 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 	// Download each non-empty file URI to a local temp file.
 	hasDownloads := false
 	for _, uri := range fileRefs {
-		if uri != "" {
+		if isDownloadableFileURI(strings.TrimSpace(uri)) {
 			hasDownloads = true
 			break
 		}
@@ -1109,7 +1205,8 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		localFiles = make(map[string]string)
 		origNames = make(map[string]string)
 		for fieldName, uri := range fileRefs {
-			if uri == "" {
+			uri = strings.TrimSpace(uri)
+			if !isDownloadableFileURI(uri) {
 				continue
 			}
 			localPath, origName, err := downloadFileFromURI(ctx, uri, tmpDir)
@@ -1143,23 +1240,36 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		if key == "body" {
 			continue
 		}
-		if _, isFile := fileRefs[key]; isFile {
+		if uri, isFile := fileRefs[key]; isFile {
+			uri = strings.TrimSpace(uri)
+			if uri != "" && !isDownloadableFileURI(uri) {
+				if err := createMultipartValuePart(writer, key, uri, multipartPartContentType(partContentTypes, key)); err != nil {
+					return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
+				}
+			}
 			continue
 		}
 		if isPathKey(key, pathKeys) {
 			continue
 		}
-		writer.WriteField(key, valueToString(val))
+		if isPathKey(key, queryKeys) {
+			continue
+		}
+		if err := createMultipartValuePart(writer, key, val, multipartPartContentType(partContentTypes, key)); err != nil {
+			return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
+		}
 	}
 
-	// Add file parts (non-empty: downloaded content; empty: 0-byte part)
+	// Add file parts for supplied file URIs. Omitted optional file args are not
+	// serialized as empty files; that matches normal multipart clients and avoids
+	// triggering upstream filename/extension validators with filename="file".
 	for fieldName := range fileRefs {
 		if localPath, ok := localFiles[fieldName]; ok {
 			origName := origNames[fieldName]
 			if origName == "" {
 				origName = filepath.Base(localPath)
 			}
-			part, err := writer.CreateFormFile(fieldName, origName)
+			part, err := createMultipartFilePart(writer, fieldName, origName, multipartPartContentType(partContentTypes, fieldName))
 			if err != nil {
 				return nil, fmt.Errorf("failed to create form file for %s: %w", fieldName, err)
 			}
@@ -1172,13 +1282,6 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 				return nil, fmt.Errorf("failed to copy file data for %s: %w", fieldName, err)
 			}
 			f.Close()
-		} else {
-			// Empty file argument — emit an empty file part so the
-			// upstream receives a well-formed multipart request.
-			_, err := writer.CreateFormFile(fieldName, fieldName)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create empty form file for %s: %w", fieldName, err)
-			}
 		}
 	}
 	writer.Close()
