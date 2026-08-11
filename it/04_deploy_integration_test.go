@@ -189,31 +189,33 @@ func deployBuildImage(t *testing.T, docker, projectDir string) string {
 		t.Fatalf("Dockerfile not found at %s", dockerfile)
 	}
 
-	// Build args: route Go module traffic through a stable GOPROXY inside the
-	// container. Do this unconditionally because the Docker build environment
-	// may not inherit the host's Go env, and proxy.golang.org can be unreachable
-	// from CI/dev hosts even when general internet checks pass.
 	buildArgs := []string{"build", "--network", "host", "-t", imageTag, "-f", dockerfile}
-	goProxy := os.Getenv("GOPROXY")
-	if goProxy == "" {
-		goProxy = "https://goproxy.cn,direct"
-	}
-	goNoSumDB := os.Getenv("GONOSUMDB")
-	if goNoSumDB == "" {
-		goNoSumDB = "*"
-	}
-	goNoSumCheck := os.Getenv("GONOSUMCHECK")
-	if goNoSumCheck == "" {
-		goNoSumCheck = "*"
-	}
-	buildArgs = append(buildArgs,
-		"--build-arg", "GOPROXY="+goProxy,
-		"--build-arg", "GONOSUMDB="+goNoSumDB,
-		"--build-arg", "GONOSUMCHECK="+goNoSumCheck,
-	)
 	if proxyURL, _ := testProxyEnv(t); proxyURL != "" {
 		for _, key := range []string{"HTTPS_PROXY", "HTTP_PROXY", "https_proxy", "http_proxy"} {
 			buildArgs = append(buildArgs, "--build-arg", key+"="+proxyURL)
+		}
+	} else {
+		// No explicit HTTP(S) proxy: optionally route Go module traffic through
+		// GOPROXY, primarily for GFW environments. Proxy and GOPROXY are kept
+		// mutually exclusive to match how developers run the integration tests.
+		goProxy := os.Getenv("GOPROXY")
+		if goProxy == "" && os.Getenv("IN_CN_GFW") == "true" {
+			goProxy = "https://goproxy.cn,direct"
+		}
+		if goProxy != "" {
+			goNoSumDB := os.Getenv("GONOSUMDB")
+			if goNoSumDB == "" {
+				goNoSumDB = "*"
+			}
+			goNoSumCheck := os.Getenv("GONOSUMCHECK")
+			if goNoSumCheck == "" {
+				goNoSumCheck = "*"
+			}
+			buildArgs = append(buildArgs,
+				"--build-arg", "GOPROXY="+goProxy,
+				"--build-arg", "GONOSUMDB="+goNoSumDB,
+				"--build-arg", "GONOSUMCHECK="+goNoSumCheck,
+			)
 		}
 	}
 	for _, key := range []string{"NO_PROXY", "no_proxy"} {

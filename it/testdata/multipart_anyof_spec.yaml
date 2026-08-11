@@ -46,6 +46,11 @@ paths:
           schema:
             type: integer
             format: int64
+        - name: configId
+          in: query
+          required: false
+          schema:
+            type: string
       requestBody:
         required: true
         content:
@@ -58,6 +63,9 @@ paths:
           multipart/form-data:
             schema:
               $ref: '#/components/schemas/BodyUploadReportV2'
+            encoding:
+              metadata:
+                contentType: application/json
       responses:
         "200":
           description: OK
@@ -91,3 +99,11 @@ components:
         note:
           type: string
           title: Note
+        metadata:
+          type: object
+          title: Metadata
+          properties:
+            name:
+              type: string
+            enabled:
+              type: boolean

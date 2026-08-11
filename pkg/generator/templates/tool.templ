@@ -30,10 +30,9 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 {{- if .FileArgs }}
-	// FileRef: collect file URIs (including empty ones so optional files
-	// produce empty parts). Always build a proper upstream request — even
-	// when all file arguments are empty — to avoid "missing boundary"
-	// errors on upstream services (e.g. Spring Boot).
+	// FileRef: collect file URI values. Optional files that are not provided
+	// are omitted from the multipart body. Non-URI values remain available for
+	// anyOf binary|string multipart schemas and are forwarded as text fields.
 	fileRefs := map[string]string{
 	{{- range .FileArgs }}
 		"{{.Name}}": "",
@@ -52,7 +51,7 @@ func {{.ToolHandlerName}} (ctx context.Context, request mcp.CallToolRequest) (*m
 {{- if .UploadContentType }}
 	return mcputils.ForwardBinaryUploadRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, fileRefs, "{{.UploadContentType}}", "{{.ToolNameOriginal}}")
 {{- else }}
-	return mcputils.ForwardMultipartRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, fileRefs, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, "{{.ToolNameOriginal}}")
+	return mcputils.ForwardMultipartRequest(ctx, upstream, "{{.Method}}", "{{.RequestPath}}", args, fileRefs, []string{ {{range $i, $arg := .PathArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, []string{ {{range $i, $arg := .QueryArgs}}{{if $i}}, {{end}}"{{$arg.Name}}"{{end}} }, map[string]string{ {{range .MultipartContentTypes}}{{goRawString .Name}}: {{goRawString .ContentType}}, {{end}} }, "{{.ToolNameOriginal}}")
 {{- end }}
 {{- else }}
 {{- if .Headers }}

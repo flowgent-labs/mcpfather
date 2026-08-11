@@ -7,13 +7,15 @@ WORKDIR /build
 ARG GOPROXY
 ARG GONOSUMDB
 ARG GONOSUMCHECK
-ENV GOPROXY=${GOPROXY} GONOSUMDB=${GONOSUMDB} GONOSUMCHECK=${GONOSUMCHECK}
 
 COPY . .
 
 ARG BUILD_TAGS=
 
-RUN go mod tidy && \
+RUN if [ -n "${GOPROXY}" ]; then go env -w GOPROXY="${GOPROXY}"; fi && \
+    if [ -n "${GONOSUMDB}" ]; then go env -w GONOSUMDB="${GONOSUMDB}"; fi && \
+    if [ -n "${GONOSUMCHECK}" ]; then go env -w GONOSUMCHECK="${GONOSUMCHECK}"; fi && \
+    go mod tidy && \
     CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
     go build -tags "${BUILD_TAGS}" -trimpath -ldflags="-s -w" -o /build/server .
 
