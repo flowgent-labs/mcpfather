@@ -127,6 +127,24 @@ func TestBuildPropertySchema(t *testing.T) {
 			t.Errorf("expected nil, got %v", got)
 		}
 	})
+
+	t.Run("body with direct schema", func(t *testing.T) {
+		arg := Arg{
+			Source:      "body",
+			Schema:      s,
+			Description: "direct body field",
+		}
+		got, err := buildPropertySchema(arg)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got == nil {
+			t.Fatalf("expected non-nil schema")
+		}
+		if got["type"] != "string" {
+			t.Errorf("type = %v, want string", got["type"])
+		}
+	})
 }
 
 func TestBuildBodySchema(t *testing.T) {

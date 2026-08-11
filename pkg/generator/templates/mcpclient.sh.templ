@@ -7,15 +7,32 @@ set -euo pipefail
 # Quick test helper for the generated MCP server.
 #
 # Usage:
-#   ./mcpclient.sh                  Show this help message
-#   ./mcpclient.sh help             Show this help message
-#   ./mcpclient.sh list-tools       List all available tools
-#   ./mcpclient.sh call <tool> [--key value ...] [--body '<json>']
+#   ./mcpclient.sh help
+#   ./mcpclient.sh list-tools
+#   ./mcpclient.sh call <tool> [--arg value ...] [--body '<json>'] [--file <path|ref>]
+#
+# STABLE ARGUMENT MAPPING CONTRACT — do not change casually.
+# This table is intentionally kept in source comments, not only in usage(),
+# so generated mcpclient.sh remains self-explanatory when opened in an editor.
+#
+# | User input                | MCP params.arguments          | Upstream mapping                                      |
+# |---------------------------|-------------------------------|-------------------------------------------------------|
+# | --id 123                  | {"id":123}                    | Generated handler maps by OpenAPI: path/query/header/form |
+# | --body '{"configId":123}' | {"body":{"configId":123}}     | application/json requestBody only                    |
+# | --file /tmp/a.pdf         | {"file":"@file:///tmp/a.pdf"} | multipart file field named "file"                    |
+# | --file1 @file:///tmp/a.pdf | {"file1":"@file:///tmp/a.pdf"} | named/multiple multipart file fields                |
+# | download tool response    | unchanged JSON-RPC result     | server returns fileRef/url; client does not invent a body |
+#
+# Rules:
+#   - --arg flags are MCP tool arguments; mcpclient.sh does not force them into query/path.
+#   - The generated tool handler maps arguments to upstream path/query/header/body/multipart.
+#   - --body is reserved for application/json request bodies.
+#   - Upload files are passed as fileRef values in file arguments, never as base64 or JSON body.
 #
 # Environment variables:
-#   MCP_UPSTREAM_TOKEN    - Bearer token for MCP server auth
-#   MCP_SERVER_ENDPOINT        - Server URL (default: http://localhost:8080/mcp)
-#   MCP_SERVER_DOWNLOAD_DIR      - Directory for download responses (default: ./download)
+#   MCP_SERVER_ENDPOINT     - Server URL (default: http://localhost:8080/mcp)
+#   MCP_UPSTREAM_TOKEN      - Bearer token for MCP server auth
+#   MCP_SERVER_DOWNLOAD_DIR - Directory for download responses (default: ./download)
 # ============================================================
 
 SERVER_URL="${MCP_SERVER_ENDPOINT:-http://localhost:8080/mcp}"
@@ -27,25 +44,35 @@ usage() {
 mcpclient.sh — MCP Server Client Script
 
 Usage:
-  ./mcpclient.sh [command] [arguments]
+  ./mcpclient.sh help
+  ./mcpclient.sh list-tools
+  ./mcpclient.sh call <tool> [--arg value ...] [--body '<json>'] [--file <path|ref>]
 
 Commands:
-  (no args)           Show this help message
-  help                Show this help message
+  (no args), help     Show this help message
   list-tools          List all available tools
-  call <tool> [--key value ...] [--body '<json>']  Call a tool
+  call <tool> ...     Call a tool
 
-  --key value         Tool argument (query/path parameter)
-  --body '<json>'     JSON request body sent as application/json to upstream
-                      (only upload tools accept @file:///, @https://,
-                      or @http:// file references in their file args)
-  --file <path>       Shortcut: sets the file arg to @file:///<path>
-                      (equivalent to --file @file:///<path>)
+Tool argument flags:
+  --arg value         MCP tool argument. The generated handler maps it to the
+                      upstream path/query/header/form field using OpenAPI metadata.
+  --body '<json>'     Reserved MCP argument named "body"; used only for upstream
+                      application/json request bodies.
+  --file <path|ref>   Shortcut for conventional upload field "file"; local paths
+                      become @file:///... fileRef values.
+
+STABLE ARGUMENT MAPPING CONTRACT — do not change casually:
+  User input                         MCP params.arguments                         Upstream mapping
+  --id 123                           {"id":123}                                   OpenAPI decides path/query/header/form
+  --body '{"configId":123}'           {"body":{"configId":123}}                    application/json requestBody only
+  --file /tmp/a.pdf                  {"file":"@file:///tmp/a.pdf"}                multipart file field named "file"
+  --file1 @file:///tmp/a.pdf          {"file1":"@file:///tmp/a.pdf"}               named/multiple multipart file fields
+  download tool response             unchanged JSON-RPC result                    server returns fileRef/url
 
 Environment:
   MCP_SERVER_ENDPOINT        Override server URL (default: http://localhost:8080/mcp)
-  MCP_UPSTREAM_TOKEN    Bearer token for server auth
-  MCP_SERVER_DOWNLOAD_DIR      Directory for file download (default: ./download)
+  MCP_UPSTREAM_TOKEN          Bearer token for server auth
+  MCP_SERVER_DOWNLOAD_DIR     Directory for file download (default: ./download)
 
 Tips:
   - Always uses --noproxy '*' to avoid proxy issues with localhost
@@ -55,30 +82,27 @@ Tips:
       MCP_UPSTREAM_TOKEN=your-token ./mcpclient.sh call <tool>
   - Download tools auto-save to $DOWNLOAD_DIR
   - The script auto-initializes a session on first call
+  - Tool arguments use flag syntax only. Positional JSON is intentionally not supported.
+  - File upload arguments must be fileRef values such as @file:///tmp/a.pdf,
+    @https://example.com/a.pdf, or @http://example.com/a.pdf.
+  - Upload files are never sent as base64 and should not be placed in --body.
 
 Examples:
   # Call a tool with query/path arguments
   ./mcpclient.sh call getProject --projectKey myproject
-  # Call a tool with a file upload
+
+  # Call a JSON requestBody tool
+  ./mcpclient.sh call runJob --body '{"configId":123}'
+
+  # Call a conventional single-file upload tool
   ./mcpclient.sh call UploadFile --file /tmp/report.pdf
-  # Call a tool with remote file + body
-  ./mcpclient.sh call uploadScanReport --scanId 12345 --file /tmp/report.pdf
-  # The server receives file=@file:///tmp/report.pdf (file-ref upload)
+
+  # Call named/multiple file upload fields
+  ./mcpclient.sh call runJob --configId 123 --file1 @file:///tmp/a.pdf --file2 @https://example.com/b.pdf
+
+  # Call a download tool; the response carries the returned fileRef/url
+  ./mcpclient.sh call getAttachment --id 123
 USAGE
-{{- range .Tools }}
-  cat <<'EOEX'
-{{- if .UploadCT }}
-  # {{ .Name }} ({{ .Method }}) — upload a file
-  ./mcpclient.sh call {{ .Name }} --file /path/to/file
-{{- else if .FileArgs }}
-  # {{ .Name }} ({{ .Method }}) — file upload
-  ./mcpclient.sh call {{ .Name }} --file /path/to/file
-{{- else }}
-  # {{ .Name }} ({{ .Method }})
-  ./mcpclient.sh call {{ .Name }} '{{ jsonExample . }}'
-{{- end }}
-EOEX
-{{- end }}
 }
 
 # --- Auth helper ---
@@ -87,6 +111,63 @@ get_auth_header() {
   if [ -n "${MCP_UPSTREAM_TOKEN:-}" ]; then
     printf '%s' "Authorization: Bearer ${MCP_UPSTREAM_TOKEN}"
   fi
+}
+
+require_python3() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "[!] python3 is required by mcpclient.sh to build JSON-RPC arguments" >&2
+    return 1
+  fi
+}
+
+json_set_arg() {
+  local key="$1"
+  local value="$2"
+  local updated
+  updated=$(ARGS_JSON="$args" ARG_KEY="$key" ARG_VALUE="$value" python3 - <<'PY'
+import json
+import os
+import sys
+
+try:
+    args = json.loads(os.environ["ARGS_JSON"])
+except Exception as exc:
+    print(f"invalid accumulated arguments JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+raw = os.environ["ARG_VALUE"]
+try:
+    value = json.loads(raw)
+except json.JSONDecodeError:
+    value = raw
+
+args[os.environ["ARG_KEY"]] = value
+print(json.dumps(args, separators=(",", ":")))
+PY
+  ) || return 1
+  args="$updated"
+}
+
+json_set_body() {
+  local body_json="$1"
+  local updated
+  updated=$(ARGS_JSON="$args" BODY_JSON="$body_json" python3 - <<'PY'
+import json
+import os
+import sys
+
+try:
+    args = json.loads(os.environ["ARGS_JSON"])
+    body = json.loads(os.environ["BODY_JSON"])
+except Exception as exc:
+    print(f"invalid --body JSON: {exc}", file=sys.stderr)
+    raise SystemExit(1)
+
+args["body"] = body
+print(json.dumps(args, separators=(",", ":")))
+PY
+  ) || return 1
+  args="$updated"
 }
 
 # --- Session helpers ---
@@ -120,6 +201,23 @@ init_session() {
     echo "[!] Response: $body" >&2
     return 1
   fi
+
+  local notify_args=(
+    -s -f -o /dev/null
+    --noproxy '*'
+    -X POST "$SERVER_URL"
+    -H "Content-Type: application/json"
+    -H "Mcp-Session-Id: $SESSION_ID"
+    -d '{"jsonrpc":"2.0","method":"notifications/initialized"}'
+  )
+  if [ -n "$auth_header" ]; then
+    notify_args+=(-H "$auth_header")
+  fi
+  if ! curl "${notify_args[@]}"; then
+    echo "[!] Failed to send MCP initialized notification" >&2
+    return 1
+  fi
+
   echo "[+] Session: $SESSION_ID" >&2
 }
 
@@ -188,130 +286,79 @@ call_tool() {
   local file_path=""
   local body_json=""
 
-  # Detect argument style: --key value pairs (new) vs positional JSON (legacy).
-  if [ $# -gt 0 ] && [ "${1#--}" != "$1" ]; then
-    # New style: --key value [--key value ...] [--body '<json>'] [--file <path>]
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --file=*)
-          file_path="${1#--file=}"
-          shift
-          ;;
-        --file)
-          file_path="${2:?--file requires a path argument}"
-          shift 2
-          ;;
-        --body=*)
-          body_json="${1#--body=}"
-          shift
-          ;;
-        --body)
-          body_json="${2:?--body requires a JSON value}"
-          shift 2
-          ;;
-        --*)
-          local key="${1#--}"
-          local value
-          if [[ "$key" == *"="* ]]; then
-            # Support --key=value syntax
-            value="${key#*=}"
-            key="${key%%=*}"
-            shift
-          else
-            value="${2:?$1 requires a value}"
-            shift 2
-          fi
-          if command -v python3 >/dev/null 2>&1; then
-            # Parse value: try JSON first, fall back to string.
-            args=$(python3 -c "
-import json, sys
-v = '''$value'''
-# Try JSON parse; if it fails treat as raw string.
-try:    v = json.loads(v)
-except: pass
-args = json.loads('''$args''')
-args['$key'] = v
-print(json.dumps(args))
-" 2>/dev/null || echo "$args")
-          else
-            # Minimal fallback: always treat as string.
-            args=$(echo "$args" | sed 's/}$//')
-            args="${args},\"$key\":\"$value\"}"
-          fi
-          ;;
-        *)
-          shift
-          ;;
-      esac
-    done
+  require_python3 || return 1
 
-    # If --file is provided, auto-prefix @file:// and set as the "file" arg.
-    if [ -n "$file_path" ]; then
-      if [ ! -f "$file_path" ]; then
-        echo "[!] File not found: $file_path" >&2
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --file=*)
+        file_path="${1#--file=}"
+        shift
+        ;;
+      --file)
+        file_path="${2:?--file requires a path argument}"
+        shift 2
+        ;;
+      --body=*)
+        body_json="${1#--body=}"
+        shift
+        ;;
+      --body)
+        body_json="${2:?--body requires a JSON value}"
+        shift 2
+        ;;
+      --*=*)
+        local key="${1%%=*}"
+        local value="${1#*=}"
+        key="${key#--}"
+        shift
+        json_set_arg "$key" "$value" || return 1
+        ;;
+      --*)
+        local key="${1#--}"
+        local value="${2:?$1 requires a value}"
+        shift 2
+        json_set_arg "$key" "$value" || return 1
+        ;;
+      *)
+        echo "[!] Unexpected positional argument: $1" >&2
+        echo "[!] Use flag syntax, for example: ./mcpclient.sh call $tool_name --id 123 --body '{\"name\":\"demo\"}'" >&2
         return 1
-      fi
-      local abs_path
-      abs_path=$(realpath "$file_path" 2>/dev/null || echo "$file_path")
-      local file_size
-      file_size=$(wc -c < "$file_path" | tr -d ' ')
-      echo "[*] Uploading file via ref: @file://$abs_path ($file_size bytes)" >&2
-      if command -v python3 >/dev/null 2>&1; then
-        args=$(python3 -c "
-import json
-args = json.loads('''$args''')
-args['file'] = '@file://$abs_path'
-print(json.dumps(args))
-" 2>/dev/null || echo "$args")
-      fi
-    fi
+        ;;
+    esac
+  done
 
-    # Merge --body into args.
-    if [ -n "$body_json" ]; then
-      if command -v python3 >/dev/null 2>&1; then
-        args=$(python3 -c "
-import json
-args = json.loads('''$args''')
-args['body'] = json.loads('''$body_json''')
-print(json.dumps(args))
-" 2>/dev/null || echo "$args")
-      fi
-    fi
-  else
-    # Legacy style: positional JSON arg with optional --file.
-    while [ $# -gt 0 ]; do
-      case "$1" in
-        --file)
-          file_path="${2:?--file requires a path argument}"
-          shift 2
-          ;;
-        *)
-          args="$1"
-          shift
-          ;;
-      esac
-    done
+  # If --file is provided, set the conventional "file" arg. Local paths are
+  # converted to @file:// refs; explicit file/http(s) refs pass through.
+  if [ -n "$file_path" ]; then
+    local file_ref
+    case "$file_path" in
+      @file://*|@http://*|@https://*)
+        file_ref="$file_path"
+        echo "[*] Uploading file via ref: $file_ref" >&2
+        ;;
+      file://*|http://*|https://*)
+        file_ref="@$file_path"
+        echo "[*] Uploading file via ref: $file_ref" >&2
+        ;;
+      *)
+        if [ ! -f "$file_path" ]; then
+          echo "[!] File not found: $file_path" >&2
+          return 1
+        fi
+        local abs_path
+        abs_path=$(realpath "$file_path" 2>/dev/null || echo "$file_path")
+        local file_size
+        file_size=$(wc -c < "$file_path" | tr -d ' ')
+        file_ref="@file://$abs_path"
+        echo "[*] Uploading file via ref: $file_ref ($file_size bytes)" >&2
+        ;;
+    esac
+    json_set_arg "file" "$file_ref" || return 1
+  fi
 
-    # If --file is provided, set as file ref URI arg.
-    if [ -n "$file_path" ]; then
-      if [ ! -f "$file_path" ]; then
-        echo "[!] File not found: $file_path" >&2
-        return 1
-      fi
-      local abs_path
-      abs_path=$(realpath "$file_path" 2>/dev/null || echo "$file_path")
-      local file_size
-      file_size=$(wc -c < "$file_path" | tr -d ' ')
-      echo "[*] Uploading file via ref: @file://$abs_path ($file_size bytes)" >&2
-      if command -v python3 >/dev/null 2>&1; then
-        args=$(python3 -c "
-import json
-args = json.loads('$args')
-args['file'] = '@file://$abs_path'
-print(json.dumps(args))
-" 2>/dev/null || echo "$args")
-      fi
-    fi
+  # Merge --body into args as the reserved JSON request body field.
+  if [ -n "$body_json" ]; then
+    json_set_body "$body_json" || return 1
   fi
 
   echo "[*] Calling tool: $tool_name" >&2

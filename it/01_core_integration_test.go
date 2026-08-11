@@ -2279,6 +2279,147 @@ func TestMcpclientSh_FileFlag_SetsRefURI(t *testing.T) {
 	}
 }
 
+// TestMcpclientSh_MultipartAnyOfFlatArgs verifies HTTP mode uses the same flat
+// argument contract as CLI mode for multipart/fileRef tools. `--body` is not
+// required for multipart fields; all form/query/path fields are normal args.
+func TestMcpclientSh_MultipartAnyOfFlatArgs(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/multipart_anyof_spec.yaml", "uploadReportV2", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "UploadReportV2",
+		"--id", "606",
+		"--configId", "cfg-client",
+		"--note", "mcpclient-flat",
+		"--metadata", `{"name":"client","enabled":true}`,
+	)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh multipart flat args failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Fatalf("mcpclient.sh multipart flat args returned failure: %s", string(out))
+	}
+
+	requests := mock.Requests()
+	if len(requests) == 0 {
+		t.Fatal("expected upstream request")
+	}
+	lastReq := requests[len(requests)-1]
+	if got := lastReq.Query.Get("configId"); got != "cfg-client" {
+		t.Fatalf("expected configId query=cfg-client, got %q", got)
+	}
+	if !strings.Contains(lastReq.Path, "/upload-report/606/v2") {
+		t.Fatalf("expected id path substitution, got path %q", lastReq.Path)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data")
+	}
+	if got := record.FormFields["note"]; got != "mcpclient-flat" {
+		t.Fatalf("expected note form field, got %q", got)
+	}
+	if _, ok := record.FormFields["configId"]; ok {
+		t.Fatal("query parameter configId should not be duplicated as a multipart form field")
+	}
+	var metadata map[string]interface{}
+	if err := json.Unmarshal([]byte(record.FormFields["metadata"]), &metadata); err != nil {
+		t.Fatalf("metadata part is not JSON: %q: %v", record.FormFields["metadata"], err)
+	}
+	if metadata["name"] != "client" || metadata["enabled"] != true {
+		t.Fatalf("unexpected metadata body: %#v", metadata)
+	}
+}
+
+// TestMcpclientSh_DownloadPathArgNoRequestBody verifies a binary download tool
+// invoked through mcpclient.sh forwards only the path arg and does not send a
+// bogus request body to upstream.
+func TestMcpclientSh_DownloadPathArgNoRequestBody(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.Handle("/attachments/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			t.Errorf("expected GET, got %s", r.Method)
+		}
+		body, _ := io.ReadAll(r.Body)
+		if len(body) != 0 {
+			t.Errorf("download upstream should receive empty body, got %q", string(body))
+		}
+		if !strings.HasSuffix(r.URL.Path, "/attachments/123") {
+			t.Errorf("expected /attachments/123 path, got %q", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", `attachment; filename="attachment.pdf"`)
+		w.Write([]byte("fake-attachment-pdf"))
+	})
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/oas3.0_spec.yaml", "downloadAttachment", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "DownloadAttachment", "--id", "123")
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh download failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Fatalf("mcpclient.sh download returned failure: %s", string(out))
+	}
+	if !strings.Contains(string(out), "dl.ifs.mcpfather.com/v1") {
+		t.Fatalf("expected binary download metadata in output, got: %s", string(out))
+	}
+}
+
+// TestMcpclientSh_PositionalJSONRejected locks mcpclient.sh to the current
+// flag-only contract. It should not keep accepting legacy positional JSON.
+func TestMcpclientSh_PositionalJSONRejected(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterGreetingScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/minimal_spec.yaml", "sayHello", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "SayHello", `{"name":"legacy"}`)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected positional JSON call to fail, output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "Unexpected positional argument") {
+		t.Fatalf("expected positional argument error, got:\n%s", out)
+	}
+	if got := len(mock.Requests()); got != 0 {
+		t.Fatalf("legacy positional JSON should fail before upstream, got %d upstream requests", got)
+	}
+}
+
 // TestMcpclientSh_KeyValueBodySyntax verifies the new --key value --body '{}'
 // argument syntax of mcpclient.sh (non-FileArgs tool). The --body JSON is
 // merged into args["body"] and forwarded as application/json (no @ prefixes).

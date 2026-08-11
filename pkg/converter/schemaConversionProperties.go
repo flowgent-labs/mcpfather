@@ -39,6 +39,9 @@ func buildPropertySchema(arg Arg) (map[string]interface{}, error) {
 // buildBodySchema handles the "body" source, including multiple content types.
 func buildBodySchema(arg Arg) (map[string]interface{}, error) {
 	if len(arg.ContentTypes) == 0 {
+		if arg.Schema != nil {
+			return schemaToDraft7Map(arg.Schema, make(map[*Schema]bool))
+		}
 		return nil, nil
 	}
 	visited := make(map[*Schema]bool)

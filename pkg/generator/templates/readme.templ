@@ -61,30 +61,36 @@ parameters are passed as regular `--key value` flags.
 ```sh
 # JSON body
 ./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
-  --body '{"file":"@file:///tmp/report.pdf","note":"quarterly"}'
+  --body '{"note":"quarterly"}'
 ```
 
-#### File uploads in `--body` (curl-style `@` prefix)
+#### File uploads (fileRef URL)
 
-When a JSON value in `--body` starts with `@file:///`, `@https://`, or `@http://`,
-the server automatically downloads the file to the IFS temp cache and forwards it
-as a **multipart/form-data** part (other fields become plain form fields):
+For file upload tools, pass file fields as normal tool arguments. Values starting
+with `@file:///`, `@https://`, or `@http://` are fileRef URLs: the server downloads
+the file to the IFS temp cache and forwards it to upstream. Other multipart
+fields are passed as regular `--key value` flags.
 
 ```sh
-# Local file
+# Local file, for the conventional multipart field named "file"
 ./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
-  --body '{"file":"@file:///tmp/report.pdf"}'
+  --file /tmp/report.pdf
 
 # Remote URL (server downloads, then forwards to upstream)
 ./bin/{{ .ServiceName }} -v 1 -t cli uploadScanReport --scanId 12345 \
-  --body '{"file":"@https://cdn.example.com/reports/q1.pdf"}'
+  --file @https://cdn.example.com/reports/q1.pdf
+
+# Named file field
+./bin/{{ .ServiceName }} -v 1 -t cli configSaml \
+  --identityProviderXml @file:///tmp/idp.xml \
+  --samlConfiguration '{"enabled":true}'
 ```
 
-The same `--body` syntax works identically in HTTP mode via `mcpclient.sh`:
+The same flag syntax works in HTTP mode via `mcpclient.sh`:
 
 ```sh
 ./mcpclient.sh call uploadScanReport --scanId 12345 \
-  --body '{"file":"@file:///tmp/report.pdf"}'
+  --file /tmp/report.pdf
 ```
 
 ## Options
@@ -472,7 +478,7 @@ After the container starts, use the bundled `mcpclient.sh` to verify.
 # Point to the mapped host port (include /mcp path)
 export MCP_SERVER_ENDPOINT=http://localhost:18080/mcp
 # Call any tool (example: {{ (index .Tools 0).Name }})
-./mcpclient.sh call {{ (index .Tools 0).Name }} '{"<param>":"<value>"}'
+./mcpclient.sh call {{ (index .Tools 0).Name }} --param value
 # List all available tools
 ./mcpclient.sh list-tools
 ```

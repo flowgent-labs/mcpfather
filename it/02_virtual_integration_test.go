@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -1059,6 +1060,23 @@ func mcpCallVirtualToolError(t *testing.T, baseURL string, toolName string, args
 	return strings.Join(messages, "\n")
 }
 
+func runGeneratedMcpclientSh(t *testing.T, clientSh, endpoint, downloadDir string, args ...string) (stdout string, stderr string) {
+	t.Helper()
+	cmdArgs := append([]string{clientSh}, args...)
+	cmd := exec.Command("bash", cmdArgs...)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+endpoint,
+		"MCP_SERVER_DOWNLOAD_DIR="+downloadDir,
+	)
+	var stdoutBuf, stderrBuf bytes.Buffer
+	cmd.Stdout = &stdoutBuf
+	cmd.Stderr = &stderrBuf
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("mcpclient.sh %v failed: %v\nstderr:\n%s\nstdout:\n%s", args, err, stderrBuf.String(), stdoutBuf.String())
+	}
+	return stdoutBuf.String(), stderrBuf.String()
+}
+
 func readVirtualFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	path := filepath.Join(repoRoot(t), "it", "testdata", name)
@@ -1418,6 +1436,156 @@ virtual_tools:
 	}
 	if len(mock.requests) != 1 {
 		t.Errorf("expected 1 upstream request, got %d", len(mock.requests))
+	}
+}
+
+// TestE2E_VirtualTool_McpclientShCall verifies the generated mcpclient.sh uses
+// the full HTTP MCP initialization handshake before calling virtual tools.
+func TestE2E_VirtualTool_McpclientShCall(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"status":"ok","message":"hello","internalToken":"secret123","timestamp":"2024-01-01T00:00:00Z"}`))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(dir)
+
+	virtConfig := `
+virtual_tools:
+  - name: virt_clean_echo
+    description: Echo with cleanup
+    input_schema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: fetch
+        kind: call
+        spec:
+          tool: EchoHeaders
+          args: {}
+      - id: clean
+        kind: jq
+        spec:
+          from: $fetch
+          expr: '{status, message, timestamp}'
+      - id: done
+        kind: return
+        spec:
+          from: $clean
+`
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	stdout, stderr := runGeneratedMcpclientSh(t, clientSh, baseURL+"/mcp", filepath.Join(homeDir, "download"), "call", "virt_clean_echo")
+
+	var rpcResp virtualToolRPCResponse
+	if err := json.Unmarshal([]byte(stdout), &rpcResp); err != nil {
+		t.Fatalf("failed to parse mcpclient.sh JSON response: %v\nstderr:\n%s\nstdout:\n%s", err, stderr, stdout)
+	}
+	if rpcResp.Error != nil {
+		t.Fatalf("mcpclient.sh returned MCP error: %s (code %d)\nstderr:\n%s", rpcResp.Error.Message, rpcResp.Error.Code, stderr)
+	}
+	if rpcResp.Result.IsError {
+		t.Fatalf("mcpclient.sh virtual tool result isError=true: %+v\nstderr:\n%s", rpcResp.Result.Content, stderr)
+	}
+	if len(rpcResp.Result.Content) == 0 {
+		t.Fatalf("mcpclient.sh virtual tool returned empty content\nstderr:\n%s", stderr)
+	}
+	data := mustJSON(t, rpcResp.Result.Content[0].Text)
+	if data["status"] != "ok" {
+		t.Fatalf("status = %v, want ok; result=%s", data["status"], rpcResp.Result.Content[0].Text)
+	}
+	if strings.Contains(strings.ToLower(stderr+stdout), "not found") {
+		t.Fatalf("virtual tool should be found over mcpclient.sh; stderr:\n%s\nstdout:\n%s", stderr, stdout)
+	}
+	if len(mock.requests) != 1 {
+		t.Fatalf("expected 1 upstream request, got %d", len(mock.requests))
+	}
+}
+
+// TestE2E_VirtualTool_McpclientShListAndCallWithArgs covers the mcpclient.sh
+// path for virtual tool discovery and argument forwarding. Direct MCP HTTP
+// tests can pass while mcpclient.sh is broken, so this intentionally uses the
+// generated shell client as the caller.
+func TestE2E_VirtualTool_McpclientShListAndCallWithArgs(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		name := r.URL.Query().Get("name")
+		w.Write([]byte(fmt.Sprintf(`{"greeting":"Hello, %s!"}`, name)))
+	})
+	defer mock.Close()
+
+	dir := genProject(t, "sayHello", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(dir)
+
+	virtConfig := `
+virtual_tools:
+  - name: virt_greet_arg
+    description: Greet through a virtual tool argument
+    input_schema:
+      type: object
+      required: [person]
+      properties:
+        person:
+          type: string
+    pipeline:
+      - id: greet
+        kind: call
+        spec:
+          tool: SayHello
+          args:
+            name: $input.person
+      - id: done
+        kind: return
+        spec:
+          from: $greet
+`
+	writeVirtualConfig(t, homeDir, serviceName, virtConfig)
+
+	cleanup, baseURL := startVirtualTestServer(t, dir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	endpoint := baseURL + "/mcp"
+	downloadDir := filepath.Join(homeDir, "download")
+
+	listOut, listErr := runGeneratedMcpclientSh(t, clientSh, endpoint, downloadDir, "list-tools")
+	if !strings.Contains(listOut, "virt_greet_arg") {
+		t.Fatalf("mcpclient.sh list-tools should include virtual tool; stderr:\n%s\nstdout:\n%s", listErr, listOut)
+	}
+	if !strings.Contains(listOut, "SayHello") {
+		t.Fatalf("mcpclient.sh list-tools should still include native tool; stdout:\n%s", listOut)
+	}
+	if strings.Contains(strings.ToLower(listErr+listOut), "not found") {
+		t.Fatalf("mcpclient.sh list-tools should not report not found; stderr:\n%s\nstdout:\n%s", listErr, listOut)
+	}
+
+	callOut, callErr := runGeneratedMcpclientSh(t, clientSh, endpoint, downloadDir, "call", "virt_greet_arg", "--person", "mcpclient-user")
+	var rpcResp virtualToolRPCResponse
+	if err := json.Unmarshal([]byte(callOut), &rpcResp); err != nil {
+		t.Fatalf("failed to parse mcpclient.sh call response: %v\nstderr:\n%s\nstdout:\n%s", err, callErr, callOut)
+	}
+	if rpcResp.Error != nil {
+		t.Fatalf("mcpclient.sh virtual call returned MCP error: %s (code %d)\nstderr:\n%s", rpcResp.Error.Message, rpcResp.Error.Code, callErr)
+	}
+	if rpcResp.Result.IsError || len(rpcResp.Result.Content) == 0 {
+		t.Fatalf("mcpclient.sh virtual call failed: %+v\nstderr:\n%s", rpcResp.Result, callErr)
+	}
+	data := mustJSON(t, rpcResp.Result.Content[0].Text)
+	if data["greeting"] != "Hello, mcpclient-user!" {
+		t.Fatalf("greeting = %v, want Hello, mcpclient-user!", data["greeting"])
+	}
+	if len(mock.requests) != 1 {
+		t.Fatalf("expected one upstream request from the virtual call, got %d", len(mock.requests))
+	}
+	if !strings.Contains(mock.requests[0].URL, "name=mcpclient-user") {
+		t.Fatalf("upstream URL = %q, want name=mcpclient-user", mock.requests[0].URL)
 	}
 }
 

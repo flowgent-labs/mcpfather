@@ -148,6 +148,35 @@ func TestGenerateMCP(t *testing.T) {
 		t.Errorf("generated LICENSE should be Apache-2.0 only")
 	}
 
+	clientPath := filepath.Join(tmpDir, "mcpclient.sh")
+	clientData, err := os.ReadFile(clientPath)
+	if err != nil {
+		t.Fatalf("Failed to read generated mcpclient.sh: %v", err)
+	}
+	clientContent := string(clientData)
+	for _, want := range []string{
+		`STABLE ARGUMENT MAPPING CONTRACT — do not change casually`,
+		`# | User input`,
+		`# | --id 123`,
+		`--body '{"configId":123}'`,
+		`application/json requestBody only`,
+		`--file1 @file:///tmp/a.pdf`,
+		`so generated mcpclient.sh remains self-explanatory when opened in an editor.`,
+		`notifications/initialized`,
+		`Upload files are passed as fileRef values in file arguments, never as base64 or JSON body.`,
+		`Tool arguments use flag syntax only. Positional JSON is intentionally not supported.`,
+	} {
+		if !strings.Contains(clientContent, want) {
+			t.Errorf("generated mcpclient.sh missing stable usage contract %q", want)
+		}
+	}
+	if strings.Contains(clientContent, "fileContentBase64") {
+		t.Errorf("generated mcpclient.sh should not mention legacy base64 upload fields")
+	}
+	if out, err := exec.Command("bash", "-n", clientPath).CombinedOutput(); err != nil {
+		t.Fatalf("generated mcpclient.sh has invalid shell syntax: %v\n%s", err, out)
+	}
+
 	readmeData, err := os.ReadFile(filepath.Join(tmpDir, "README.md"))
 	if err != nil {
 		t.Fatalf("Failed to read generated README.md: %v", err)
