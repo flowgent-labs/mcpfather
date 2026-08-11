@@ -444,6 +444,12 @@ paths:
                 description:
                   type: string
                   description: Resource description
+                metadata:
+                  type: object
+                  description: JSON metadata
+                  properties:
+                    enabled:
+                      type: boolean
                 attachment:
                   type: string
                   format: binary
@@ -452,6 +458,11 @@ paths:
                   type: string
                   format: binary
                   description: Optional photo
+            encoding:
+              metadata:
+                contentType: application/json
+              attachment:
+                contentType: application/zip
       responses:
         "200":
           description: OK
@@ -483,11 +494,16 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 	}
 	// Check FileArgs content
 	fileNames := make(map[string]bool)
+	fileContentTypes := make(map[string]string)
 	for _, fa := range tool.FileArgs {
 		fileNames[fa.Name] = true
+		fileContentTypes[fa.Name] = fa.ContentType
 	}
 	if !fileNames["attachment"] {
 		t.Error("expected FileArg for 'attachment'")
+	}
+	if got := fileContentTypes["attachment"]; got != "application/zip" {
+		t.Errorf("attachment ContentType = %q, want application/zip", got)
 	}
 	if !fileNames["photo"] {
 		t.Error("expected FileArg for 'photo'")
@@ -518,6 +534,12 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 		t.Error("'description' should be optional")
 	}
 
+	if metadataArg, ok := argNames["metadata"]; !ok {
+		t.Error("expected 'metadata' arg (form field)")
+	} else if metadataArg.MultipartContentType != "application/json" {
+		t.Errorf("metadata MultipartContentType = %q, want application/json", metadataArg.MultipartContentType)
+	}
+
 	// attachment should be optional uri
 	if attArg, ok := argNames["attachment"]; !ok {
 		t.Error("expected 'attachment' arg (file ref)")
@@ -544,6 +566,268 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 		if _, ok := argNames[badName]; ok {
 			t.Errorf("tool should NOT have %q arg", badName)
 		}
+	}
+}
+
+const testSpecMultipartBinaryCompatibility = `openapi: "3.0.3"
+info:
+  title: Multipart Compatibility API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /direct:
+    post:
+      operationId: uploadReportDirect
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required:
+                - file
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Report file
+                note:
+                  type: string
+      responses:
+        "200":
+          description: OK
+  /anyof:
+    post:
+      operationId: uploadReportAnyOf
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  anyOf:
+                    - type: string
+                      format: binary
+                    - type: string
+                  title: File
+                note:
+                  type: string
+      responses:
+        "200":
+          description: OK
+  /allof:
+    post:
+      operationId: uploadReportAllOf
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              allOf:
+                - type: object
+                  required:
+                    - file
+                  properties:
+                    file:
+                      oneOf:
+                        - type: string
+                          format: binary
+                        - type: string
+                    note:
+                      type: string
+      responses:
+        "200":
+          description: OK
+  /array:
+    post:
+      operationId: uploadReportArray
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+      responses:
+        "200":
+          description: OK
+  /multi-content:
+    post:
+      operationId: uploadReportMultiContent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                note:
+                  type: string
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  anyOf:
+                    - type: string
+                      format: binary
+                    - type: string
+                note:
+                  type: string
+      responses:
+        "200":
+          description: OK
+`
+
+func TestMultipartBinarySchemasUseFileRefs(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecMultipartBinaryCompatibility)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	tools := make(map[string]Tool)
+	for _, tool := range config.Tools {
+		tools[tool.OperationID] = tool
+	}
+
+	tests := []struct {
+		operationID  string
+		requiredFile bool
+		wantNote     bool
+	}{
+		{operationID: "uploadReportDirect", requiredFile: true, wantNote: true},
+		{operationID: "uploadReportAnyOf", requiredFile: false, wantNote: true},
+		{operationID: "uploadReportAllOf", requiredFile: true, wantNote: true},
+		{operationID: "uploadReportArray", requiredFile: false, wantNote: false},
+		{operationID: "uploadReportMultiContent", requiredFile: false, wantNote: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.operationID, func(t *testing.T) {
+			tool, ok := tools[tt.operationID]
+			if !ok {
+				t.Fatalf("missing tool for operationID %q", tt.operationID)
+			}
+			if tool.UploadContentType != "" {
+				t.Fatalf("named multipart file fields should not use raw UploadContentType, got %q", tool.UploadContentType)
+			}
+			if len(tool.FileArgs) != 1 {
+				t.Fatalf("expected exactly one FileArg, got %d", len(tool.FileArgs))
+			}
+			if tool.FileArgs[0].Name != "file" {
+				t.Fatalf("FileArg name = %q, want file", tool.FileArgs[0].Name)
+			}
+			if tool.FileArgs[0].Required != tt.requiredFile {
+				t.Fatalf("FileArg required = %v, want %v", tool.FileArgs[0].Required, tt.requiredFile)
+			}
+
+			argNames := make(map[string]Arg)
+			for _, arg := range tool.Args {
+				argNames[arg.Name] = arg
+			}
+			if _, ok := argNames["body"]; ok {
+				t.Fatal("FileRef tool should not keep generic body arg")
+			}
+			fileArg, ok := argNames["file"]
+			if !ok {
+				t.Fatal("expected file URI arg")
+			}
+			if fileArg.Required != tt.requiredFile {
+				t.Fatalf("file arg required = %v, want %v", fileArg.Required, tt.requiredFile)
+			}
+			if fileArg.Schema == nil || fileArg.Schema.Format != "uri" {
+				t.Fatalf("file arg schema = %+v, want uri format", fileArg.Schema)
+			}
+			if _, ok := argNames["note"]; ok != tt.wantNote {
+				t.Fatalf("note form arg present = %v, want %v", ok, tt.wantNote)
+			}
+		})
+	}
+}
+
+const testSpecJSONBinaryBody = `openapi: "3.0.3"
+info:
+  title: JSON Binary Body API
+  version: 1.0.0
+servers:
+  - url: https://api.example.com/v1
+paths:
+  /json-only:
+    post:
+      operationId: uploadReportJSONOnly
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                file:
+                  anyOf:
+                    - type: string
+                      format: binary
+                    - type: string
+                note:
+                  type: string
+      responses:
+        "200":
+          description: OK
+`
+
+func TestJSONBinaryBodyDoesNotInferMultipart(t *testing.T) {
+	parser := NewParser(false)
+	if err := parser.Parse([]byte(testSpecJSONBinaryBody)); err != nil {
+		t.Fatalf("failed to parse OpenAPI: %v", err)
+	}
+
+	c, err := NewConverter(parser, nil, nil, false)
+	if err != nil {
+		t.Fatalf("NewConverter failed: %v", err)
+	}
+	config, err := c.Convert()
+	if err != nil {
+		t.Fatalf("Convert failed: %v", err)
+	}
+
+	if len(config.Tools) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(config.Tools))
+	}
+	tool := config.Tools[0]
+	if len(tool.FileArgs) != 0 {
+		t.Fatalf("JSON request bodies should not infer multipart FileArgs, got %+v", tool.FileArgs)
+	}
+	if tool.UploadContentType != "" {
+		t.Fatalf("JSON request bodies should not use upload content type, got %q", tool.UploadContentType)
+	}
+	foundBody := false
+	for _, arg := range tool.Args {
+		if arg.Name == "body" {
+			foundBody = true
+			break
+		}
+	}
+	if !foundBody {
+		t.Fatal("JSON request body should remain a regular body arg")
 	}
 }
 

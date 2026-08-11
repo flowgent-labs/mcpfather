@@ -16,6 +16,11 @@ import (
 	"github.com/flowgent-labs/mcpfather/pkg/converter"
 )
 
+type multipartPartContentType struct {
+	Name        string
+	ContentType string
+}
+
 // GenerateToolFiles generates individual tool files while preserving existing handler implementations
 func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 	// Remove stale tool files from previous generations (tool names may change
@@ -79,11 +84,30 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 	for _, tool := range config.Tools {
 		capitalizedName := capitalizeFirstLetter(tool.Name)
 
-		// Collect path args for URL parameter replacement
+		// Collect path/query args so multipart forwarding can keep URL
+		// parameters out of the form body.
 		var pathArgs []converter.Arg
+		var queryArgs []converter.Arg
+		var multipartContentTypes []multipartPartContentType
 		for _, arg := range tool.Args {
 			if arg.Source == "path" {
 				pathArgs = append(pathArgs, arg)
+			} else if arg.Source == "query" {
+				queryArgs = append(queryArgs, arg)
+			}
+			if arg.Source == "body" && strings.TrimSpace(arg.MultipartContentType) != "" {
+				multipartContentTypes = append(multipartContentTypes, multipartPartContentType{
+					Name:        arg.Name,
+					ContentType: strings.TrimSpace(arg.MultipartContentType),
+				})
+			}
+		}
+		for _, fileArg := range tool.FileArgs {
+			if strings.TrimSpace(fileArg.ContentType) != "" {
+				multipartContentTypes = append(multipartContentTypes, multipartPartContentType{
+					Name:        fileArg.Name,
+					ContentType: strings.TrimSpace(fileArg.ContentType),
+				})
 			}
 		}
 
@@ -92,13 +116,15 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 
 		data := struct {
 			ToolTemplateData
-			URL               string
-			Method            string
-			Headers           []converter.Header
-			RequestPath       string
-			PathArgs          []converter.Arg
-			UploadContentType string
-			FileArgs          []converter.FileArg
+			URL                   string
+			Method                string
+			Headers               []converter.Header
+			RequestPath           string
+			PathArgs              []converter.Arg
+			QueryArgs             []converter.Arg
+			MultipartContentTypes []multipartPartContentType
+			UploadContentType     string
+			FileArgs              []converter.FileArg
 		}{
 			ToolTemplateData: ToolTemplateData{
 				ToolNameOriginal:      capitalizedName,
@@ -110,13 +136,15 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 				InputSchemaConst:      fmt.Sprintf("%sInputSchema", tool.Name),
 				ResponseTemplateConst: fmt.Sprintf("%sResponseTemplate", tool.Name),
 			},
-			URL:               tool.RequestTemplate.URL,
-			Method:            tool.RequestTemplate.Method,
-			Headers:           tool.RequestTemplate.Headers,
-			RequestPath:       requestPath,
-			PathArgs:          pathArgs,
-			UploadContentType: tool.UploadContentType,
-			FileArgs:          tool.FileArgs,
+			URL:                   tool.RequestTemplate.URL,
+			Method:                tool.RequestTemplate.Method,
+			Headers:               tool.RequestTemplate.Headers,
+			RequestPath:           requestPath,
+			PathArgs:              pathArgs,
+			QueryArgs:             queryArgs,
+			MultipartContentTypes: multipartContentTypes,
+			UploadContentType:     tool.UploadContentType,
+			FileArgs:              tool.FileArgs,
 		}
 
 		outputFileName := capitalizedName + ".go"
@@ -229,12 +257,12 @@ func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
 			ToolNameOriginal  string
 			ToolHandlerName   string
 			HelpersImportPath string
-			ServiceName        string
+			ServiceName       string
 		}{
 			ToolNameOriginal:  capitalizedName,
 			ToolHandlerName:   capitalizedName + "Handler",
 			HelpersImportPath: helpersImportPath,
-			ServiceName:        serviceName,
+			ServiceName:       serviceName,
 		}
 
 		var buf bytes.Buffer

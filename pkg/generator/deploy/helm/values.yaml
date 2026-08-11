@@ -122,6 +122,11 @@ config:
     # -- Internal File System (IFS) REST API for binary file transfer.
     ifs:
       enabled: true
+      # -- Public base URI used to build IFS download URLs returned by tools.
+      # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
+      base_uri: ""
+      # -- Completed temporary IFS files older than this are removed by the background clean job.
+      clean_job_ttl_seconds: "5m"
     # -- HTTP server timeouts in seconds. 0 = disabled.
     # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.
     read_timeout_seconds: 30
