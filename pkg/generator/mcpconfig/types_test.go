@@ -122,16 +122,16 @@ func TestUpstreamEntryConfig_Fields(t *testing.T) {
 	}
 }
 
-func TestIFSConfig_Defaults(t *testing.T) {
+func TestTFSConfig_Defaults(t *testing.T) {
 	cfg := DefaultConfig()
-	if !cfg.Server.IFS.Enabled {
-		t.Error("server.ifs.enabled should default to true")
+	if !cfg.Server.TFS.Enabled {
+		t.Error("server.tfs.enabled should default to true")
 	}
-	if cfg.Server.IFS.BaseURI != "" {
-		t.Errorf("server.ifs.base_uri = %q, want empty default", cfg.Server.IFS.BaseURI)
+	if cfg.Server.TFS.BaseURI != "" {
+		t.Errorf("server.tfs.base_uri = %q, want empty default", cfg.Server.TFS.BaseURI)
 	}
-	if cfg.Server.IFS.CleanJobTTLSeconds != "5m" {
-		t.Errorf("server.ifs.clean-job-ttl-seconds = %q, want 5m", cfg.Server.IFS.CleanJobTTLSeconds)
+	if cfg.Server.TFS.CleanJobTTLSeconds != "5m" {
+		t.Errorf("server.tfs.clean-job-ttl-seconds = %q, want 5m", cfg.Server.TFS.CleanJobTTLSeconds)
 	}
 }
 
@@ -183,19 +183,19 @@ func TestVirtualToolPipelineConfig_Fields(t *testing.T) {
 	}
 }
 
-func TestIFSConfig_Fields(t *testing.T) {
-	ifs := IFSConfig{Enabled: true, BaseURI: "https://files.example.com/mcp", CleanJobTTLSeconds: "30s"}
-	if !ifs.Enabled {
+func TestTFSConfig_Fields(t *testing.T) {
+	tfs := TFSConfig{Enabled: true, BaseURI: "https://files.example.com/mcp", CleanJobTTLSeconds: "30s"}
+	if !tfs.Enabled {
 		t.Error("Enabled should be true")
 	}
-	if ifs.BaseURI != "https://files.example.com/mcp" {
+	if tfs.BaseURI != "https://files.example.com/mcp" {
 		t.Error("BaseURI mismatch")
 	}
-	if ifs.CleanJobTTLSeconds != "30s" {
+	if tfs.CleanJobTTLSeconds != "30s" {
 		t.Error("CleanJobTTLSeconds mismatch")
 	}
-	ifs2 := IFSConfig{Enabled: false}
-	if ifs2.Enabled {
+	tfs2 := TFSConfig{Enabled: false}
+	if tfs2.Enabled {
 		t.Error("Enabled should be false")
 	}
 }

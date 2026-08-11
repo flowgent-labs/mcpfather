@@ -2,7 +2,9 @@
 
 > Date: 2026-07-04
 >
-> Goal: End-to-end validation of `get_overall_issues` and `get_newcode_issues` virtual tools against a real SonarQube instance.
+> Goal: End-to-end validation of the `get_overall_issues` virtual tool against a real SonarQube instance.
+>
+> Note: SonarQube Community Edition does not support pull-request/new-code branch analysis, so this E2E guide intentionally does not include `get_newcode_issues` PR test commands.
 
 ## 0. Prerequisites
 
@@ -26,7 +28,6 @@ echo "MCP_UPSTREAM_TOKEN     = ${MCP_UPSTREAM_TOKEN:0:10}..."
 echo "SONARQUBE_PROJECT_KEY  = $SONARQUBE_PROJECT_KEY"
 echo "SONARQUBE_TEST_BRANCH  = $SONARQUBE_TEST_BRANCH"
 echo "SONARQUBE_TEST_COMPONENT = $SONARQUBE_TEST_COMPONENT"
-echo "SONARQUBE_TEST_PR       = $SONARQUBE_TEST_PR"
 echo "HTTPS_PROXY            = $HTTPS_PROXY"
 echo "HTTP_PROXY             = $HTTP_PROXY"
 ```
@@ -40,7 +41,6 @@ Key environment variables:
 | `SONARQUBE_PROJECT_KEY` | Project key under test |
 | `SONARQUBE_TEST_BRANCH` | Git branch under test |
 | `SONARQUBE_TEST_COMPONENT` | Optional file path filter (component key) |
-| `SONARQUBE_TEST_PR` | Optional pull request ID |
 | `HTTPS_PROXY` / `HTTP_PROXY` | Optional, for restricted network environments |
 
 ## 1. Test Environment
@@ -132,6 +132,8 @@ source .env
 
 ### 3.2 `get_newcode_issues`
 
+`get_newcode_issues` is available in the virtual tool configuration, but PR/new-code scans require a SonarQube edition that supports pull-request analysis. Community Edition E2E runs should skip this tool.
+
 | Parameter | Type | Required | Default | Description |
 |-----------|------|:--------:|---------|-------------|
 | `projectKey` | string | yes | - | SonarQube project key |
@@ -212,33 +214,11 @@ source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_
 }
 ```
 
-### 4.3 `get_overall_issues` — newCodeOnly
+### 4.3 New-code / PR scan coverage
 
-```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_issues \
-  --projectKey="$SONARQUBE_PROJECT_KEY" \
-  --branch="$SONARQUBE_TEST_BRANCH" \
-  --newCodeOnly="true" --limit="3"
-```
+Community Edition does not support pull-request/new-code branch analysis, so this E2E guide skips `newCodeOnly` and `get_newcode_issues` runtime commands. Run those only against a SonarQube edition and project setup that supports PR/new-code analysis.
 
-**Result**: pass — returns zero if no new-code-period issues exist
-
-```json
-{"summary": {"total": 0, "returned": 0}}
-```
-
-### 4.4 `get_newcode_issues` — non-existent PR (error path)
-
-```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_newcode_issues \
-  --projectKey="$SONARQUBE_PROJECT_KEY" \
-  --branch="$SONARQUBE_TEST_BRANCH" \
-  --pullRequest="$SONARQUBE_TEST_PR" --limit="3"
-```
-
-**Result**: SonarQube returns HTTP 500 for a non-existent PR — error is propagated correctly. An actual PR must exist for the happy path to succeed.
-
-### 4.5 Native tool spot-checks (optional)
+### 4.4 Native tool spot-checks (optional)
 
 Look up the component file:
 
@@ -256,11 +236,11 @@ source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetIssuesSea
   --types="CODE_SMELL,BUG,VULNERABILITY"
 ```
 
-### 4.6 HTTP Mode
+### 4.5 HTTP Mode
 
 The same virtual tools work over the MCP HTTP transport (`StreamableHTTPServer`).
 
-#### 4.6.1 Start the server
+#### 4.5.1 Start the server
 
 In one terminal, start the HTTP server:
 
@@ -270,14 +250,16 @@ source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18889
 
 Wait for the log line `MCP server listening on :18889/mcp`.
 
-#### 4.6.2 Test via mcpclient.sh
+#### 4.5.2 Test via mcpclient.sh
 
 In another terminal, call the virtual tool through the MCP HTTP endpoint:
 
 ```bash
 export MCP_SERVER_ENDPOINT=http://localhost:18889/mcp
 source .env && ./usecase/sonarqube-mcp/mcpclient.sh call get_overall_issues \
-  '{"projectKey":"'$SONARQUBE_PROJECT_KEY'","branch":"'$SONARQUBE_TEST_BRANCH'","component":"'$SONARQUBE_TEST_COMPONENT'"}' | jq -r '.result.content[].text' | jq
+    --projectKey $SONARQUBE_PROJECT_KEY \
+    --branch $SONARQUBE_TEST_BRANCH \
+    --component $SONARQUBE_TEST_COMPONENT | jq -r '.result.content[].text' | jq
 ```
 
 **Result**: pass — same response shape as CLI mode (section 4.2), delivered over HTTP.
@@ -305,20 +287,20 @@ source .env && ./usecase/sonarqube-mcp/mcpclient.sh call get_overall_issues \
 }
 ```
 
-#### 4.6.3 List tools via HTTP
+#### 4.5.3 List tools via HTTP
 
 ```bash
 source .env && ./usecase/sonarqube-mcp/mcpclient.sh list-tools
 ```
 
-#### 4.6.4 Native tool via HTTP
+#### 4.5.4 Native tool via HTTP
 
 ```bash
 source .env && ./usecase/sonarqube-mcp/mcpclient.sh call GetComponentsShow \
-  '{"component":"'$SONARQUBE_TEST_COMPONENT'"}'
+  --component "$SONARQUBE_TEST_COMPONENT"
 ```
 
-#### 4.6.5 Obtain MCP server metrics
+#### 4.5.5 Obtain MCP server metrics
 
 ```bash
 curl -v localhost:9991/metrics
@@ -378,10 +360,9 @@ All downstream steps reference `$opts.xxx` instead of `$input.xxx` for optional 
 
 ### 6.3 SonarQube API parameter constraints
 
-- `inNewCodePeriod` must be paired with `components`/`componentKeys` — cannot use `projects`
+- For editions/endpoints that support new-code analysis, `inNewCodePeriod` must be paired with `components`/`componentKeys` — cannot use `projects`
 - `components` and `componentKeys` are aliases; passing both causes the latter to be silently dropped
 - `GetComponentsSearch` qualifiers only support `TRK`
-- `pullRequest` on a non-existent PR returns HTTP 500 (not 404)
 
 ### 6.4 Proxy-aware builds
 

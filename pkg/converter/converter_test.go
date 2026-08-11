@@ -1,6 +1,7 @@
 package converter
 
 import (
+	"encoding/json"
 	"os"
 	"testing"
 )
@@ -565,6 +566,18 @@ func TestExtractMultipartFileArgs_MixedProperties(t *testing.T) {
 	for _, badName := range []string{"body", "file_name", "file_content"} {
 		if _, ok := argNames[badName]; ok {
 			t.Errorf("tool should NOT have %q arg", badName)
+		}
+	}
+
+	var rawSchema struct {
+		Properties map[string]interface{} `json:"properties"`
+	}
+	if err := json.Unmarshal([]byte(tool.RawInputSchema), &rawSchema); err != nil {
+		t.Fatalf("RawInputSchema is not valid JSON: %v\n%s", err, tool.RawInputSchema)
+	}
+	for _, name := range []string{"name", "description", "metadata", "attachment", "photo"} {
+		if _, ok := rawSchema.Properties[name]; !ok {
+			t.Fatalf("RawInputSchema missing multipart arg %q: %s", name, tool.RawInputSchema)
 		}
 	}
 }

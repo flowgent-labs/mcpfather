@@ -28,16 +28,16 @@ server:
       # Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
       # e.g. ["given_name", "family_name", "preferred_username"]
       # additional_client_token_claim_forward: []
-  # ---- Internal File System (IFS) Data Plane ----
+  # ---- Temporary File System (TFS) Data Plane ----
   # Built-in REST API for binary file transfer, separate from the
   # JSON-RPC 2.0 control plane at /mcp.
-  # Upload:   POST /_/ifs/upload/{uuid}
-  # Download: GET  /_/ifs/download/{uuid}
-  # Files stored under ~/.<app>/ifs/{download,upload}/
+  # Upload:   POST /_/tfs/upload/{uuid}
+  # Download: GET  /_/tfs/download/{uuid}
+  # Files stored under ~/.<app>/tfs/{download,upload}/
   # with UUID-based filenames to prevent collisions.
-  ifs:
+  tfs:
     enabled: true
-    # Public base URI used to build returned IFS download URLs.
+    # Public base URI used to build returned TFS download URLs.
     # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
     base_uri: ""
     # Completed temporary files older than this are removed by the background clean job.

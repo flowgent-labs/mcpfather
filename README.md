@@ -20,7 +20,7 @@
 - **Prometheus Metrics** — Standard `mcp_tool_call_duration_seconds` histogram exported for every native and virtual tool invocation, with configurable boundaries and static labels.
 - **OTel Distributed Tracing** — Optional OpenTelemetry tracing via OTLP gRPC (`-tags otel`). W3C trace context is propagated to upstream APIs for end-to-end visibility across agent teams.
 - **Deployment Artifacts** — Generated projects ship with Dockerfile, Helm chart, Makefile targets, and K8s manifests (ConfigMap, Secret, HPA, Ingress/Gateway, SecretProviderClass for GCP).
-- **IFS Data Plane Server** — Built-in REST endpoints (`/_/ifs/*`) for binary file upload and download, cleanly separated from the JSON-RPC 2.0 control plane at `/mcp`. OpenAPI file transfer operations become MCP tools that route binary payloads through the data plane, not the control channel.
+- **TFS Data Plane Server** — Built-in REST endpoints (`/_/tfs/*`) for binary file upload and download, cleanly separated from the JSON-RPC 2.0 control plane at `/mcp`. OpenAPI file transfer operations become MCP tools that route binary payloads through the data plane, not the control channel.
 
 ## Quick Start
 
@@ -171,7 +171,7 @@ Long `operationId` values are automatically truncated to 125 characters with a h
 | `9` | + pretty-printed JSON body |
 | `10` | Same as 9 (full debug) |
 
-### IFS — Internal File System (Data Plane)
+### TFS — Temporary File System (Data Plane)
 
 MCP speaks JSON-RPC 2.0 at `/mcp` — a **control plane** that carries structured tool invocations. But OpenAPI specs often include file download/upload operations that transfer raw binary payloads. Pushing multi-megabyte blobs through JSON-RPC is inefficient and breaks streaming semantics.
 
@@ -180,29 +180,29 @@ MCPFather solves this with a **dual-plane architecture**:
 | Plane | Protocol | Endpoint | Purpose |
 |---|---|---|---|
 | **Control** | JSON-RPC 2.0 | `/mcp` | Tool discovery, typed arguments, structured results |
-| **Data** | REST | `/_/ifs/*` | Binary file upload/download with UUID collision avoidance |
+| **Data** | REST | `/_/tfs/*` | Binary file upload/download with UUID collision avoidance |
 
 **How it works:**
 
 1. **Generator stage** — MCPFather detects OpenAPI operations that produce/consume binary content (e.g. `produces: application/octet-stream`, multipart form upload). These become MCP tools that return a **FileRef** (`file://` URI) instead of inline base64 data.
 
-2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/ifs/download/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the IFS download URL:
+2. **At runtime** — When an AI agent calls a download tool, the MCP server fetches the binary from the upstream API, stores it to `~/.{app}/tfs/download/{yyyyMMdd}/{uuid}.{suffix}`, and returns a JSON result containing the TFS download URL:
    ```json
-   {"fileRef": "http://localhost:8080/_/ifs/download/20260808/a1b2c3d4-....pdf"}
+   {"fileRef": "http://localhost:8080/_/tfs/download/20260808/a1b2c3d4-....pdf"}
    ```
 
-3. **Upload reverse** — The MCP client upload a file via `POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
+3. **Upload reverse** — The MCP client uploads a file via `POST /_/tfs/upload/{yyyyMMdd}/{uuid}.{suffix}`, the tool invocation receives the file path, and the server forwards the binary upstream.
 
-**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/ifs/download/{yyyyMMdd}/`.
+**UUID-based naming** prevents collisions when the same file is downloaded or uploaded multiple times. Files are organized by date under `~/.{app}/tfs/download/{yyyyMMdd}/`.
 
 **Configuration** (`config.yaml`):
 ```yaml
 server:
-  ifs:
+  tfs:
     enabled: true   # set false to disable the data plane (pure JSON-RPC mode)
 ```
 
-> The IFS REST API is part of the same HTTP server (same port) as `/mcp`. No additional ports or services needed.
+> The TFS REST API is part of the same HTTP server (same port) as `/mcp`. No additional ports or services needed.
 
 ### Environment variables
 

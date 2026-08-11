@@ -32,18 +32,18 @@ type contextKey string
 const HTTPHeadersContextKey contextKey = "mcp-http-headers"
 const HTTPRequestContextKey contextKey = "mcp-http-request"
 
-const binaryDownloadKind = "dl.ifs.mcpfather.com/v1"
-const ifsInProgressSuffix = ".inprogress"
+const binaryDownloadKind = "dl.tfs.mcpfather.com/v1"
+const tfsInProgressSuffix = ".inprogress"
 
-const defaultIFSCleanJobTTL = 5 * time.Minute
-const ifsCleanJobInterval = 10 * time.Second
+const defaultTFSCleanJobTTL = 5 * time.Minute
+const tfsCleanJobInterval = 10 * time.Second
 
-type ifsFileMeta struct {
+type tfsFileMeta struct {
 	Name        string
 	ContentType string
 }
 
-var ifsDownloadMeta sync.Map
+var tfsDownloadMeta sync.Map
 
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
 func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
@@ -494,7 +494,7 @@ type BinaryDownloadInfo struct {
 	Size      int64  `json:"size"`
 	CreatedAt string `json:"createdAt"`
 
-	ifsPath  string
+	tfsPath  string
 	localURL string
 }
 
@@ -508,11 +508,11 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (*BinaryDownloadI
 	}
 	createdAt := time.Now()
 	if err := os.MkdirAll(downloadDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create IFS download directory %s: %w", downloadDir, err)
+		return nil, fmt.Errorf("failed to create TFS download directory %s: %w", downloadDir, err)
 	}
 	fileID := uuid.New().String()
 	filePath := filepath.Join(downloadDir, fileID)
-	inProgressPath := filePath + ifsInProgressSuffix
+	inProgressPath := filePath + tfsInProgressSuffix
 	f, err := os.Create(inProgressPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create file %s: %w", inProgressPath, err)
@@ -532,14 +532,14 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (*BinaryDownloadI
 		os.Remove(inProgressPath)
 		return nil, fmt.Errorf("failed to finalize file %s: %w", filePath, err)
 	}
-	ifsPath := "/_/ifs/download/" + fileID
+	tfsPath := "/_/tfs/download/" + fileID
 	contentType := resp.Header.Get("Content-Type")
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	} else if mediaType, _, err := mime.ParseMediaType(contentType); err == nil && mediaType != "" {
 		contentType = mediaType
 	}
-	ifsDownloadMeta.Store(fileID, ifsFileMeta{Name: fileName, ContentType: contentType})
+	tfsDownloadMeta.Store(fileID, tfsFileMeta{Name: fileName, ContentType: contentType})
 	return &BinaryDownloadInfo{
 		Kind:      binaryDownloadKind,
 		Name:      fileName,
@@ -547,7 +547,7 @@ func SaveBinaryStream(resp *http.Response, defaultName string) (*BinaryDownloadI
 		SHA1:      hex.EncodeToString(hash.Sum(nil)),
 		Size:      written,
 		CreatedAt: formatRFC3339Millis(createdAt),
-		ifsPath:   ifsPath,
+		tfsPath:   tfsPath,
 		localURL:  fileURI(filePath),
 	}, nil
 }
@@ -557,7 +557,7 @@ func binaryDownloadToolResult(ctx context.Context, info *BinaryDownloadInfo) (*m
 		return mcp.NewToolResultError("binary download result is empty"), nil
 	}
 	out := *info
-	out.URL = resolveIFSDownloadURL(ctx, info.ifsPath, info.localURL)
+	out.URL = resolveTFSDownloadURL(ctx, info.tfsPath, info.localURL)
 	b, err := json.Marshal(out)
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode binary download result: %w", err)
@@ -573,20 +573,20 @@ func fileURI(path string) string {
 	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}).String()
 }
 
-func resolveIFSDownloadURL(ctx context.Context, ifsPath, localURL string) string {
-	if ifsPath == "" {
+func resolveTFSDownloadURL(ctx context.Context, tfsPath, localURL string) string {
+	if tfsPath == "" {
 		return ""
 	}
-	base := resolveIFSBaseURI(ctx)
+	base := resolveTFSBaseURI(ctx)
 	if base == "" {
 		return localURL
 	}
-	return strings.TrimRight(base, "/") + ifsPath
+	return strings.TrimRight(base, "/") + tfsPath
 }
 
-func resolveIFSBaseURI(ctx context.Context) string {
+func resolveTFSBaseURI(ctx context.Context) string {
 	if cfg := GetConfig(); cfg != nil {
-		if base := strings.TrimSpace(cfg.Server.IFS.BaseURI); base != "" {
+		if base := strings.TrimSpace(cfg.Server.TFS.BaseURI); base != "" {
 			return strings.TrimRight(base, "/")
 		}
 	}
@@ -641,13 +641,13 @@ func formatRFC3339Millis(t time.Time) string {
 	return t.Format("2006-01-02T15:04:05.000Z07:00")
 }
 
-func ifsCleanJobTTL() time.Duration {
+func tfsCleanJobTTL() time.Duration {
 	raw := ""
 	if cfg := GetConfig(); cfg != nil {
-		raw = strings.TrimSpace(cfg.Server.IFS.CleanJobTTLSeconds)
+		raw = strings.TrimSpace(cfg.Server.TFS.CleanJobTTLSeconds)
 	}
 	if raw == "" {
-		return defaultIFSCleanJobTTL
+		return defaultTFSCleanJobTTL
 	}
 	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
 		return d
@@ -655,43 +655,43 @@ func ifsCleanJobTTL() time.Duration {
 	if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
 		return time.Duration(seconds) * time.Second
 	}
-	return defaultIFSCleanJobTTL
+	return defaultTFSCleanJobTTL
 }
 
-// StartIFSCleanJob periodically removes completed temporary IFS files older
-// than server.ifs.clean-job-ttl-seconds. Files still ending in .inprogress are
+// StartTFSCleanJob periodically removes completed temporary TFS files older
+// than server.tfs.clean-job-ttl-seconds. Files still ending in .inprogress are
 // skipped so partially written transfers cannot be served or removed.
-func StartIFSCleanJob(ctx context.Context) {
+func StartTFSCleanJob(ctx context.Context) {
 	go func() {
-		cleanIFSOnce(time.Now())
-		ticker := time.NewTicker(ifsCleanJobInterval)
+		cleanTFSOnce(time.Now())
+		ticker := time.NewTicker(tfsCleanJobInterval)
 		defer ticker.Stop()
 		for {
 			select {
 			case <-ctx.Done():
 				return
 			case now := <-ticker.C:
-				cleanIFSOnce(now)
+				cleanTFSOnce(now)
 			}
 		}
 	}()
 }
 
-func cleanIFSOnce(now time.Time) {
-	ttl := ifsCleanJobTTL()
+func cleanTFSOnce(now time.Time) {
+	ttl := tfsCleanJobTTL()
 	if ttl <= 0 {
-		ttl = defaultIFSCleanJobTTL
+		ttl = defaultTFSCleanJobTTL
 	}
 	for _, resolve := range []func() (string, error){resolveDownloadDir, resolveUploadDir} {
 		dir, err := resolve()
 		if err != nil {
 			continue
 		}
-		cleanIFSDir(dir, now.Add(-ttl))
+		cleanTFSDir(dir, now.Add(-ttl))
 	}
 }
 
-func cleanIFSDir(root string, cutoff time.Time) {
+func cleanTFSDir(root string, cutoff time.Time) {
 	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
@@ -699,7 +699,7 @@ func cleanIFSDir(root string, cutoff time.Time) {
 		if d.IsDir() {
 			return nil
 		}
-		if strings.HasSuffix(d.Name(), ifsInProgressSuffix) {
+		if strings.HasSuffix(d.Name(), tfsInProgressSuffix) {
 			return nil
 		}
 		info, err := d.Info()
@@ -708,7 +708,7 @@ func cleanIFSDir(root string, cutoff time.Time) {
 		}
 		if info.ModTime().Before(cutoff) {
 			_ = os.Remove(path)
-			ifsDownloadMeta.Delete(d.Name())
+			tfsDownloadMeta.Delete(d.Name())
 		}
 		return nil
 	})
@@ -751,7 +751,7 @@ func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path str
 }
 
 // ForwardBinaryUploadRequest handles non-multipart file uploads (octet-stream,
-// image/*, video/*, audio/*). It downloads the file URI to the IFS temp cache
+// image/*, video/*, audio/*). It downloads the file URI to the TFS temp cache
 // and forwards it as a raw binary request body to the upstream service.
 //
 // Like ForwardMultipartRequest, empty file refs are handled gracefully — when
@@ -782,7 +782,7 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 		upstreamURL += "?" + query.Encode()
 	}
 
-	// Download the first file ref to IFS temp cache.
+	// Download the first file ref to TFS temp cache.
 	var fileData []byte
 	uri := fileRefs["file"]
 	if uri != "" {
@@ -795,7 +795,7 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 			return mcp.NewToolResultError(fmt.Sprintf("failed to download file from %s: %v", uri, err)), nil
 		}
 		defer os.Remove(localPath)
-		defer cleanupIFSUploadSourceURI(uri)
+		defer cleanupTFSUploadSourceURI(uri)
 
 		fileData, err = os.ReadFile(localPath)
 		if err != nil {
@@ -914,7 +914,7 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 		origName := filepath.Base(filePath)
 		fileID := generateFileID(origName)
 		localPath = filepath.Join(tmpDir, fileID)
-		inProgressPath := localPath + ifsInProgressSuffix
+		inProgressPath := localPath + tfsInProgressSuffix
 
 		src, err := os.Open(filePath)
 		if err != nil {
@@ -990,10 +990,10 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 		return "", "", fmt.Errorf("failed to create tmp directory %s: %w", tmpDir, err)
 	}
 
-	// Use UUID.{suffix} naming in IFS directory to avoid collisions.
+	// Use UUID.{suffix} naming in TFS directory to avoid collisions.
 	fileID := generateFileID(fileName)
 	localPath = filepath.Join(tmpDir, fileID)
-	inProgressPath := localPath + ifsInProgressSuffix
+	inProgressPath := localPath + tfsInProgressSuffix
 	f, err := os.Create(inProgressPath)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create local file %s: %w", inProgressPath, err)
@@ -1038,9 +1038,9 @@ func isPathWithinDir(path string, dir string) bool {
 	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
-func cleanupIFSUploadSourceURI(uri string) {
+func cleanupTFSUploadSourceURI(uri string) {
 	path, ok := fileURIPath(uri)
-	if !ok || strings.HasSuffix(path, ifsInProgressSuffix) {
+	if !ok || strings.HasSuffix(path, tfsInProgressSuffix) {
 		return
 	}
 	uploadDir, err := resolveUploadDir()
@@ -1048,7 +1048,7 @@ func cleanupIFSUploadSourceURI(uri string) {
 		return
 	}
 	_ = os.Remove(path)
-	ifsDownloadMeta.Delete(filepath.Base(path))
+	tfsDownloadMeta.Delete(filepath.Base(path))
 }
 
 func isDownloadableFileURI(uri string) bool {
@@ -1226,7 +1226,7 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 				os.Remove(lp)
 			}
 			for _, uri := range sourceURIs {
-				cleanupIFSUploadSourceURI(uri)
+				cleanupTFSUploadSourceURI(uri)
 			}
 		}()
 	}
@@ -1378,7 +1378,7 @@ func isPathKey(key string, pathKeys []string) bool {
 	return false
 }
 
-// ---- IFS (Internal File System) helpers ----
+// ---- TFS (Temporary File System) helpers ----
 
 // generateFileID creates a UUID-based filename preserving the original suffix.
 // e.g. "report.pdf" → "550e8400-e29b-41d4-a716-446655440000.pdf"
@@ -1390,14 +1390,14 @@ func generateFileID(originalName string) string {
 	return uuid.New().String() + suffix
 }
 
-func validIFSObjectName(name string) bool {
+func validTFSObjectName(name string) bool {
 	if name == "" || name == "." || name == ".." {
 		return false
 	}
 	if strings.ContainsAny(name, `/\`) {
 		return false
 	}
-	return !strings.HasSuffix(name, ifsInProgressSuffix)
+	return !strings.HasSuffix(name, tfsInProgressSuffix)
 }
 
 func contentDispositionAttachment(name string) string {
@@ -1408,7 +1408,7 @@ func contentDispositionAttachment(name string) string {
 	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, safe, url.PathEscape(safe))
 }
 
-func resolveIFSObjectPath(fileID string, dirs ...func() (string, error)) (string, error) {
+func resolveTFSObjectPath(fileID string, dirs ...func() (string, error)) (string, error) {
 	for _, resolve := range dirs {
 		dir, err := resolve()
 		if err != nil {
@@ -1425,28 +1425,65 @@ func resolveIFSObjectPath(fileID string, dirs ...func() (string, error)) (string
 	return "", os.ErrNotExist
 }
 
-// ---- IFS Data Plane HTTP Handlers ----
+type tfsDownloadResponseRecorder struct {
+	http.ResponseWriter
+	status   int
+	written  int64
+	writeErr error
+}
+
+func (r *tfsDownloadResponseRecorder) WriteHeader(status int) {
+	if r.status != 0 {
+		return
+	}
+	r.status = status
+	r.ResponseWriter.WriteHeader(status)
+}
+
+func (r *tfsDownloadResponseRecorder) Write(p []byte) (int, error) {
+	if r.status == 0 {
+		r.status = http.StatusOK
+	}
+	n, err := r.ResponseWriter.Write(p)
+	r.written += int64(n)
+	if err != nil && r.writeErr == nil {
+		r.writeErr = err
+	}
+	return n, err
+}
+
+func (r *tfsDownloadResponseRecorder) completed(fileSize int64) bool {
+	status := r.status
+	if status == 0 {
+		status = http.StatusOK
+	}
+	return status == http.StatusOK &&
+		r.writeErr == nil &&
+		r.written == fileSize
+}
+
+// ---- TFS Data Plane HTTP Handlers ----
 //
 // These built-in REST endpoints form the "data plane" for binary file transfer,
 // separate from the JSON-RPC 2.0 "control plane" at /mcp.
 
-// HandleIFSDownload serves a binary file from the IFS download/upload staging
+// HandleTFSDownload serves a binary file from the TFS download/upload staging
 // directories once.
-// URL pattern: GET /_/ifs/download/{uuid}
-func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
+// URL pattern: GET /_/tfs/download/{uuid}
+func HandleTFSDownload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract path after /_/ifs/download/
-	fileID := strings.TrimPrefix(r.URL.Path, "/_/ifs/download/")
-	if fileID == "" || fileID == r.URL.Path || !validIFSObjectName(fileID) {
+	// Extract path after /_/tfs/download/
+	fileID := strings.TrimPrefix(r.URL.Path, "/_/tfs/download/")
+	if fileID == "" || fileID == r.URL.Path || !validTFSObjectName(fileID) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
-	filePath, err := resolveIFSObjectPath(fileID, resolveDownloadDir, resolveUploadDir)
+	filePath, err := resolveTFSObjectPath(fileID, resolveDownloadDir, resolveUploadDir)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -1457,16 +1494,14 @@ func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer f.Close()
-	defer os.Remove(filePath)
-	defer ifsDownloadMeta.Delete(fileID)
 
 	stat, err := f.Stat()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	if metaRaw, ok := ifsDownloadMeta.Load(fileID); ok {
-		if meta, ok := metaRaw.(ifsFileMeta); ok {
+	if metaRaw, ok := tfsDownloadMeta.Load(fileID); ok {
+		if meta, ok := metaRaw.(tfsFileMeta); ok {
 			if meta.ContentType != "" {
 				w.Header().Set("Content-Type", meta.ContentType)
 			}
@@ -1475,29 +1510,34 @@ func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	http.ServeContent(w, r, fileID, stat.ModTime(), f)
+	recorder := &tfsDownloadResponseRecorder{ResponseWriter: w}
+	http.ServeContent(recorder, r, fileID, stat.ModTime(), f)
+	if recorder.completed(stat.Size()) {
+		_ = os.Remove(filePath)
+		tfsDownloadMeta.Delete(fileID)
+	}
 }
 
-// HandleIFSUpload accepts binary file upload into the IFS data plane.
-// URL pattern: POST /_/ifs/upload/{uuid}
+// HandleTFSUpload accepts binary file upload into the TFS data plane.
+// URL pattern: POST /_/tfs/upload/{uuid}
 // The client can POST raw binary body (Content-Type: application/octet-stream)
 // or multipart/form-data with a "file" field.
 // Returns the one-time download URL for the stored file.
-func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
+func HandleTFSUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodPut {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract path after /_/ifs/upload/
-	fileID := strings.TrimPrefix(r.URL.Path, "/_/ifs/upload/")
-	if fileID == "" || fileID == r.URL.Path || !validIFSObjectName(fileID) {
+	// Extract path after /_/tfs/upload/
+	fileID := strings.TrimPrefix(r.URL.Path, "/_/tfs/upload/")
+	if fileID == "" || fileID == r.URL.Path || !validTFSObjectName(fileID) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
 	// Save uploaded files to the upload directory. Tool forwarding treats this
-	// as temporary staging and removes IFS upload files once upstream forwarding
+	// as temporary staging and removes TFS upload files once upstream forwarding
 	// completes.
 	uploadDir, err := resolveUploadDir()
 	if err != nil {
@@ -1555,7 +1595,7 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 		contentType = mediaType
 	}
 
-	inProgressPath := destPath + ifsInProgressSuffix
+	inProgressPath := destPath + tfsInProgressSuffix
 	if err := os.WriteFile(inProgressPath, fileData, 0644); err != nil {
 		http.Error(w, fmt.Sprintf("failed to write file: %v", err), http.StatusInternalServerError)
 		return
@@ -1567,9 +1607,9 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Return the download URL
-	ifsPath := fmt.Sprintf("/_/ifs/download/%s", fileID)
-	ifsDownloadMeta.Store(fileID, ifsFileMeta{Name: fileName, ContentType: contentType})
-	downloadURL := resolveIFSDownloadURL(WithHTTPRequest(r.Context(), r), ifsPath, fileURI(destPath))
+	tfsPath := fmt.Sprintf("/_/tfs/download/%s", fileID)
+	tfsDownloadMeta.Store(fileID, tfsFileMeta{Name: fileName, ContentType: contentType})
+	downloadURL := resolveTFSDownloadURL(WithHTTPRequest(r.Context(), r), tfsPath, fileURI(destPath))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{

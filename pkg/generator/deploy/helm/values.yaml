@@ -119,13 +119,13 @@ config:
         # -- Additional JWT claims to forward as X-MCP-Client-Token-<Header-Name> headers.
         # e.g. ["given_name", "family_name", "preferred_username"]
         additional_client_token_claim_forward: []
-    # -- Internal File System (IFS) REST API for binary file transfer.
-    ifs:
+    # -- Temporary File System (TFS) REST API for binary file transfer.
+    tfs:
       enabled: true
-      # -- Public base URI used to build IFS download URLs returned by tools.
+      # -- Public base URI used to build TFS download URLs returned by tools.
       # Empty means auto-detect from the inbound /mcp request Host/X-Forwarded-* headers.
       base_uri: ""
-      # -- Completed temporary IFS files older than this are removed by the background clean job.
+      # -- Completed temporary TFS files older than this are removed by the background clean job.
       clean_job_ttl_seconds: "5m"
     # -- HTTP server timeouts in seconds. 0 = disabled.
     # write_timeout_seconds must be 0 for SSE (Streamable HTTP) transport.

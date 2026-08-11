@@ -29,27 +29,27 @@ type ServerConfig struct {
 	ReadTimeoutSeconds  int `yaml:"read_timeout_seconds"`
 	WriteTimeoutSeconds int `yaml:"write_timeout_seconds"`
 	IdleTimeoutSeconds  int `yaml:"idle_timeout_seconds"`
-	// Internal File System (IFS) REST API for binary data plane —
+	// Temporary File System (TFS) REST API for binary data plane —
 	// provides built-in HTTP endpoints for uploading and downloading binary
-	// files, separating the data plane (IFS) from the control plane (JSON-RPC /mcp).
+	// files, separating the data plane (TFS) from the control plane (JSON-RPC /mcp).
 	// Default: enabled. Set to false to disable for pure JSON-RPC deployments.
-	IFS IFSConfig `yaml:"ifs"`
+	TFS TFSConfig `yaml:"tfs"`
 }
 
-// IFSConfig controls the Internal File System (IFS) REST API — built-in
+// TFSConfig controls the Temporary File System (TFS) REST API — built-in
 // HTTP endpoints that handle binary file upload/download as a dedicated
 // data plane, separate from the JSON-RPC 2.0 control plane at /mcp.
-// Upload:  POST /_/ifs/upload/{uuid}
-// Download: GET  /_/ifs/download/{uuid}
-// Files are stored under ~/.{serviceName}/ifs/{download,upload}/.
-type IFSConfig struct {
+// Upload:  POST /_/tfs/upload/{uuid}
+// Download: GET  /_/tfs/download/{uuid}
+// Files are stored under ~/.{serviceName}/tfs/{download,upload}/.
+type TFSConfig struct {
 	Enabled bool `yaml:"enabled"`
-	// BaseURI is the public server base URI used to build IFS download URLs
+	// BaseURI is the public server base URI used to build TFS download URLs
 	// returned by tools after binary upstream downloads. Empty means derive it
 	// from the inbound /mcp HTTP request Host/X-Forwarded-* headers when
 	// available; non-HTTP transports fall back to file:// absolute local URIs.
 	BaseURI string `yaml:"base_uri"`
-	// CleanJobTTLSeconds controls how long completed IFS temporary files remain
+	// CleanJobTTLSeconds controls how long completed TFS temporary files remain
 	// on disk before the background clean job removes them. It accepts Go
 	// duration strings such as "5m" or an integer number of seconds.
 	CleanJobTTLSeconds string `yaml:"clean-job-ttl-seconds"`
@@ -222,7 +222,7 @@ func DefaultConfig() *Config {
 			ReadTimeoutSeconds:  30,
 			WriteTimeoutSeconds: 0, // 0 = disabled (required for SSE streaming)
 			IdleTimeoutSeconds:  120,
-			IFS: IFSConfig{
+			TFS: TFSConfig{
 				Enabled:            true,
 				BaseURI:            "",
 				CleanJobTTLSeconds: "5m",

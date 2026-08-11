@@ -425,18 +425,18 @@ func TestGetHTTPHeaders_Nil(t *testing.T) {
 	}
 }
 
-func TestIFSDownloadURLResolution(t *testing.T) {
-	ifsPath := "/_/ifs/download/550e8400-e29b-41d4-a716-446655440000"
+func TestTFSDownloadURLResolution(t *testing.T) {
+	tfsPath := "/_/tfs/download/550e8400-e29b-41d4-a716-446655440000"
 	localURL := "file:///tmp/550e8400-e29b-41d4-a716-446655440000"
 
 	t.Run("configured base URI wins", func(t *testing.T) {
-		SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{BaseURI: "https://files.example.com/base/"}}})
+		SetConfig(&Config{Server: ServerConfig{TFS: TFSConfig{BaseURI: "https://files.example.com/base/"}}})
 		req := httptest.NewRequest("POST", "http://internal:8080/mcp", nil)
 		ctx := WithHTTPRequest(context.Background(), req)
-		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
-		want := "https://files.example.com/base" + ifsPath
+		got := resolveTFSDownloadURL(ctx, tfsPath, localURL)
+		want := "https://files.example.com/base" + tfsPath
 		if got != want {
-			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+			t.Fatalf("resolveTFSDownloadURL = %q, want %q", got, want)
 		}
 	})
 
@@ -446,10 +446,10 @@ func TestIFSDownloadURLResolution(t *testing.T) {
 		req.Header.Set("X-Forwarded-Proto", "https")
 		req.Header.Set("X-Forwarded-Host", "mcp.example.com")
 		ctx := WithHTTPRequest(context.Background(), req)
-		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
-		want := "https://mcp.example.com" + ifsPath
+		got := resolveTFSDownloadURL(ctx, tfsPath, localURL)
+		want := "https://mcp.example.com" + tfsPath
 		if got != want {
-			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+			t.Fatalf("resolveTFSDownloadURL = %q, want %q", got, want)
 		}
 	})
 
@@ -457,45 +457,45 @@ func TestIFSDownloadURLResolution(t *testing.T) {
 		SetConfig(&Config{})
 		req := httptest.NewRequest("POST", "http://localhost:18889/mcp", nil)
 		ctx := WithHTTPRequest(context.Background(), req)
-		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
-		want := "http://localhost:18889" + ifsPath
+		got := resolveTFSDownloadURL(ctx, tfsPath, localURL)
+		want := "http://localhost:18889" + tfsPath
 		if got != want {
-			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+			t.Fatalf("resolveTFSDownloadURL = %q, want %q", got, want)
 		}
 	})
 
 	t.Run("no request returns file URL", func(t *testing.T) {
 		SetConfig(&Config{})
-		if got := resolveIFSDownloadURL(context.Background(), ifsPath, localURL); got != localURL {
-			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, localURL)
+		if got := resolveTFSDownloadURL(context.Background(), tfsPath, localURL); got != localURL {
+			t.Fatalf("resolveTFSDownloadURL = %q, want %q", got, localURL)
 		}
 	})
 }
 
-func TestIFSCleanJobTTL(t *testing.T) {
+func TestTFSCleanJobTTL(t *testing.T) {
 	oldCfg := GetConfig()
 	defer SetConfig(oldCfg)
 
-	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "30s"}}})
-	if got := ifsCleanJobTTL(); got != 30*time.Second {
-		t.Fatalf("ifsCleanJobTTL = %v, want 30s", got)
+	SetConfig(&Config{Server: ServerConfig{TFS: TFSConfig{CleanJobTTLSeconds: "30s"}}})
+	if got := tfsCleanJobTTL(); got != 30*time.Second {
+		t.Fatalf("tfsCleanJobTTL = %v, want 30s", got)
 	}
 
-	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "45"}}})
-	if got := ifsCleanJobTTL(); got != 45*time.Second {
-		t.Fatalf("ifsCleanJobTTL = %v, want 45s", got)
+	SetConfig(&Config{Server: ServerConfig{TFS: TFSConfig{CleanJobTTLSeconds: "45"}}})
+	if got := tfsCleanJobTTL(); got != 45*time.Second {
+		t.Fatalf("tfsCleanJobTTL = %v, want 45s", got)
 	}
 
-	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "not-a-duration"}}})
-	if got := ifsCleanJobTTL(); got != defaultIFSCleanJobTTL {
-		t.Fatalf("ifsCleanJobTTL = %v, want default %v", got, defaultIFSCleanJobTTL)
+	SetConfig(&Config{Server: ServerConfig{TFS: TFSConfig{CleanJobTTLSeconds: "not-a-duration"}}})
+	if got := tfsCleanJobTTL(); got != defaultTFSCleanJobTTL {
+		t.Fatalf("tfsCleanJobTTL = %v, want default %v", got, defaultTFSCleanJobTTL)
 	}
 }
 
-func TestCleanIFSDirSkipsInProgressFiles(t *testing.T) {
+func TestCleanTFSDirSkipsInProgressFiles(t *testing.T) {
 	root := t.TempDir()
 	oldFormal := filepath.Join(root, "old-formal")
-	oldInProgress := filepath.Join(root, "old-formal"+ifsInProgressSuffix)
+	oldInProgress := filepath.Join(root, "old-formal"+tfsInProgressSuffix)
 	youngFormal := filepath.Join(root, "young-formal")
 	for _, path := range []string{oldFormal, oldInProgress, youngFormal} {
 		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
@@ -510,7 +510,7 @@ func TestCleanIFSDirSkipsInProgressFiles(t *testing.T) {
 		t.Fatalf("chtimes old in-progress: %v", err)
 	}
 
-	cleanIFSDir(root, time.Now().Add(-5*time.Minute))
+	cleanTFSDir(root, time.Now().Add(-5*time.Minute))
 
 	if _, err := os.Stat(oldFormal); !os.IsNotExist(err) {
 		t.Fatalf("old formal file should be removed, stat err=%v", err)
@@ -520,6 +520,82 @@ func TestCleanIFSDirSkipsInProgressFiles(t *testing.T) {
 	}
 	if _, err := os.Stat(youngFormal); err != nil {
 		t.Fatalf("young formal file should remain, stat err=%v", err)
+	}
+}
+
+func TestHandleTFSDownloadOneShotAfterSuccessfulGET(t *testing.T) {
+	oldCfg := GetConfig()
+	t.Setenv("HOME", t.TempDir())
+	LoadConfig("{{.ServiceName}}")
+	defer SetConfig(oldCfg)
+
+	downloadDir, err := resolveDownloadDir()
+	if err != nil {
+		t.Fatalf("resolveDownloadDir: %v", err)
+	}
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		t.Fatalf("mkdir download dir: %v", err)
+	}
+
+	fileID := "oneshot.bin"
+	filePath := filepath.Join(downloadDir, fileID)
+	if err := os.WriteFile(filePath, []byte("one-shot content"), 0644); err != nil {
+		t.Fatalf("write download file: %v", err)
+	}
+	tfsDownloadMeta.Store(fileID, tfsFileMeta{Name: "report.bin", ContentType: "application/octet-stream"})
+
+	req := httptest.NewRequest(http.MethodGet, "/_/tfs/download/"+fileID, nil)
+	rec := httptest.NewRecorder()
+	HandleTFSDownload(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("first GET status = %d, want 200; body=%s", rec.Code, rec.Body.String())
+	}
+	if rec.Body.String() != "one-shot content" {
+		t.Fatalf("first GET body = %q", rec.Body.String())
+	}
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Fatalf("successful TFS download should delete file, stat err=%v", err)
+	}
+	if _, ok := tfsDownloadMeta.Load(fileID); ok {
+		t.Fatal("successful TFS download should delete metadata")
+	}
+
+	second := httptest.NewRecorder()
+	HandleTFSDownload(second, httptest.NewRequest(http.MethodGet, "/_/tfs/download/"+fileID, nil))
+	if second.Code != http.StatusNotFound {
+		t.Fatalf("second GET status = %d, want 404", second.Code)
+	}
+}
+
+func TestHandleTFSDownloadKeepsFileWhenGETFails(t *testing.T) {
+	oldCfg := GetConfig()
+	t.Setenv("HOME", t.TempDir())
+	LoadConfig("{{.ServiceName}}")
+	defer SetConfig(oldCfg)
+
+	downloadDir, err := resolveDownloadDir()
+	if err != nil {
+		t.Fatalf("resolveDownloadDir: %v", err)
+	}
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		t.Fatalf("mkdir download dir: %v", err)
+	}
+
+	fileID := "range.bin"
+	filePath := filepath.Join(downloadDir, fileID)
+	if err := os.WriteFile(filePath, []byte("range content"), 0644); err != nil {
+		t.Fatalf("write download file: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/_/tfs/download/"+fileID, nil)
+	req.Header.Set("Range", "bytes=999-1000")
+	rec := httptest.NewRecorder()
+	HandleTFSDownload(rec, req)
+	if rec.Code != http.StatusRequestedRangeNotSatisfiable {
+		t.Fatalf("invalid range GET status = %d, want 416; body=%s", rec.Code, rec.Body.String())
+	}
+	if _, err := os.Stat(filePath); err != nil {
+		t.Fatalf("failed TFS download should keep file for TTL cleanup/retry, stat err=%v", err)
 	}
 }
 
@@ -559,10 +635,10 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 		}
 	})
 
-	t.Run("deletes IFS upload source after forwarding", func(t *testing.T) {
+	t.Run("deletes TFS upload source after forwarding", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, _ := io.ReadAll(r.Body)
-			if string(body) != "ifs upload content" {
+			if string(body) != "tfs upload content" {
 				t.Fatalf("unexpected body: %q", string(body))
 			}
 			w.WriteHeader(http.StatusOK)
@@ -583,7 +659,7 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 			t.Fatalf("mkdir upload dir: %v", err)
 		}
 		sourceFile := filepath.Join(uploadDir, "upload-source.bin")
-		if err := os.WriteFile(sourceFile, []byte("ifs upload content"), 0644); err != nil {
+		if err := os.WriteFile(sourceFile, []byte("tfs upload content"), 0644); err != nil {
 			t.Fatalf("write upload source: %v", err)
 		}
 
@@ -592,11 +668,11 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 			t.Fatalf("ForwardBinaryUploadRequest failed: %v", err)
 		}
 		if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
-			t.Fatalf("IFS upload source should be removed after forwarding, stat err=%v", err)
+			t.Fatalf("TFS upload source should be removed after forwarding, stat err=%v", err)
 		}
 	})
 
-	t.Run("keeps non-IFS file URI after forwarding", func(t *testing.T) {
+	t.Run("keeps non-TFS file URI after forwarding", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"ok":true}`))
@@ -618,7 +694,7 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 			t.Fatalf("ForwardBinaryUploadRequest failed: %v", err)
 		}
 		if _, err := os.Stat(sourceFile); err != nil {
-			t.Fatalf("non-IFS source should remain after forwarding, stat err=%v", err)
+			t.Fatalf("non-TFS source should remain after forwarding, stat err=%v", err)
 		}
 	})
 
@@ -644,7 +720,7 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 	})
 }
 
-func TestForwardMultipartRequestDeletesIFSUploadSource(t *testing.T) {
+func TestForwardMultipartRequestDeletesTFSUploadSource(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
 			t.Fatalf("expected multipart content type, got %q", r.Header.Get("Content-Type"))
@@ -691,7 +767,7 @@ func TestForwardMultipartRequestDeletesIFSUploadSource(t *testing.T) {
 		t.Fatalf("ForwardMultipartRequest failed: %v", err)
 	}
 	if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
-		t.Fatalf("IFS upload source should be removed after multipart forwarding, stat err=%v", err)
+		t.Fatalf("TFS upload source should be removed after multipart forwarding, stat err=%v", err)
 	}
 }
 
