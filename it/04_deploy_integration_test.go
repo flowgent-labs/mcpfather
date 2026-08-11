@@ -207,14 +207,9 @@ func deployBuildImage(t *testing.T, docker, projectDir string) string {
 			if goNoSumDB == "" {
 				goNoSumDB = "*"
 			}
-			goNoSumCheck := os.Getenv("GONOSUMCHECK")
-			if goNoSumCheck == "" {
-				goNoSumCheck = "*"
-			}
 			buildArgs = append(buildArgs,
 				"--build-arg", "GOPROXY="+goProxy,
 				"--build-arg", "GONOSUMDB="+goNoSumDB,
-				"--build-arg", "GONOSUMCHECK="+goNoSumCheck,
 			)
 		}
 	}
