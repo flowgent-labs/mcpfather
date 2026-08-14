@@ -1135,7 +1135,7 @@ func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, hom
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
@@ -3973,7 +3973,7 @@ func startNexusMultiUpstreamServer(t *testing.T, projectDir, homeDir, configYAML
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv("HOME=" + homeDir)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
