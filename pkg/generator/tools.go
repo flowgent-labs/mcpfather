@@ -152,6 +152,10 @@ func (g *Generator) GenerateToolFiles(config *converter.MCPConfig) error {
 			"github.com/mark3labs/mcp-go/mcp",
 			mcputilsImport,
 		}
+		// FileArgs handler uses strings.TrimPrefix to strip @ prefix from URIs.
+		if len(tool.FileArgs) > 0 {
+			requiredImports = append(requiredImports, "strings")
+		}
 
 		if existingImplementation != "" && len(existingImports) > 0 {
 			fmt.Fprintf(&toolBuf, "import (\n")

@@ -672,10 +672,13 @@ server:
 `, mock.server.URL, issuer, audience)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	logProgress("[mcp-server] launching %s on port %s", serviceName, port)
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
@@ -854,7 +857,10 @@ server:
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
 	cmd := exec.Command(binPath, "--transport", "stdio")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 
@@ -908,9 +914,12 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
@@ -1040,9 +1049,12 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {
@@ -1289,9 +1301,13 @@ server:
 `, mock.server.URL, issuer)
 	writeCoreVirtualConfig(t, homeDir, serviceName, configYAML)
 
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		"MCP__SERVER__AUTH__OIDC__ENABLE_CLIENT_TOKEN_CLAIM_FORWARD=false",
+	)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {

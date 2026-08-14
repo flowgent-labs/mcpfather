@@ -341,9 +341,6 @@
         "read_timeout_seconds": {
           "type": "integer"
         },
-        "service_name": {
-          "type": "string"
-        },
         "write_timeout_seconds": {
           "type": "integer"
         }
@@ -556,6 +553,9 @@
           "type": "string"
         },
         "client_secret": {
+          "type": "string"
+        },
+        "client_secret_file": {
           "type": "string"
         },
         "enabled": {

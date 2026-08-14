@@ -22,7 +22,7 @@ A clear description of what you expected to happen.
 **Environment**
 - OS: [e.g. Linux, macOS, Windows]
 - Go version: [e.g. 1.23]
-- __BINARY_NAME__ version: [e.g. v1.0.0 or commit SHA]
+- __MCP_SERVER_NAME__ version: [e.g. v1.0.0 or commit SHA]
 - Deployment: [e.g. binary / Docker / Kubernetes]
 
 **Configuration**

@@ -1,0 +1,121 @@
+{
+  "total": 1,
+  "p": 1,
+  "ps": 50,
+  "paging": {
+    "pageIndex": 1,
+    "pageSize": 50,
+    "total": 1
+  },
+  "effortTotal": 8,
+  "issues": [
+    {
+      "key": "94d52855-937e-4ff7-8ccf-86ebc3e53c87",
+      "rule": "java:S1192",
+      "severity": "CRITICAL",
+      "component": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "project": "rengine",
+      "line": 66,
+      "hash": "26e550a5a80ca24352d2a9f4b59eb2a2",
+      "textRange": {
+        "startLine": 66,
+        "endLine": 66,
+        "startOffset": 18,
+        "endOffset": 36
+      },
+      "flows": [
+        {
+          "locations": [
+            {
+              "component": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+              "textRange": {
+                "startLine": 66,
+                "endLine": 66,
+                "startOffset": 18,
+                "endOffset": 36
+              },
+              "msg": "Duplication",
+              "msgFormattings": []
+            }
+          ]
+        },
+        {
+          "locations": [
+            {
+              "component": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+              "textRange": {
+                "startLine": 78,
+                "endLine": 78,
+                "startOffset": 18,
+                "endOffset": 36
+              },
+              "msg": "Duplication",
+              "msgFormattings": []
+            }
+          ]
+        },
+        {
+          "locations": [
+            {
+              "component": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+              "textRange": {
+                "startLine": 90,
+                "endLine": 90,
+                "startOffset": 18,
+                "endOffset": 36
+              },
+              "msg": "Duplication",
+              "msgFormattings": []
+            }
+          ]
+        }
+      ],
+      "status": "OPEN",
+      "message": "Define a constant instead of duplicating this literal \"called: model={}\" 3 times.",
+      "effort": "8min",
+      "debt": "8min",
+      "author": "jameswong1376@gmail.com",
+      "tags": [
+        "design"
+      ],
+      "creationDate": "2023-02-08T14:43:01+0000",
+      "updateDate": "2026-05-19T11:27:57+0000",
+      "type": "CODE_SMELL",
+      "scope": "MAIN",
+      "quickFixAvailable": false,
+      "messageFormattings": [],
+      "codeVariants": [],
+      "cleanCodeAttribute": "DISTINCT",
+      "cleanCodeAttributeCategory": "ADAPTABLE",
+      "impacts": [
+        {
+          "softwareQuality": "MAINTAINABILITY",
+          "severity": "HIGH"
+        }
+      ],
+      "issueStatus": "OPEN",
+      "prioritizedRule": false,
+      "fromSonarQubeUpdate": false,
+      "internalTags": [],
+      "linkedTicketStatus": "NOT_LINKED"
+    }
+  ],
+  "components": [
+    {
+      "key": "rengine",
+      "enabled": true,
+      "qualifier": "TRK",
+      "name": "Rengine",
+      "longName": "Rengine"
+    },
+    {
+      "key": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "enabled": true,
+      "qualifier": "FIL",
+      "name": "WorkflowController.java",
+      "longName": "apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "path": "apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java"
+    }
+  ],
+  "facets": []
+}

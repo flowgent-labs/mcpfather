@@ -9,10 +9,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
@@ -992,7 +992,21 @@ func writeVirtualConfig(t *testing.T, homeDir, serviceName, yamlContent string) 
 	}
 }
 
-func mcpCallVirtualTool(t *testing.T, baseURL string, toolName string, args map[string]interface{}) string {
+type virtualToolRPCResponse struct {
+	Result struct {
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text"`
+		} `json:"content"`
+		IsError bool `json:"isError"`
+	} `json:"result"`
+	Error *struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
+func callVirtualTool(t *testing.T, baseURL string, toolName string, args map[string]interface{}) virtualToolRPCResponse {
 	t.Helper()
 	resp, _ := mcpHTTPCall(t, baseURL, "tools/call", map[string]interface{}{
 		"name":      toolName,
@@ -1001,22 +1015,16 @@ func mcpCallVirtualTool(t *testing.T, baseURL string, toolName string, args map[
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
-	var rpcResp struct {
-		Result struct {
-			Content []struct {
-				Type string `json:"type"`
-				Text string `json:"text"`
-			} `json:"content"`
-			IsError bool `json:"isError"`
-		} `json:"result"`
-		Error *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
-		} `json:"error"`
-	}
+	var rpcResp virtualToolRPCResponse
 	if err := json.Unmarshal(body, &rpcResp); err != nil {
 		t.Fatalf("failed to parse MCP response: %v\nbody: %s", err, body)
 	}
+	return rpcResp
+}
+
+func mcpCallVirtualTool(t *testing.T, baseURL string, toolName string, args map[string]interface{}) string {
+	t.Helper()
+	rpcResp := callVirtualTool(t, baseURL, toolName, args)
 	if rpcResp.Error != nil {
 		t.Fatalf("MCP error: %s (code %d)", rpcResp.Error.Message, rpcResp.Error.Code)
 	}
@@ -1032,13 +1040,102 @@ func mcpCallVirtualTool(t *testing.T, baseURL string, toolName string, args map[
 	return rpcResp.Result.Content[0].Text
 }
 
+func mcpCallVirtualToolError(t *testing.T, baseURL string, toolName string, args map[string]interface{}) string {
+	t.Helper()
+	rpcResp := callVirtualTool(t, baseURL, toolName, args)
+	if rpcResp.Error != nil {
+		return rpcResp.Error.Message
+	}
+	if !rpcResp.Result.IsError {
+		t.Fatal("virtual tool unexpectedly succeeded")
+	}
+
+	var messages []string
+	for _, content := range rpcResp.Result.Content {
+		if content.Type == "text" {
+			messages = append(messages, content.Text)
+		}
+	}
+	return strings.Join(messages, "\n")
+}
+
+func readVirtualFixture(t *testing.T, name string) []byte {
+	t.Helper()
+	path := filepath.Join(repoRoot(t), "it", "testdata", name)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read fixture %s: %v", path, err)
+	}
+	return data
+}
+
+func assertJSONEqual(t *testing.T, want []byte, got string) {
+	t.Helper()
+	var wantValue, gotValue interface{}
+	if err := json.Unmarshal(want, &wantValue); err != nil {
+		t.Fatalf("invalid expected JSON: %v", err)
+	}
+	if err := json.Unmarshal([]byte(got), &gotValue); err != nil {
+		t.Fatalf("invalid actual JSON: %v\n%s", err, got)
+	}
+	if !reflect.DeepEqual(wantValue, gotValue) {
+		wantPretty, _ := json.MarshalIndent(wantValue, "", "  ")
+		gotPretty, _ := json.MarshalIndent(gotValue, "", "  ")
+		t.Fatalf("JSON mismatch\nwant:\n%s\ngot:\n%s", wantPretty, gotPretty)
+	}
+}
+
+func assertVirtualMockRequest(t *testing.T, request VirtualMockRequest, path string, query map[string]string) {
+	t.Helper()
+	if request.Method != http.MethodGet {
+		t.Errorf("method = %s, want GET", request.Method)
+	}
+	if request.Path != path {
+		t.Errorf("path = %q, want %q", request.Path, path)
+	}
+	if len(request.Query) != len(query) {
+		t.Errorf("query = %v, want exactly %v", request.Query, query)
+	}
+	for key, want := range query {
+		values, ok := request.Query[key]
+		if !ok {
+			t.Errorf("query parameter %q is missing", key)
+			continue
+		}
+		if len(values) != 1 || values[0] != want {
+			t.Errorf("query parameter %q = %v, want [%q]", key, values, want)
+		}
+	}
+}
+
+func expectedSonarQubeEmptyIssuesResult(t *testing.T, pullRequest string) []byte {
+	t.Helper()
+	result := map[string]interface{}{
+		"project": sonarQubeProject,
+		"branch":  sonarQubeBranch,
+		"summary": map[string]interface{}{
+			"total":    0,
+			"returned": 0,
+		},
+		"issues": []interface{}{},
+	}
+	if pullRequest != "" {
+		result["pullRequest"] = pullRequest
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal empty SonarQube result: %v", err)
+	}
+	return data
+}
+
 func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, homeDir string) (cleanup func(), baseURL string) {
 	t.Helper()
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
@@ -1055,6 +1152,216 @@ func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, hom
 	baseURL = "http://localhost:" + port
 	waitForServer(t, baseURL)
 	return
+}
+
+// ===========================================================================
+// SonarQube realistic E2E tests (real generated server + real API payloads)
+// ===========================================================================
+
+func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
+	issues := readVirtualFixture(t, "sonarqube/issues_search.json")
+	emptyIssues := readVirtualFixture(t, "sonarqube/issues_search_empty.json")
+	snippets := readVirtualFixture(t, "sonarqube/issue_snippets.json")
+	expectedOverall := readVirtualFixture(t, "sonarqube/overall_issues_expected.json")
+
+	mock := NewVirtualMockService()
+	mock.RegisterSonarQubeRealScenario(issues, emptyIssues, snippets)
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	root := repoRoot(t)
+	configPath := filepath.Join(root, "pkg", "generator", "skills", "virtual-tool-creator", "resources", "sonarqube-example-config.yaml")
+	configData, err := os.ReadFile(configPath)
+	if err != nil {
+		t.Fatalf("read production SonarQube config: %v", err)
+	}
+
+	homeDir := t.TempDir()
+	writeVirtualConfig(t, homeDir, "sonarqube-mcp", string(configData))
+	cleanup, baseURL := startVirtualTestServer(
+		t,
+		filepath.Join(root, "usecase", "sonarqube-mcp"),
+		mockURL,
+		homeDir,
+	)
+	defer cleanup()
+
+	t.Run("overall issues matches captured response", func(t *testing.T) {
+		mock.Reset()
+		result := mcpCallVirtualTool(t, baseURL, "get_overall_issues", map[string]interface{}{
+			"projectKey": sonarQubeProject,
+			"branch":     sonarQubeBranch,
+			"component":  sonarQubeComponent,
+		})
+		assertJSONEqual(t, expectedOverall, result)
+
+		requests := mock.Requests()
+		if len(requests) != 2 {
+			t.Fatalf("upstream request count = %d, want 2", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":          sonarQubeBranch,
+			"components":      sonarQubeComponent,
+			"inNewCodePeriod": "false",
+			"ps":              "50",
+			"resolved":        "false",
+			"types":           "CODE_SMELL,BUG,VULNERABILITY",
+		})
+		assertVirtualMockRequest(t, requests[1], "/api/sources/issue_snippets", map[string]string{
+			"issueKey": sonarQubeIssueKey,
+		})
+		sessionID := requests[0].Header.Get("X-MCP-Session-ID")
+		if sessionID == "" {
+			t.Error("issues request did not forward X-MCP-Session-ID")
+		}
+		if got := requests[1].Header.Get("X-MCP-Session-ID"); got != sessionID {
+			t.Errorf("snippet X-MCP-Session-ID = %q, want %q", got, sessionID)
+		}
+	})
+
+	t.Run("overall issues applies defaults and project scope", func(t *testing.T) {
+		mock.Reset()
+		result := mcpCallVirtualTool(t, baseURL, "get_overall_issues", map[string]interface{}{
+			"projectKey": sonarQubeProject,
+			"branch":     sonarQubeBranch,
+		})
+		assertJSONEqual(t, expectedOverall, result)
+
+		requests := mock.Requests()
+		if len(requests) != 2 {
+			t.Fatalf("upstream request count = %d, want 2", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":          sonarQubeBranch,
+			"components":      sonarQubeProject,
+			"inNewCodePeriod": "false",
+			"ps":              "50",
+			"resolved":        "false",
+			"types":           "CODE_SMELL,BUG,VULNERABILITY",
+		})
+	})
+
+	t.Run("overall issues forwards option overrides", func(t *testing.T) {
+		mock.Reset()
+		result := mcpCallVirtualTool(t, baseURL, "get_overall_issues", map[string]interface{}{
+			"projectKey":         sonarQubeProject,
+			"branch":             sonarQubeBranch,
+			"component":          sonarQubeComponent,
+			"limit":              float64(7),
+			"newCodeOnly":        true,
+			"snippetConcurrency": float64(2),
+		})
+		assertJSONEqual(t, expectedOverall, result)
+
+		requests := mock.Requests()
+		if len(requests) != 2 {
+			t.Fatalf("upstream request count = %d, want 2", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":          sonarQubeBranch,
+			"components":      sonarQubeComponent,
+			"inNewCodePeriod": "true",
+			"ps":              "7",
+			"resolved":        "false",
+			"types":           "CODE_SMELL,BUG,VULNERABILITY",
+		})
+	})
+
+	t.Run("new code issues forwards pull request", func(t *testing.T) {
+		mock.Reset()
+		const pullRequest = "42"
+		result := mcpCallVirtualTool(t, baseURL, "get_newcode_issues", map[string]interface{}{
+			"projectKey":  sonarQubeProject,
+			"branch":      sonarQubeBranch,
+			"pullRequest": pullRequest,
+			"component":   sonarQubeComponent,
+		})
+
+		want := mustJSON(t, string(expectedOverall))
+		want["pullRequest"] = pullRequest
+		wantJSON, err := json.Marshal(want)
+		if err != nil {
+			t.Fatalf("marshal expected new-code result: %v", err)
+		}
+		assertJSONEqual(t, wantJSON, result)
+
+		requests := mock.Requests()
+		if len(requests) != 2 {
+			t.Fatalf("upstream request count = %d, want 2", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":      sonarQubeBranch,
+			"components":  sonarQubeComponent,
+			"ps":          "50",
+			"pullRequest": pullRequest,
+			"resolved":    "false",
+			"types":       "CODE_SMELL,BUG,VULNERABILITY",
+		})
+	})
+
+	t.Run("empty overall issues returns empty list without snippet enrichment", func(t *testing.T) {
+		mock.Reset()
+		result := mcpCallVirtualTool(t, baseURL, "get_overall_issues", map[string]interface{}{
+			"projectKey": sonarQubeProject,
+			"branch":     sonarQubeBranch,
+			"component":  sonarQubeEmptyComponent,
+		})
+		assertJSONEqual(t, expectedSonarQubeEmptyIssuesResult(t, ""), result)
+
+		requests := mock.Requests()
+		if len(requests) != 1 {
+			t.Fatalf("upstream request count = %d, want 1 search and no snippet calls", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":          sonarQubeBranch,
+			"components":      sonarQubeEmptyComponent,
+			"inNewCodePeriod": "false",
+			"ps":              "50",
+			"resolved":        "false",
+			"types":           "CODE_SMELL,BUG,VULNERABILITY",
+		})
+	})
+
+	t.Run("empty new code issues returns empty list without snippet enrichment", func(t *testing.T) {
+		mock.Reset()
+		const pullRequest = "42"
+		result := mcpCallVirtualTool(t, baseURL, "get_newcode_issues", map[string]interface{}{
+			"projectKey":  sonarQubeProject,
+			"branch":      sonarQubeBranch,
+			"pullRequest": pullRequest,
+			"component":   sonarQubeEmptyComponent,
+		})
+		assertJSONEqual(t, expectedSonarQubeEmptyIssuesResult(t, pullRequest), result)
+
+		requests := mock.Requests()
+		if len(requests) != 1 {
+			t.Fatalf("upstream request count = %d, want 1 search and no snippet calls", len(requests))
+		}
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
+			"branch":      sonarQubeBranch,
+			"components":  sonarQubeEmptyComponent,
+			"ps":          "50",
+			"pullRequest": pullRequest,
+			"resolved":    "false",
+			"types":       "CODE_SMELL,BUG,VULNERABILITY",
+		})
+	})
+
+	t.Run("missing required arguments fail before upstream", func(t *testing.T) {
+		mock.Reset()
+		message := strings.ToLower(mcpCallVirtualToolError(
+			t,
+			baseURL,
+			"get_overall_issues",
+			map[string]interface{}{},
+		))
+		if !strings.Contains(message, "branch") && !strings.Contains(message, "projectkey") {
+			t.Fatalf("error = %q, want a missing-input error", message)
+		}
+		if got := mock.RequestCount(); got != 0 {
+			t.Fatalf("upstream request count = %d, want 0", got)
+		}
+	})
 }
 
 // ---------------------------------------------------------------------------
@@ -3663,10 +3970,10 @@ func startNexusMultiUpstreamServer(t *testing.T, projectDir, homeDir, configYAML
 	}
 
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(), "HOME="+homeDir)
+	cmd.Env = testProcessEnv("HOME=" + homeDir)
 	var stderrBuf strings.Builder
 	cmd.Stderr = &stderrBuf
 	if err := cmd.Start(); err != nil {

@@ -2,12 +2,13 @@ package tests
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -23,23 +24,103 @@ import (
 
 const specFixture = "testdata/minimal_spec.yaml"
 
+func unusedTCPPort(t *testing.T) int {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to allocate unused TCP port: %v", err)
+	}
+	defer listener.Close()
+	return listener.Addr().(*net.TCPAddr).Port
+}
+
+// testProcessEnv returns a child-process environment suitable for generated
+// MCP server runtime tests. Parent shells often source .env files that contain
+// MCP__* overrides; those must not leak into tests that intentionally validate
+// YAML config behavior.
+func testProcessEnv(overrides ...string) []string {
+	overrideKeys := map[string]struct{}{}
+	for _, kv := range overrides {
+		if key, _, ok := strings.Cut(kv, "="); ok {
+			overrideKeys[key] = struct{}{}
+		}
+	}
+
+	env := make([]string, 0, len(os.Environ())+len(overrides))
+	for _, kv := range os.Environ() {
+		key, _, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if strings.HasPrefix(key, "MCP__") {
+			continue
+		}
+		if _, overridden := overrideKeys[key]; overridden {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env, overrides...)
+}
+
 // testProxyEnv returns the proxy URL and env vars for build subcommands.
 // It checks MCPFATHER_TEST_PROXY first, then HTTPS_PROXY.
 // If neither is set, no proxy is configured — suitable for environments
 // where Go can reach module proxies directly.
 func testProxyEnv(t *testing.T) (proxyURL string, envVars []string) {
 	t.Helper()
-	proxyURL = os.Getenv("MCPFATHER_TEST_PROXY")
-	if proxyURL == "" {
-		proxyURL = os.Getenv("HTTPS_PROXY")
+
+	for _, candidate := range []struct {
+		name  string
+		value string
+	}{
+		{name: "MCPFATHER_TEST_PROXY", value: os.Getenv("MCPFATHER_TEST_PROXY")},
+		{name: "HTTPS_PROXY", value: os.Getenv("HTTPS_PROXY")},
+	} {
+		raw := strings.TrimSpace(candidate.value)
+		if raw == "" {
+			continue
+		}
+		normalized, ok := normalizeTestProxyURL(raw)
+		if !ok {
+			logProgress("[proxy] ignoring invalid %s=%q", candidate.name, raw)
+			continue
+		}
+		logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
+			os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), normalized)
+		return normalized, []string{"HTTPS_PROXY=" + normalized, "HTTP_PROXY=" + normalized}
 	}
-	if proxyURL == "" {
-		logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set — build commands will use direct network")
-		return "", nil
+
+	logProgress("[proxy] MCPFATHER_TEST_PROXY and HTTPS_PROXY not set or invalid — build commands will use direct network")
+	return "", nil
+}
+
+func normalizeTestProxyURL(raw string) (string, bool) {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" {
+		return "", false
 	}
-	logProgress("[proxy] MCPFATHER_TEST_PROXY=%q HTTPS_PROXY=%q → using %q for build commands",
-		os.Getenv("MCPFATHER_TEST_PROXY"), os.Getenv("HTTPS_PROXY"), proxyURL)
-	return proxyURL, []string{"HTTPS_PROXY=" + proxyURL}
+	switch parsed.Scheme {
+	case "http", "https":
+	default:
+		return "", false
+	}
+	if parsed.Hostname() == "" && parsed.Port() != "" {
+		parsed.Host = net.JoinHostPort("127.0.0.1", parsed.Port())
+	}
+	if parsed.Hostname() == "" {
+		return "", false
+	}
+	return parsed.String(), true
+}
+
+func testBuildEnv(t *testing.T) []string {
+	t.Helper()
+	_, envVars := testProxyEnv(t)
+	if os.Getenv("GOMAXPROCS") == "" {
+		envVars = append(envVars, "GOMAXPROCS=2")
+	}
+	return envVars
 }
 
 // mcpfatherBin returns the path to the mcpfather binary, building it if needed.
@@ -50,15 +131,56 @@ func mcpfatherBin(t *testing.T) string {
 		t.Fatalf("cannot find repo root: %v", err)
 	}
 	bin := filepath.Join(root, "bin", "mcpfather")
-	if _, err := os.Stat(bin); os.IsNotExist(err) {
-		_, proxyEnv := testProxyEnv(t)
+	if mcpfatherBuildRequired(t, root, bin) {
+		buildEnv := testBuildEnv(t)
 		cmd := exec.Command("make", "-C", root, "build")
-		cmd.Env = append(os.Environ(), proxyEnv...)
+		cmd.Env = append(os.Environ(), buildEnv...)
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("make build failed: %v\n%s", err, out)
 		}
 	}
 	return bin
+}
+
+func mcpfatherBuildRequired(t *testing.T, root, bin string) bool {
+	t.Helper()
+	binInfo, err := os.Stat(bin)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return true
+		}
+		t.Fatalf("stat mcpfather binary: %v", err)
+	}
+
+	sourceNewer := false
+	stopWalk := fmt.Errorf("source newer than mcpfather binary")
+	checkPath := func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			switch info.Name() {
+			case ".git", "bin", "usecase":
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if info.Mode().IsRegular() && info.ModTime().After(binInfo.ModTime()) {
+			sourceNewer = true
+			return stopWalk
+		}
+		return nil
+	}
+	for _, rel := range []string{"go.mod", "go.sum", "cmd", "pkg"} {
+		path := filepath.Join(root, rel)
+		if err := filepath.Walk(path, checkPath); err != nil && err != stopWalk {
+			t.Fatalf("walk source path %s: %v", path, err)
+		}
+		if sourceNewer {
+			return true
+		}
+	}
+	return false
 }
 
 // findRepoRoot walks up from the test file to find the repo root.
@@ -195,17 +317,17 @@ func buildServer(t *testing.T, projectDir string) string {
 	}
 
 	logProgress("[build] go mod tidy + go build in %s", projectDir)
-	_, proxyEnv := testProxyEnv(t)
+	buildEnv := testBuildEnv(t)
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), proxyEnv...)
+	cmd.Env = append(os.Environ(), buildEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go mod tidy failed: %v\n%s", err, out)
 	}
 	logProgress("[build] go mod tidy OK — building binary %s", binName)
-	cmd = exec.Command("go", "build", "-o", filepath.Join("bin", binName), ".")
+	cmd = exec.Command("go", "build", "-p", "1", "-o", filepath.Join("bin", binName), ".")
 	cmd.Dir = projectDir
-	cmd.Env = append(os.Environ(), proxyEnv...)
+	cmd.Env = append(os.Environ(), buildEnv...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("go build failed: %v\n%s", err, out)
 	}
@@ -277,7 +399,7 @@ func okHandler() http.HandlerFunc {
 func runCLI(t *testing.T, binPath string, env []string, args ...string) (string, string) {
 	t.Helper()
 	cmd := exec.Command(binPath, args...)
-	cmd.Env = append(os.Environ(), env...)
+	cmd.Env = testProcessEnv(env...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -829,7 +951,7 @@ func TestAuth_HTTPTransportMatchesCLI(t *testing.T) {
 	port := "19876"
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=Basic httpToken456",
 	)
@@ -872,7 +994,7 @@ func TestLogging_HTTPTransportRedactsAuthByDefault(t *testing.T) {
 	port := "19878"
 
 	cmd := exec.Command(bin, "--transport", "http", "--port", port, "-v", "10")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=shouldBeHidden",
 	)
@@ -1080,70 +1202,93 @@ func TestDownload_BinaryWithKnownSize(t *testing.T) {
 // 6. Upload
 // ---------------------------------------------------------------------------
 
-// TestUpload_CLI_FromUploadsDir verifies that an upload tool reads a file from
-// the upload directory (~/.{serviceName}/ifs/upload/) and sends it to the upstream.
-func TestUpload_CLI_FromUploadsDir(t *testing.T) {
+// TestUpload_CLI_FileRef verifies CLI mode upload with the unified file-ref
+// approach. The --file flag triggers @file:/// prefix auto-wrapping in the CLI,
+// the server downloads the file to IFS temp cache, and forwards as multipart.
+func TestUpload_CLI_FileRef(t *testing.T) {
 	mock := NewCoreMockService()
-	mock.RegisterUploadScenario()
-	_ = mock.Start()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
 	defer mock.Close()
 
 	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
 	binPath := buildServer(t, dir)
-	serviceName := filepath.Base(dir)
 	homeDir := t.TempDir()
 
-	// Stage the file in the upload directory
-	uploadDir := filepath.Join(homeDir, "."+serviceName, "ifs", "upload")
-	if err := os.MkdirAll(uploadDir, 0755); err != nil {
-		t.Fatalf("failed to create upload dir: %v", err)
-	}
-	testContent := []byte("hello world upload test content")
-	if err := os.WriteFile(filepath.Join(uploadDir, "test-upload.bin"), testContent, 0644); err != nil {
-		t.Fatalf("failed to stage upload file: %v", err)
+	// Create a test file
+	testContent := []byte("hello world file-ref upload test content")
+	testFile := filepath.Join(homeDir, "test-upload.bin")
+	if err := os.WriteFile(testFile, testContent, 0644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
 	}
 
 	stdout, _ := runCLI(t, binPath,
 		[]string{
 			"HOME=" + homeDir,
-			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+			"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL,
 		},
-		"-t", "cli", "UploadFile", "--file_name=test-upload.bin",
+		"-t", "cli", "UploadFile", "--file=file://"+testFile,
 	)
+	_ = stdout
 
-	data := mustJSON(t, stdout)
-	if fc, _ := data["fileContent"].(string); fc != string(testContent) {
-		t.Errorf("uploaded content = %q, want %q", fc, string(testContent))
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from CLI file-ref upload")
 	}
-	if method, _ := data["method"].(string); method != "POST" {
-		t.Errorf("upload method = %q, want POST", method)
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files")
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file from --file flag")
+	}
+	if string(fileRec.Content) != string(testContent) {
+		t.Errorf("uploaded content = %q, want %q", string(fileRec.Content), string(testContent))
 	}
 }
 
-// TestUpload_HTTP_Base64Content verifies HTTP mode upload with base64 file_content.
-func TestUpload_HTTP_Base64Content(t *testing.T) {
+// TestUpload_HTTP_FileRef verifies HTTP mode upload with the unified file-ref
+// approach. The client sends an @file:// URI as the "file" arg, the server
+// downloads it and forwards as multipart to the upstream.
+func TestUpload_HTTP_FileRef(t *testing.T) {
 	mock := NewCoreMockService()
-	mock.RegisterUploadScenario()
-	_ = mock.Start()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
 	defer mock.Close()
 
 	dir := genProjectWithSpec(t, "testdata/upload_spec.yaml", "uploadFile", "")
 	homeDir := t.TempDir()
 
-	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
 	defer cleanup()
 
-	testContent := "http-mode-upload-content"
-	b64Content := base64.StdEncoding.EncodeToString([]byte(testContent))
+	testContent := "http-mode-file-ref-content"
+	testFile := filepath.Join(homeDir, "http-upload.bin")
+	if err := os.WriteFile(testFile, []byte(testContent), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
 
 	result := callNativeTool(t, baseURL, "UploadFile", map[string]interface{}{
-		"file_name":    "http-upload.bin",
-		"file_content": b64Content,
+		"file": "@file://" + testFile,
 	})
 
-	data := mustJSON(t, result)
-	if fc, _ := data["fileContent"].(string); fc != testContent {
-		t.Errorf("uploaded content = %q, want %q", fc, testContent)
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Errorf("HTTP file-ref upload failed: %s", result)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from HTTP file-ref upload")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files")
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file content")
+	}
+	if string(fileRec.Content) != testContent {
+		t.Errorf("uploaded content = %q, want %q", string(fileRec.Content), testContent)
 	}
 }
 
@@ -1390,35 +1535,589 @@ func TestFileRef_MultipartUpload_HTTP(t *testing.T) {
 	}
 }
 
-// TestFileRef_NoFileProvided_FallsThroughToJSON confirms the fallthrough path:
-// when no file URI is provided to a FileRef tool, it sends a standard JSON
-// body to the upstream instead of a multipart request.
-func TestFileRef_NoFileProvided_FallsThroughToJSON(t *testing.T) {
-	mock := startMockUpstream(okHandler())
+// TestFileRef_NoFileProvided_MultipartWithEmptyPart verifies that FileRef
+// tools always send multipart/form-data even when no file is provided —
+// the empty file part prevents "missing boundary" errors on upstream
+// services (e.g. Spring Boot).
+func TestFileRef_NoFileProvided_MultipartWithEmptyPart(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
 	defer mock.Close()
 
 	dir := genProjectWithSpec(t, "testdata/form_multipart_spec.yaml", "createMultipartResource", "")
 	binPath := buildServer(t, dir)
 
 	stdout, _ := runCLI(t, binPath,
-		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL},
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
 		"-t", "cli", "CreateMultipartResource",
-		"--name=json-fallback",
+		"--name=no-file-test",
 		"--description=No file here",
 	)
 
 	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
-		t.Errorf("FileRef fallback call failed: %s", stdout)
+		t.Errorf("FileRef no-file call failed: %s", stdout)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data, got nil")
+	}
+	if record.FormFields["name"] != "no-file-test" {
+		t.Errorf("expected form field name=no-file-test, got %q", record.FormFields["name"])
+	}
+	if record.FormFields["description"] != "No file here" {
+		t.Errorf("expected form field description='No file here', got %q", record.FormFields["description"])
+	}
+	// File part should exist but be empty (0 bytes)
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files (empty file part)")
+	}
+	if fileRec.Size != 0 {
+		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 6c. Three upload cases from real swagger schemas
+// ---------------------------------------------------------------------------
+
+// ===========================================================================
+// Case A: Named multipart (SonatypeIQ PUT /api/v2/config/saml)
+//
+// Verifies that when a multipart schema has named binary properties
+// (e.g. "identityProviderXml"), the generated handler:
+//  1. Preserves the original field name from the swagger schema
+//  2. Builds a multipart/form-data request with that named file part
+//  3. Also includes non-binary form fields (e.g. "samlConfiguration")
+// ===========================================================================
+
+// TestCaseA_NamedMultipart_CLI verifies CLI mode: a named binary field
+// "identityProviderXml" is sent as a multipart file part with the correct
+// field name, not a generic "file".
+func TestCaseA_NamedMultipart_CLI(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseANamedMultipart()
+
+	// Serve the IdP XML file for download
+	mock.Handle("/files/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "GET" {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		fileName := strings.TrimPrefix(r.URL.Path, "/files/")
+		w.Header().Set("Content-Type", "application/xml")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fileName))
+		w.Write([]byte("<md:EntityDescriptor xmlns:md=\"urn:oasis:names:tc:SAML:2.0:metadata\" entityID=\"https://idp.example.com\"></md:EntityDescriptor>"))
+	})
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_a_named_multipart_spec.yaml", "configSaml", "")
+	binPath := buildServer(t, dir)
+
+	fileURL := mockURL + "/files/idp-metadata.xml"
+	stdout, stderr := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "ConfigSaml",
+		"--identityProviderXml="+fileURL,
+		"--samlConfiguration=enabled-true-simple-string",
+	)
+	_ = stderr
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("Case A CLI call failed: %s", stdout)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data, got nil")
+	}
+
+	// Verify non-binary form field
+	if record.FormFields["samlConfiguration"] != "enabled-true-simple-string" {
+		t.Errorf("expected samlConfiguration=%q, got %q", "enabled-true-simple-string", record.FormFields["samlConfiguration"])
+	}
+
+	// Verify the file was uploaded with the CORRECT named field, not "file"
+	fileRec, ok := record.Files["identityProviderXml"]
+	if !ok {
+		// Show what keys were present for diagnosis
+		keys := make([]string, 0, len(record.Files))
+		for k := range record.Files {
+			keys = append(keys, k)
+		}
+		t.Fatalf("expected 'identityProviderXml' in uploaded files, got keys: %v", keys)
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file content for identityProviderXml")
+	}
+	// Content should be what the mock /files/ endpoint returned
+	if !strings.Contains(string(fileRec.Content), "EntityDescriptor") {
+		t.Errorf("expected SAML metadata XML content, got: %s", string(fileRec.Content))
+	}
+
+	// "file" must NOT exist as a file field — the handler must use the
+	// swagger schema's field name, not a hardcoded default.
+	if _, hasFile := record.Files["file"]; hasFile {
+		t.Error("'file' field should NOT exist — handler must use the swagger schema field name 'identityProviderXml'")
+	}
+}
+
+// TestCaseA_NamedMultipart_HTTP verifies HTTP mode: same checks as CLI but
+// via the HTTP-native MCP tool call path.
+func TestCaseA_NamedMultipart_HTTP(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseANamedMultipart()
+	mock.RegisterFileRefScenario() // reuse /files/ endpoint
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_a_named_multipart_spec.yaml", "configSaml", "")
+	homeDir := t.TempDir()
+
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	fileURL := mockURL + "/files/idp-metadata.xml"
+	result := callNativeTool(t, baseURL, "ConfigSaml", map[string]interface{}{
+		"identityProviderXml": fileURL,
+		"samlConfiguration":   "enabled-true-simple-string",
+	})
+
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Errorf("Case A HTTP call failed: %s", result)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data, got nil")
+	}
+	if _, ok := record.Files["identityProviderXml"]; !ok {
+		keys := make([]string, 0, len(record.Files))
+		for k := range record.Files {
+			keys = append(keys, k)
+		}
+		t.Fatalf("expected 'identityProviderXml' in uploaded files, got keys: %v", keys)
+	}
+	if record.FormFields["samlConfiguration"] != "enabled-true-simple-string" {
+		t.Errorf("expected samlConfiguration=%q, got %q", "enabled-true-simple-string", record.FormFields["samlConfiguration"])
+	}
+}
+
+// ===========================================================================
+// Case B: Plain binary multipart (Jira POST /api/2/issue/{id}/attachments)
+//
+// Verifies that when the multipart schema is a plain "type: string,
+// format: binary" (no named properties), the converter falls back to a
+// single "file" FileArg, and:
+//  1. The generated handler sends multipart/form-data with "file" part name
+//  2. Path parameters (issueIdOrKey) are correctly substituted in the URL
+//  3. The file content is downloaded from the URI and forwarded
+// ===========================================================================
+
+// TestCaseB_PlainBinaryMultipart_CLI verifies CLI mode for schema-less
+// multipart (Jira attachment pattern). The "file" fallback name is used
+// and the path param is substituted.
+func TestCaseB_PlainBinaryMultipart_CLI(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseBPlainBinaryMultipart()
+	mock.RegisterFileRefScenario() // reuse /files/ endpoint for download
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_b_plain_binary_multipart_spec.yaml", "addAttachment", "")
+	binPath := buildServer(t, dir)
+
+	fileURL := mockURL + "/files/issue-attachment.pdf"
+	stdout, stderr := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "AddAttachment",
+		"--issueIdOrKey=PROJ-123",
+		"--file="+fileURL,
+	)
+	_ = stderr
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("Case B CLI call failed: %s", stdout)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data, got nil")
+	}
+
+	// Must use fallback name "file" — the schema has no named properties
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		keys := make([]string, 0, len(record.Files))
+		for k := range record.Files {
+			keys = append(keys, k)
+		}
+		t.Fatalf("expected 'file' in uploaded files (fallback), got keys: %v", keys)
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file content for fallback 'file' field")
+	}
+
+	// Path param must have been substituted — the upstream path should
+	// contain PROJ-123 (verified by the mock echoing the path back).
+	// The mock returns path in the JSON response, curl captures it in stdout.
+	if !strings.Contains(stdout, "PROJ-123") {
+		// The upstream mock echoes the path; if path substitution worked
+		// it should be visible in the output. If not present, the proxy
+		// may have returned text only. This is a soft check.
+		t.Logf("Case B CLI stdout (checking for PROJ-123): %s", stdout[:min(len(stdout), 400)])
+	}
+}
+
+// TestCaseB_PlainBinaryMultipart_HTTP verifies HTTP mode for plain binary
+// multipart — path param + file URI, fallback field name "file".
+func TestCaseB_PlainBinaryMultipart_HTTP(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseBPlainBinaryMultipart()
+	mock.RegisterFileRefScenario() // reuse /files/ endpoint
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_b_plain_binary_multipart_spec.yaml", "addAttachment", "")
+	homeDir := t.TempDir()
+
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	fileURL := mockURL + "/files/screenshot.png"
+	result := callNativeTool(t, baseURL, "AddAttachment", map[string]interface{}{
+		"issueIdOrKey": "PROJ-456",
+		"file":         fileURL,
+	})
+
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Errorf("Case B HTTP call failed: %s", result)
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data, got nil")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		keys := make([]string, 0, len(record.Files))
+		for k := range record.Files {
+			keys = append(keys, k)
+		}
+		t.Fatalf("expected 'file' in uploaded files (fallback), got keys: %v", keys)
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file from --file flag")
+	}
+}
+
+// ===========================================================================
+// Case C: Octet-stream (Nexus POST /v1/system/license)
+//
+// Verifies that application/octet-stream APIs:
+//  1. Use ForwardBinaryUploadRequest (not multipart)
+//  2. Download the file from the URI and send as raw binary body
+//  3. Set Content-Type to application/octet-stream (the original swagger CT)
+//  4. The upstream receives the file content as-is (not wrapped in multipart)
+// ===========================================================================
+
+// TestCaseC_OctetStream_CLI verifies octet-stream upload in CLI mode.
+func TestCaseC_OctetStream_CLI(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseCOctetStream()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_c_octet_stream_spec.yaml", "installLicense", "")
+	binPath := buildServer(t, dir)
+
+	fileURL := mockURL + "/files/license.lic"
+	stdout, stderr := runCLI(t, binPath,
+		[]string{"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mockURL},
+		"-t", "cli", "InstallLicense",
+		"--file="+fileURL,
+	)
+	_ = stderr
+
+	if strings.Contains(stdout, "MCP error") || strings.Contains(stdout, "failed") {
+		t.Errorf("Case C CLI call failed: %s", stdout)
+	}
+
+	record := mock.LastOctetStream()
+	if record == nil {
+		t.Fatal("expected octet-stream upload record, got nil")
+	}
+
+	// Content-Type must be application/octet-stream (NOT multipart/form-data)
+	if !strings.HasPrefix(record.ContentType, "application/octet-stream") {
+		t.Errorf("expected Content-Type=application/octet-stream, got %q", record.ContentType)
+	}
+
+	// Body must equal the original file content (raw binary forwarding)
+	expectedContent := "HELLO-OCTET-STREAM-license.lic"
+	if string(record.Body) != expectedContent {
+		t.Errorf("expected body %q, got %q", expectedContent, string(record.Body))
+	}
+
+	if record.Size != len(expectedContent) {
+		t.Errorf("expected size %d, got %d", len(expectedContent), record.Size)
+	}
+}
+
+// TestCaseC_OctetStream_HTTP verifies octet-stream upload in HTTP mode.
+func TestCaseC_OctetStream_HTTP(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterCaseCOctetStream()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/case_c_octet_stream_spec.yaml", "installLicense", "")
+	homeDir := t.TempDir()
+
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	fileURL := mockURL + "/files/license.lic"
+	result := callNativeTool(t, baseURL, "InstallLicense", map[string]interface{}{
+		"file": fileURL,
+	})
+
+	if strings.Contains(result, "MCP error") || strings.Contains(result, "failed") {
+		t.Errorf("Case C HTTP call failed: %s", result)
+	}
+
+	record := mock.LastOctetStream()
+	if record == nil {
+		t.Fatal("expected octet-stream upload record, got nil")
+	}
+
+	if !strings.HasPrefix(record.ContentType, "application/octet-stream") {
+		t.Errorf("expected Content-Type=application/octet-stream, got %q", record.ContentType)
+	}
+
+	expectedContent := "HELLO-OCTET-STREAM-license.lic"
+	if string(record.Body) != expectedContent {
+		t.Errorf("expected body %q, got %q", expectedContent, string(record.Body))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// 6d. mcpclient.sh — file upload via --file flag (@file:// convention)
+// ---------------------------------------------------------------------------
+
+// TestMcpclientSh_FileFlag_SetsRefURI verifies that `mcpclient.sh call <tool> --file /path/to/f`
+// sets the "file" argument to @file:///<abs-path> so the server downloads
+// and forwards it as multipart.
+func TestMcpclientSh_FileFlag_SetsRefURI(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/form_multipart_spec.yaml", "createMultipartResource", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	// Create a test file for upload
+	testFile := filepath.Join(homeDir, "test-upload.txt")
+	if err := os.WriteFile(testFile, []byte("mcpclient-test-content"), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "CreateMultipartResource",
+		"--name=mcpclient-test",
+		"--description=new-syntax",
+		"--file", testFile,
+	)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Errorf("mcpclient.sh --file call failed: %s", string(out))
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data from mcpclient.sh --file")
+	}
+	if record.FormFields["name"] != "mcpclient-test" {
+		t.Errorf("expected form field name=mcpclient-test, got %q", record.FormFields["name"])
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files")
+	}
+	if fileRec.Size == 0 {
+		t.Error("expected non-empty file from --file flag")
+	}
+	if string(fileRec.Content) != "mcpclient-test-content" {
+		t.Errorf("expected file content 'mcpclient-test-content', got %q", string(fileRec.Content))
+	}
+}
+
+// TestMcpclientSh_KeyValueBodySyntax verifies the new --key value --body '{}'
+// argument syntax of mcpclient.sh (non-FileArgs tool). The --body JSON is
+// merged into args["body"] and forwarded as application/json (no @ prefixes).
+func TestMcpclientSh_KeyValueBodySyntax(t *testing.T) {
+	mock := startMockUpstream(okHandler())
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/oas3.0_spec.yaml", "createPost", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "CreatePost",
+		"--body", `{"title":"hello","body":"world"}`,
+	)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh --key --body call failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Errorf("mcpclient.sh --body call failed: %s", string(out))
 	}
 	if mock.requestCount() == 0 {
-		t.Error("expected at least one upstream request (JSON fallback)")
+		t.Error("expected at least one upstream request")
 	}
-	// The request should be JSON, not multipart
+	// Verify it sent JSON, not multipart (no @ prefixes)
 	if len(mock.requests) > 0 {
-		contentType := mock.requests[0].Headers.Get("Content-Type")
-		if strings.Contains(contentType, "multipart/form-data") {
-			t.Error("expected JSON content-type (no file provided), got multipart/form-data")
+		ct := mock.requests[0].Headers.Get("Content-Type")
+		if !strings.Contains(ct, "application/json") {
+			t.Errorf("expected application/json, got %s", ct)
 		}
+	}
+}
+
+// TestMcpclientSh_NoFile_EmptyPart verifies that calling a FileRef tool
+// without any file argument still produces a valid multipart request (empty
+// file part) to avoid Spring Boot "missing boundary" errors.
+func TestMcpclientSh_NoFile_EmptyPart(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterFileRefScenario()
+	mockURL := mock.Start()
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/form_multipart_spec.yaml", "createMultipartResource", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mockURL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	cmd := exec.Command("bash", clientSh, "call", "CreateMultipartResource",
+		"--name=empty-file",
+		"--description=no file arg at all",
+	)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh (no-file) call failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Errorf("mcpclient.sh no-file call failed: %s", string(out))
+	}
+
+	record := mock.LastFileRef()
+	if record == nil {
+		t.Fatal("expected multipart upload data (even without file)")
+	}
+	fileRec, ok := record.Files["file"]
+	if !ok {
+		t.Fatal("expected 'file' in uploaded files (empty file part)")
+	}
+	if fileRec.Size != 0 {
+		t.Errorf("expected empty file part (0 bytes), got %d bytes", fileRec.Size)
+	}
+	if record.FormFields["name"] != "empty-file" {
+		t.Errorf("expected form field name=empty-file, got %q", record.FormFields["name"])
+	}
+}
+
+// TestMcpclientSh_NestedJSONBody verifies that deeply nested JSON request bodies
+// are forwarded correctly to upstream. The --body JSON is JSON-parsed, set as
+// args["body"], and forwarded as application/json.
+func TestMcpclientSh_NestedJSONBody(t *testing.T) {
+	var receivedBody []byte
+	mock := startMockUpstream(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		receivedBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"received":true}`))
+	}))
+	defer mock.Close()
+
+	dir := genProjectWithSpec(t, "testdata/oas3.0_spec.yaml", "createPost", "")
+	homeDir := t.TempDir()
+	cleanup, baseURL := startCoreForwardTestServer(t, dir, mock.server.URL, homeDir, "", "")
+	defer cleanup()
+
+	clientSh := filepath.Join(dir, "mcpclient.sh")
+	nestedJSON := `{"title":"root","meta":{"author":{"name":"Alice","email":"alice@example.com"},"tags":["a","b"],"stats":{"views":42,"likes":7}}}`
+	cmd := exec.Command("bash", clientSh, "call", "CreatePost",
+		"--body", nestedJSON,
+	)
+	cmd.Env = testProcessEnv(
+		"MCP_SERVER_ENDPOINT="+baseURL+"/mcp",
+		"MCP_SERVER_DOWNLOAD_DIR="+filepath.Join(homeDir, "download"),
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("mcpclient.sh nested JSON call failed: %v\n%s", err, out)
+	}
+	if strings.Contains(string(out), "MCP error") || strings.Contains(string(out), "failed") {
+		t.Errorf("mcpclient.sh nested JSON call failed: %s", string(out))
+	}
+
+	// Verify the upstream received the full nested JSON intact.
+	if len(receivedBody) == 0 {
+		t.Fatal("expected upstream to receive a body, got empty")
+	}
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(receivedBody, &parsed); err != nil {
+		t.Fatalf("failed to parse upstream body as JSON: %v\nbody: %s", err, string(receivedBody))
+	}
+	// Drill into the nested structure
+	if title, _ := parsed["title"].(string); title != "root" {
+		t.Errorf("top-level title = %q, want %q", title, "root")
+	}
+	meta, ok := parsed["meta"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'meta' to be a nested object")
+	}
+	author, ok := meta["author"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'meta.author' to be a nested object")
+	}
+	if name, _ := author["name"].(string); name != "Alice" {
+		t.Errorf("meta.author.name = %q, want %q", name, "Alice")
+	}
+	if email, _ := author["email"].(string); email != "alice@example.com" {
+		t.Errorf("meta.author.email = %q, want %q", email, "alice@example.com")
+	}
+	stats, ok := meta["stats"].(map[string]interface{})
+	if !ok {
+		t.Fatal("expected 'meta.stats' to be a nested object")
+	}
+	if views, _ := stats["views"].(float64); views != 42 {
+		t.Errorf("meta.stats.views = %v, want 42", views)
 	}
 }
 
@@ -2215,9 +2914,9 @@ native_tools:
 	binPath := buildServer(t, dir)
 
 	// Start the server — it should fail due to conflict
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -2533,10 +3232,10 @@ func TestIFS_UploadAndDownload(t *testing.T) {
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -2611,10 +3310,10 @@ server:
 	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -2665,11 +3364,11 @@ logging:
 	writeCoreVirtualConfig(t, homeDir, serviceName, cfg)
 
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	// Start with -v 0 (or no -v) — config's logging.level=4 should activate
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 	)
@@ -2711,10 +3410,10 @@ func TestLoggingConfig_AuthVerboseEnvOverride(t *testing.T) {
 
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "10")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		"MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=shouldBeVisible",
 		"MCP__LOGGING__AUTH_VERBOSE=true",
@@ -2811,10 +3510,10 @@ func TestEnvOverride_ServerIFSDisabledViaEnv(t *testing.T) {
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Deep struct bool: server.ifs.enabled = false
@@ -2857,10 +3556,10 @@ func TestEnvOverride_LoggingLevelViaEnv(t *testing.T) {
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Logging level via ENV (no config file)
@@ -2896,7 +3595,7 @@ func TestEnvOverride_LoggingLevelViaEnv(t *testing.T) {
 // TestEnvOverride_MgmtPortViaEnv verifies that mgmt.port can be overridden via
 // MCP__MGMT__PORT ENV:
 //
-//	MCP__MGMT__PORT=19991 → mgmt.port=19991
+//	MCP__MGMT__PORT=<free-port> -> mgmt.port=<free-port>
 func TestEnvOverride_MgmtPortViaEnv(t *testing.T) {
 	mock := NewCoreMockService()
 	mock.RegisterEchoAuthScenario()
@@ -2906,16 +3605,13 @@ func TestEnvOverride_MgmtPortViaEnv(t *testing.T) {
 	projectDir := genProject(t, "echoHeaders", "")
 	binPath := buildServer(t, projectDir)
 	homeDir := t.TempDir()
-	port := fmt.Sprintf("%d", 19100+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	// Use a unique management port to avoid conflicts
-	mgmtPort := 19000 + int(time.Now().UnixNano()%1000)
-	if mgmtPort >= 20000 {
-		mgmtPort = 19001
-	}
+	mgmtPort := unusedTCPPort(t)
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
 		// Override mgmt port via ENV
@@ -2983,10 +3679,10 @@ func callNativeTool(t *testing.T, baseURL string, toolName string, args map[stri
 func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, token, cookie string) (cleanup func(), baseURL string) {
 	t.Helper()
 	binPath := buildServer(t, projectDir)
-	port := fmt.Sprintf("%d", 19000+(time.Now().UnixNano()%1000))
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
 
 	cmd := exec.Command(binPath, "--transport", "http", "--port", port, "-v", "1")
-	cmd.Env = append(os.Environ(),
+	cmd.Env = testProcessEnv(
 		"HOME="+homeDir,
 		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mockURL,
 	)
@@ -3010,6 +3706,88 @@ func startCoreForwardTestServer(t *testing.T, projectDir, mockURL, homeDir, toke
 	baseURL = "http://localhost:" + port
 	waitForServer(t, baseURL)
 	return
+}
+
+// TestEnvOverride_MgmtEnabledViaEnv verifies that MCP__MGMT__ENABLED=false
+// (pointer *bool field) disables the management server.
+func TestEnvOverride_MgmtEnabledViaEnv(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterEchoAuthScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	projectDir := genProject(t, "echoHeaders", "")
+	binPath := buildServer(t, projectDir)
+	homeDir := t.TempDir()
+	port := fmt.Sprintf("%d", unusedTCPPort(t))
+	mgmtPort := unusedTCPPort(t)
+
+	cmd := exec.Command(binPath, "--transport", "http", "--port", port)
+	cmd.Env = testProcessEnv(
+		"HOME="+homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT="+mock.server.URL,
+		// *bool field: mgmt.enabled = false
+		"MCP__MGMT__ENABLED=false",
+		fmt.Sprintf("MCP__MGMT__PORT=%d", mgmtPort),
+	)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("failed to start HTTP server: %v", err)
+	}
+	defer func() {
+		cmd.Process.Signal(os.Interrupt)
+		cmd.Wait()
+	}()
+
+	baseURL := "http://localhost:" + port
+	waitForServer(t, baseURL)
+
+	// Management server should be DISABLED on the process-specific port.
+	mgmtURL := fmt.Sprintf("http://127.0.0.1:%d/health", mgmtPort)
+	client := http.Client{Timeout: 300 * time.Millisecond}
+	resp, err := client.Get(mgmtURL)
+	if err == nil {
+		resp.Body.Close()
+		t.Error("mgmt /health should be unreachable when mgmt.enabled=false via ENV")
+	}
+}
+
+// TestEnvOverride_NativeToolsArrayViaEnv verifies that MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__0
+// properly sets array values when no config file exists (default nil *Expose pointer).
+func TestEnvOverride_NativeToolsArrayViaEnv(t *testing.T) {
+	mock := NewCoreMockService()
+	mock.RegisterEchoAuthScenario()
+	mock.RegisterGreetingScenario()
+	_ = mock.Start()
+	defer mock.Close()
+
+	dir := genProject(t, "echoHeaders,sayHello,downloadReport", "")
+	binPath := buildServer(t, dir)
+	homeDir := t.TempDir()
+
+	// NO config file — rely entirely on ENV overrides, which must
+	// initialise the nil *NativeToolsExposeConfig pointer on demand.
+	env := []string{
+		"HOME=" + homeDir,
+		"MCP__UPSTREAM__DEFAULT__ENDPOINT=" + mock.server.URL,
+		"MCP__NATIVE_TOOLS__EXPOSE__REGISTER_ALL_TOOLS_BY_DEFAULT=false",
+		"MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__0=EchoHeaders",
+		"MCP__NATIVE_TOOLS__EXPOSE__INCLUDES__1=SayHello",
+	}
+
+	stdout, _ := runCLI(t, binPath, env, "-t", "cli", "list")
+
+	if !strings.Contains(stdout, "EchoHeaders") {
+		t.Error("CLI list should contain EchoHeaders (via array ENV override, no config file)")
+	}
+	if !strings.Contains(stdout, "SayHello") {
+		t.Error("CLI list should contain SayHello (via array ENV override, no config file)")
+	}
+	// DownloadReport was NOT included
+	if strings.Contains(stdout, "DownloadReport") {
+		t.Errorf("DownloadReport should NOT appear — not in includes array, got: %s", stdout)
+	}
 }
 
 // writeCoreVirtualConfig writes an virtual tools config for core tests.

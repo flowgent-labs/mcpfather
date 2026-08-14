@@ -1,0 +1,58 @@
+{
+  "branch": "main",
+  "issues": [
+    {
+      "codeSnippet": [
+        { "code": "@Operation(description = \"Query workflows.\")", "lineNumber": 61 },
+        { "code": "@ApiResponses(value = { @ApiResponse(responseCode = \"200\", description = \"successful\") })", "lineNumber": 62 },
+        { "code": "@RequestMapping(path = { \"query\" }, produces = \"application/json\", method = { GET })", "lineNumber": 63 },
+        { "code": "@PreAuthorize(\"hasPermission(#model,'arn:rengine:workflow:read:v1')\")", "lineNumber": 64 },
+        { "code": "public RespBase<PageHolder<Workflow>> query(@Validated WorkflowQuery model) {", "lineNumber": 65 },
+        { "code": "log.debug(\"called: model={}\", model);", "lineNumber": 66 },
+        { "code": "RespBase<PageHolder<Workflow>> resp = RespBase.create();", "lineNumber": 67 },
+        { "code": "resp.setData(workflowService.query(model));", "lineNumber": 68 },
+        { "code": "return resp;", "lineNumber": 69 },
+        { "code": "}", "lineNumber": 70 },
+        { "code": "", "lineNumber": 71 },
+        { "code": "// @SecurityRequirement(name = \"default_oauth\")", "lineNumber": 72 },
+        { "code": "@Operation(description = \"Save workflow.\")", "lineNumber": 73 },
+        { "code": "@ApiResponses(value = { @ApiResponse(responseCode = \"200\", description = \"successful\") })", "lineNumber": 74 },
+        { "code": "@RequestMapping(path = { \"save\" }, consumes = \"application/json\", produces = \"application/json\", method = { POST })", "lineNumber": 75 },
+        { "code": "@PreAuthorize(\"hasPermission(#model,'arn:rengine:workflow:write:v1')\")", "lineNumber": 76 },
+        { "code": "public RespBase<WorkflowSaveResult> save(@Validated @RequestBody WorkflowSave model) {", "lineNumber": 77 },
+        { "code": "log.debug(\"called: model={}\", model);", "lineNumber": 78 },
+        { "code": "RespBase<WorkflowSaveResult> resp = RespBase.create();", "lineNumber": 79 },
+        { "code": "resp.setData(workflowService.save(model));", "lineNumber": 80 },
+        { "code": "return resp;", "lineNumber": 81 },
+        { "code": "}", "lineNumber": 82 },
+        { "code": "", "lineNumber": 83 },
+        { "code": "// @SecurityRequirement(name = \"default_oauth\")", "lineNumber": 84 },
+        { "code": "@Operation(description = \"Delete workflow.\")", "lineNumber": 85 },
+        { "code": "@ApiResponses(value = { @ApiResponse(responseCode = \"200\", description = \"successful\") })", "lineNumber": 86 },
+        { "code": "@RequestMapping(path = { \"delete\" }, produces = \"application/json\", method = { DELETE, POST })", "lineNumber": 87 },
+        { "code": "@PreAuthorize(\"hasPermission(#model,'arn:rengine:workflow:delete:v1')\")", "lineNumber": 88 },
+        { "code": "public RespBase<WorkflowDeleteResult> delete(@Validated @RequestBody WorkflowDelete model) {", "lineNumber": 89 },
+        { "code": "log.debug(\"called: model={}\", model);", "lineNumber": 90 },
+        { "code": "RespBase<WorkflowDeleteResult> resp = RespBase.create();", "lineNumber": 91 },
+        { "code": "resp.setData(workflowService.delete(model));", "lineNumber": 92 },
+        { "code": "return resp;", "lineNumber": 93 },
+        { "code": "}", "lineNumber": 94 },
+        { "code": "", "lineNumber": 95 }
+      ],
+      "component": "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java",
+      "debt": "8min",
+      "endLine": 66,
+      "key": "94d52855-937e-4ff7-8ccf-86ebc3e53c87",
+      "message": "Define a constant instead of duplicating this literal \"called: model={}\" 3 times.",
+      "rule": "java:S1192",
+      "severity": "CRITICAL",
+      "startLine": 66,
+      "type": "CODE_SMELL"
+    }
+  ],
+  "project": "rengine",
+  "summary": {
+    "returned": 1,
+    "total": 1
+  }
+}
