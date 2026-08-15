@@ -274,8 +274,9 @@ func (m *CoreMockService) RegisterUploadScenario() {
 // FileRefRecord holds parsed multipart form data recorded by
 // RegisterFileRefScenario when a FileRef upload reaches the upstream.
 type FileRefRecord struct {
-	FormFields map[string]string
-	Files      map[string]FileRefFileRecord
+	FormFields        map[string]string
+	FieldContentTypes map[string]string
+	Files             map[string]FileRefFileRecord
 }
 
 // FileRefFileRecord holds metadata about a single uploaded file part.
@@ -317,32 +318,41 @@ func (m *CoreMockService) RegisterFileRefScenario() {
 			return
 		}
 		record := &FileRefRecord{
-			FormFields: make(map[string]string),
-			Files:      make(map[string]FileRefFileRecord),
+			FormFields:        make(map[string]string),
+			FieldContentTypes: make(map[string]string),
+			Files:             make(map[string]FileRefFileRecord),
 		}
 
 		contentType := r.Header.Get("Content-Type")
 		if strings.Contains(contentType, "multipart/form-data") {
-			_ = r.ParseMultipartForm(32 << 20)
-			for name, values := range r.MultipartForm.Value {
-				if len(values) > 0 {
-					record.FormFields[name] = values[0]
-				}
-			}
-			for name, headers := range r.MultipartForm.File {
-				if len(headers) > 0 {
-					fh := headers[0]
-					f, err := fh.Open()
-					if err == nil {
-						data, _ := io.ReadAll(f)
-						f.Close()
+			reader, err := r.MultipartReader()
+			if err == nil {
+				for {
+					part, err := reader.NextPart()
+					if err == io.EOF {
+						break
+					}
+					if err != nil {
+						break
+					}
+					name := part.FormName()
+					if name == "" {
+						part.Close()
+						continue
+					}
+					data, _ := io.ReadAll(part)
+					if fileName := part.FileName(); fileName != "" {
 						record.Files[name] = FileRefFileRecord{
-							FileName:    fh.Filename,
-							ContentType: fh.Header.Get("Content-Type"),
+							FileName:    fileName,
+							ContentType: part.Header.Get("Content-Type"),
 							Content:     data,
 							Size:        len(data),
 						}
+					} else {
+						record.FormFields[name] = string(data)
+						record.FieldContentTypes[name] = part.Header.Get("Content-Type")
 					}
+					part.Close()
 				}
 			}
 		}

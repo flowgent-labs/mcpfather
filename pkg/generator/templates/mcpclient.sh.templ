@@ -327,19 +327,6 @@ print(json.dumps(args))
     return 1
   fi
 
-  # Check if result indicates a saved file (download tools return "Saved to: <path>")
-  if echo "$result" | grep -q '"Saved to:'; then
-    local saved_path
-    saved_path=$(echo "$result" | grep -o 'Saved to: [^"]*' | sed 's/Saved to: //')
-    if [ -n "$saved_path" ] && [ -f "$saved_path" ]; then
-      local fsize
-      fsize=$(wc -c < "$saved_path" | tr -d ' ')
-      echo "[+] Downloaded: $saved_path ($fsize bytes)"
-      echo "$result" | python3 -m json.tool 2>/dev/null || echo "$result"
-      return 0
-    fi
-  fi
-
   # Pretty print JSON response
   echo "$result" | python3 -m json.tool 2>/dev/null || echo "$result"
 }

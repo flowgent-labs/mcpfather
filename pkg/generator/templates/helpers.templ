@@ -5,17 +5,21 @@ package mcputils
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -26,6 +30,20 @@ import (
 type contextKey string
 
 const HTTPHeadersContextKey contextKey = "mcp-http-headers"
+const HTTPRequestContextKey contextKey = "mcp-http-request"
+
+const binaryDownloadKind = "dl.ifs.mcpfather.com/v1"
+const ifsInProgressSuffix = ".inprogress"
+
+const defaultIFSCleanJobTTL = 5 * time.Minute
+const ifsCleanJobInterval = 10 * time.Second
+
+type ifsFileMeta struct {
+	Name        string
+	ContentType string
+}
+
+var ifsDownloadMeta sync.Map
 
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
 func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
@@ -40,6 +58,18 @@ func GetHTTPHeaders(ctx context.Context) http.Header {
 	return nil
 }
 
+// WithHTTPRequest stores the inbound HTTP request in the context for helpers
+// that need to derive public URLs from the MCP client's request.
+func WithHTTPRequest(ctx context.Context, r *http.Request) context.Context {
+	return context.WithValue(ctx, HTTPRequestContextKey, r)
+}
+
+func GetHTTPRequest(ctx context.Context) *http.Request {
+	if r, ok := ctx.Value(HTTPRequestContextKey).(*http.Request); ok {
+		return r
+	}
+	return nil
+}
 
 // ForwardRequest sends an HTTP request to the upstream endpoint and returns the response.
 // All HTTP headers stored in ctx are forwarded to the upstream service.
@@ -455,33 +485,233 @@ func DetermineFileName(resp *http.Response, defaultName string) string {
 	return defaultName + ext
 }
 
+type BinaryDownloadInfo struct {
+	Kind      string `json:"kind"`
+	URL       string `json:"url"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	SHA1      string `json:"sha1"`
+	Size      int64  `json:"size"`
+	CreatedAt string `json:"createdAt"`
+
+	ifsPath  string
+	localURL string
+}
+
 // SaveBinaryStream streams the response body directly to a file in the download
-// directory without buffering the entire content in memory. Returns the file path
-// and the number of bytes written.
-func SaveBinaryStream(resp *http.Response, defaultName string) (string, int64, error) {
+// directory without buffering the entire content in memory.
+func SaveBinaryStream(resp *http.Response, defaultName string) (*BinaryDownloadInfo, error) {
 	fileName := DetermineFileName(resp, defaultName)
 	downloadDir, err := resolveDownloadDir()
 	if err != nil {
-		return "", 0, err
+		return nil, err
 	}
-	// IFS (Internal File System): store under {yyyyMMdd}/ with UUID.{suffix} naming
-	// to prevent collisions when the same file is downloaded multiple times.
-	dateDir := filepath.Join(downloadDir, time.Now().Format("20060102"))
-	if err := os.MkdirAll(dateDir, 0755); err != nil {
-		return "", 0, fmt.Errorf("failed to create IFS download directory %s: %w", dateDir, err)
+	createdAt := time.Now()
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create IFS download directory %s: %w", downloadDir, err)
 	}
-	fileID := generateFileID(fileName)
-	filePath := filepath.Join(dateDir, fileID)
-	f, err := os.Create(filePath)
+	fileID := uuid.New().String()
+	filePath := filepath.Join(downloadDir, fileID)
+	inProgressPath := filePath + ifsInProgressSuffix
+	f, err := os.Create(inProgressPath)
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to create file %s: %w", filePath, err)
+		return nil, fmt.Errorf("failed to create file %s: %w", inProgressPath, err)
 	}
-	defer f.Close()
-	written, err := io.Copy(f, resp.Body)
+	hash := sha1.New()
+	written, err := io.Copy(f, io.TeeReader(resp.Body, hash))
+	closeErr := f.Close()
 	if err != nil {
-		return "", 0, fmt.Errorf("failed to stream response to file %s: %w", filePath, err)
+		os.Remove(inProgressPath)
+		return nil, fmt.Errorf("failed to stream response to file %s: %w", inProgressPath, err)
 	}
-	return filePath, written, nil
+	if closeErr != nil {
+		os.Remove(inProgressPath)
+		return nil, fmt.Errorf("failed to close file %s: %w", inProgressPath, closeErr)
+	}
+	if err := os.Rename(inProgressPath, filePath); err != nil {
+		os.Remove(inProgressPath)
+		return nil, fmt.Errorf("failed to finalize file %s: %w", filePath, err)
+	}
+	ifsPath := "/_/ifs/download/" + fileID
+	contentType := resp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "application/octet-stream"
+	} else if mediaType, _, err := mime.ParseMediaType(contentType); err == nil && mediaType != "" {
+		contentType = mediaType
+	}
+	ifsDownloadMeta.Store(fileID, ifsFileMeta{Name: fileName, ContentType: contentType})
+	return &BinaryDownloadInfo{
+		Kind:      binaryDownloadKind,
+		Name:      fileName,
+		Type:      contentType,
+		SHA1:      hex.EncodeToString(hash.Sum(nil)),
+		Size:      written,
+		CreatedAt: formatRFC3339Millis(createdAt),
+		ifsPath:   ifsPath,
+		localURL:  fileURI(filePath),
+	}, nil
+}
+
+func binaryDownloadToolResult(ctx context.Context, info *BinaryDownloadInfo) (*mcp.CallToolResult, error) {
+	if info == nil {
+		return mcp.NewToolResultError("binary download result is empty"), nil
+	}
+	out := *info
+	out.URL = resolveIFSDownloadURL(ctx, info.ifsPath, info.localURL)
+	b, err := json.Marshal(out)
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode binary download result: %w", err)
+	}
+	return mcp.NewToolResultText(string(b)), nil
+}
+
+func fileURI(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	return (&url.URL{Scheme: "file", Path: filepath.ToSlash(abs)}).String()
+}
+
+func resolveIFSDownloadURL(ctx context.Context, ifsPath, localURL string) string {
+	if ifsPath == "" {
+		return ""
+	}
+	base := resolveIFSBaseURI(ctx)
+	if base == "" {
+		return localURL
+	}
+	return strings.TrimRight(base, "/") + ifsPath
+}
+
+func resolveIFSBaseURI(ctx context.Context) string {
+	if cfg := GetConfig(); cfg != nil {
+		if base := strings.TrimSpace(cfg.Server.IFS.BaseURI); base != "" {
+			return strings.TrimRight(base, "/")
+		}
+	}
+	r := GetHTTPRequest(ctx)
+	if r == nil {
+		return ""
+	}
+
+	host := firstHeaderValue(r.Header.Get("X-Forwarded-Host"))
+	if host == "" {
+		host = firstHeaderValue(r.Host)
+	}
+	if host == "" {
+		return ""
+	}
+
+	proto := firstHeaderValue(r.Header.Get("X-Forwarded-Proto"))
+	if proto == "" {
+		proto = forwardedHeaderProto(r.Header.Get("Forwarded"))
+	}
+	if proto == "" {
+		if r.TLS != nil {
+			proto = "https"
+		} else {
+			proto = "http"
+		}
+	}
+	return proto + "://" + host
+}
+
+func firstHeaderValue(v string) string {
+	if v == "" {
+		return ""
+	}
+	first, _, _ := strings.Cut(v, ",")
+	return strings.TrimSpace(first)
+}
+
+func forwardedHeaderProto(v string) string {
+	first := firstHeaderValue(v)
+	for _, part := range strings.Split(first, ";") {
+		key, value, ok := strings.Cut(strings.TrimSpace(part), "=")
+		if !ok || !strings.EqualFold(strings.TrimSpace(key), "proto") {
+			continue
+		}
+		return strings.Trim(strings.TrimSpace(value), `"`)
+	}
+	return ""
+}
+
+func formatRFC3339Millis(t time.Time) string {
+	return t.Format("2006-01-02T15:04:05.000Z07:00")
+}
+
+func ifsCleanJobTTL() time.Duration {
+	raw := ""
+	if cfg := GetConfig(); cfg != nil {
+		raw = strings.TrimSpace(cfg.Server.IFS.CleanJobTTLSeconds)
+	}
+	if raw == "" {
+		return defaultIFSCleanJobTTL
+	}
+	if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+		return d
+	}
+	if seconds, err := strconv.Atoi(raw); err == nil && seconds > 0 {
+		return time.Duration(seconds) * time.Second
+	}
+	return defaultIFSCleanJobTTL
+}
+
+// StartIFSCleanJob periodically removes completed temporary IFS files older
+// than server.ifs.clean-job-ttl-seconds. Files still ending in .inprogress are
+// skipped so partially written transfers cannot be served or removed.
+func StartIFSCleanJob(ctx context.Context) {
+	go func() {
+		cleanIFSOnce(time.Now())
+		ticker := time.NewTicker(ifsCleanJobInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case now := <-ticker.C:
+				cleanIFSOnce(now)
+			}
+		}
+	}()
+}
+
+func cleanIFSOnce(now time.Time) {
+	ttl := ifsCleanJobTTL()
+	if ttl <= 0 {
+		ttl = defaultIFSCleanJobTTL
+	}
+	for _, resolve := range []func() (string, error){resolveDownloadDir, resolveUploadDir} {
+		dir, err := resolve()
+		if err != nil {
+			continue
+		}
+		cleanIFSDir(dir, now.Add(-ttl))
+	}
+}
+
+func cleanIFSDir(root string, cutoff time.Time) {
+	_ = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if strings.HasSuffix(d.Name(), ifsInProgressSuffix) {
+			return nil
+		}
+		info, err := d.Info()
+		if err != nil {
+			return nil
+		}
+		if info.ModTime().Before(cutoff) {
+			_ = os.Remove(path)
+			ifsDownloadMeta.Delete(d.Name())
+		}
+		return nil
+	})
 }
 
 // ForwardAndParseResponse sends a request to the upstream and handles the full
@@ -503,11 +733,11 @@ func ForwardAndParseResponse(ctx context.Context, upstreamBase, method, path str
 	}
 
 	if IsBinaryDownload(resp) {
-		filePath, written, err := SaveBinaryStream(resp, toolName)
+		info, err := SaveBinaryStream(resp, toolName)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+		return binaryDownloadToolResult(ctx, info)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -565,6 +795,7 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 			return mcp.NewToolResultError(fmt.Sprintf("failed to download file from %s: %v", uri, err)), nil
 		}
 		defer os.Remove(localPath)
+		defer cleanupIFSUploadSourceURI(uri)
 
 		fileData, err = os.ReadFile(localPath)
 		if err != nil {
@@ -640,11 +871,11 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 	}
 
 	if IsBinaryDownload(resp) {
-		filePath, written, err := SaveBinaryStream(resp, toolName)
+		info, err := SaveBinaryStream(resp, toolName)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+		return binaryDownloadToolResult(ctx, info)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -657,16 +888,11 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 	return mcp.NewToolResultText(string(body)), nil
 }
 
-// resolveUploadTmpDir returns the subdirectory under the download directory
-// where files downloaded from URIs are temporarily staged before being
-// forwarded to the upstream via a multipart request.
+// resolveUploadTmpDir returns the upload staging directory where files
+// downloaded from URIs are temporarily kept while forwarding an upstream
+// upload request.
 func resolveUploadTmpDir() (string, error) {
-	downloadDir, err := resolveDownloadDir()
-	if err != nil {
-		return "", err
-	}
-	// Staging directory for FileRef download before multipart forwarding.
-	return filepath.Join(downloadDir, time.Now().Format("20060102")), nil
+	return resolveUploadDir()
 }
 
 // downloadFileFromURI download a file from the given URI to a local
@@ -688,6 +914,7 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 		origName := filepath.Base(filePath)
 		fileID := generateFileID(origName)
 		localPath = filepath.Join(tmpDir, fileID)
+		inProgressPath := localPath + ifsInProgressSuffix
 
 		src, err := os.Open(filePath)
 		if err != nil {
@@ -695,14 +922,23 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 		}
 		defer src.Close()
 
-		dst, err := os.Create(localPath)
+		dst, err := os.Create(inProgressPath)
 		if err != nil {
-			return "", "", fmt.Errorf("create %s: %w", localPath, err)
+			return "", "", fmt.Errorf("create %s: %w", inProgressPath, err)
 		}
-		defer dst.Close()
 
 		if _, err := io.Copy(dst, src); err != nil {
+			dst.Close()
+			os.Remove(inProgressPath)
 			return "", "", fmt.Errorf("copy %s: %w", filePath, err)
+		}
+		if err := dst.Close(); err != nil {
+			os.Remove(inProgressPath)
+			return "", "", fmt.Errorf("close %s: %w", inProgressPath, err)
+		}
+		if err := os.Rename(inProgressPath, localPath); err != nil {
+			os.Remove(inProgressPath)
+			return "", "", fmt.Errorf("finalize %s: %w", localPath, err)
 		}
 		return localPath, origName, nil
 	}
@@ -757,17 +993,155 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 	// Use UUID.{suffix} naming in IFS directory to avoid collisions.
 	fileID := generateFileID(fileName)
 	localPath = filepath.Join(tmpDir, fileID)
-	f, err := os.Create(localPath)
+	inProgressPath := localPath + ifsInProgressSuffix
+	f, err := os.Create(inProgressPath)
 	if err != nil {
-		return "", "", fmt.Errorf("failed to create local file %s: %w", localPath, err)
+		return "", "", fmt.Errorf("failed to create local file %s: %w", inProgressPath, err)
 	}
-	defer f.Close()
 
 	if _, err := io.Copy(f, resp.Body); err != nil {
-		return "", "", fmt.Errorf("failed to write downloaded file %s: %w", localPath, err)
+		f.Close()
+		os.Remove(inProgressPath)
+		return "", "", fmt.Errorf("failed to write downloaded file %s: %w", inProgressPath, err)
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(inProgressPath)
+		return "", "", fmt.Errorf("failed to close downloaded file %s: %w", inProgressPath, err)
+	}
+	if err := os.Rename(inProgressPath, localPath); err != nil {
+		os.Remove(inProgressPath)
+		return "", "", fmt.Errorf("failed to finalize downloaded file %s: %w", localPath, err)
 	}
 
 	return localPath, fileName, nil
+}
+
+func fileURIPath(uri string) (string, bool) {
+	u, err := url.Parse(uri)
+	if err != nil || u.Scheme != "file" {
+		return "", false
+	}
+	if u.Host != "" && u.Host != "localhost" {
+		return "", false
+	}
+	if u.Path == "" || !filepath.IsAbs(u.Path) {
+		return "", false
+	}
+	return filepath.Clean(u.Path), true
+}
+
+func isPathWithinDir(path string, dir string) bool {
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(path))
+	if err != nil || rel == "." || rel == ".." {
+		return false
+	}
+	return !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+func cleanupIFSUploadSourceURI(uri string) {
+	path, ok := fileURIPath(uri)
+	if !ok || strings.HasSuffix(path, ifsInProgressSuffix) {
+		return
+	}
+	uploadDir, err := resolveUploadDir()
+	if err != nil || !isPathWithinDir(path, uploadDir) {
+		return
+	}
+	_ = os.Remove(path)
+	ifsDownloadMeta.Delete(filepath.Base(path))
+}
+
+func isDownloadableFileURI(uri string) bool {
+	u, err := url.Parse(uri)
+	if err != nil {
+		return false
+	}
+	switch u.Scheme {
+	case "file":
+		return u.Path != "" && filepath.IsAbs(u.Path) && (u.Host == "" || u.Host == "localhost")
+	case "http", "https":
+		return u.Host != ""
+	default:
+		return false
+	}
+}
+
+func filePartContentType(fileName string) string {
+	ext := strings.ToLower(filepath.Ext(fileName))
+	switch ext {
+	case ".zip":
+		return "application/zip"
+	case ".war", ".jar", ".ear":
+		return "application/java-archive"
+	}
+	if ext != "" {
+		if ct := mime.TypeByExtension(ext); ct != "" {
+			if mediaType, _, err := mime.ParseMediaType(ct); err == nil && mediaType != "" {
+				return mediaType
+			}
+			return ct
+		}
+	}
+	return "application/octet-stream"
+}
+
+func multipartPartContentType(partContentTypes map[string]string, fieldName string) string {
+	if partContentTypes == nil {
+		return ""
+	}
+	return strings.TrimSpace(partContentTypes[fieldName])
+}
+
+func isJSONContentType(contentType string) bool {
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		mediaType = strings.TrimSpace(strings.Split(contentType, ";")[0])
+	}
+	mediaType = strings.ToLower(mediaType)
+	return mediaType == "application/json" || strings.HasSuffix(mediaType, "+json")
+}
+
+func createMultipartValuePart(writer *multipart.Writer, fieldName string, val interface{}, contentType string) error {
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		return writer.WriteField(fieldName, valueToString(val))
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{
+		"name": fieldName,
+	}))
+	header.Set("Content-Type", contentType)
+	part, err := writer.CreatePart(header)
+	if err != nil {
+		return err
+	}
+	if isJSONContentType(contentType) {
+		data, err := json.Marshal(sanitizeForJSON(val))
+		if err != nil {
+			return err
+		}
+		_, err = part.Write(data)
+		return err
+	}
+	_, err = io.WriteString(part, valueToString(val))
+	return err
+}
+
+func createMultipartFilePart(writer *multipart.Writer, fieldName string, fileName string, contentType string) (io.Writer, error) {
+	if fileName == "" {
+		fileName = fieldName
+	}
+	contentType = strings.TrimSpace(contentType)
+	if contentType == "" {
+		contentType = filePartContentType(fileName)
+	}
+	header := make(textproto.MIMEHeader)
+	header.Set("Content-Disposition", mime.FormatMediaType("form-data", map[string]string{
+		"name":     fieldName,
+		"filename": filepath.Base(fileName),
+	}))
+	header.Set("Content-Type", contentType)
+	return writer.CreatePart(header)
 }
 
 // ForwardMultipartRequest handles multipart/form-data requests where file
@@ -778,12 +1152,15 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 //  4. Cleans up temporary files
 //  5. Returns the upstream response (or saves it as a binary download)
 //
-// Empty file refs (uri == "") produce empty file parts so the upstream
-// receives a well-formed multipart request even for optional files.
-func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, pathKeys []string, toolName string) (*mcp.CallToolResult, error) {
+// Empty optional file refs are omitted. Non-empty file refs with file/http(s)
+// schemes become file parts; other values are forwarded as normal text form
+// fields so anyOf binary|string multipart schemas remain usable.
+func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path string, args map[string]interface{}, fileRefs map[string]string, pathKeys []string, queryKeys []string, partContentTypes map[string]string, toolName string) (*mcp.CallToolResult, error) {
 	startTime := time.Now()
 
-	// Build URL with path parameter substitution
+	// Build URL with path parameter substitution and declared query parameters.
+	// Body/form fields must not be mirrored into the query string; multipart
+	// forwarding should match a normal HTTP client call for the OpenAPI operation.
 	upstreamURL := strings.TrimSuffix(upstreamBase, "/") + path
 	query := url.Values{}
 	for key, val := range args {
@@ -797,8 +1174,7 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		placeholder := "{" + key + "}"
 		if strings.Contains(upstreamURL, placeholder) {
 			upstreamURL = strings.ReplaceAll(upstreamURL, placeholder, valueToString(val))
-		} else if !isPathKey(key, pathKeys) {
-			// Non-path, non-file args go to query string
+		} else if isPathKey(key, queryKeys) {
 			if strVal, ok := val.(string); ok {
 				query.Set(key, strVal)
 			} else {
@@ -813,13 +1189,14 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 	// Download each non-empty file URI to a local temp file.
 	hasDownloads := false
 	for _, uri := range fileRefs {
-		if uri != "" {
+		if isDownloadableFileURI(strings.TrimSpace(uri)) {
 			hasDownloads = true
 			break
 		}
 	}
 	var localFiles map[string]string
 	var origNames map[string]string
+	var sourceURIs []string
 	if hasDownloads {
 		tmpDir, err := resolveUploadTmpDir()
 		if err != nil {
@@ -828,7 +1205,8 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		localFiles = make(map[string]string)
 		origNames = make(map[string]string)
 		for fieldName, uri := range fileRefs {
-			if uri == "" {
+			uri = strings.TrimSpace(uri)
+			if !isDownloadableFileURI(uri) {
 				continue
 			}
 			localPath, origName, err := downloadFileFromURI(ctx, uri, tmpDir)
@@ -840,11 +1218,15 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 			}
 			localFiles[fieldName] = localPath
 			origNames[fieldName] = origName
+			sourceURIs = append(sourceURIs, uri)
 		}
 		// Clean up temp files when done
 		defer func() {
 			for _, lp := range localFiles {
 				os.Remove(lp)
+			}
+			for _, uri := range sourceURIs {
+				cleanupIFSUploadSourceURI(uri)
 			}
 		}()
 	}
@@ -858,23 +1240,36 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 		if key == "body" {
 			continue
 		}
-		if _, isFile := fileRefs[key]; isFile {
+		if uri, isFile := fileRefs[key]; isFile {
+			uri = strings.TrimSpace(uri)
+			if uri != "" && !isDownloadableFileURI(uri) {
+				if err := createMultipartValuePart(writer, key, uri, multipartPartContentType(partContentTypes, key)); err != nil {
+					return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
+				}
+			}
 			continue
 		}
 		if isPathKey(key, pathKeys) {
 			continue
 		}
-		writer.WriteField(key, valueToString(val))
+		if isPathKey(key, queryKeys) {
+			continue
+		}
+		if err := createMultipartValuePart(writer, key, val, multipartPartContentType(partContentTypes, key)); err != nil {
+			return nil, fmt.Errorf("failed to write form field %s: %w", key, err)
+		}
 	}
 
-	// Add file parts (non-empty: downloaded content; empty: 0-byte part)
+	// Add file parts for supplied file URIs. Omitted optional file args are not
+	// serialized as empty files; that matches normal multipart clients and avoids
+	// triggering upstream filename/extension validators with filename="file".
 	for fieldName := range fileRefs {
 		if localPath, ok := localFiles[fieldName]; ok {
 			origName := origNames[fieldName]
 			if origName == "" {
 				origName = filepath.Base(localPath)
 			}
-			part, err := writer.CreateFormFile(fieldName, origName)
+			part, err := createMultipartFilePart(writer, fieldName, origName, multipartPartContentType(partContentTypes, fieldName))
 			if err != nil {
 				return nil, fmt.Errorf("failed to create form file for %s: %w", fieldName, err)
 			}
@@ -887,13 +1282,6 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 				return nil, fmt.Errorf("failed to copy file data for %s: %w", fieldName, err)
 			}
 			f.Close()
-		} else {
-			// Empty file argument — emit an empty file part so the
-			// upstream receives a well-formed multipart request.
-			_, err := writer.CreateFormFile(fieldName, fieldName)
-			if err != nil {
-				return nil, fmt.Errorf("failed to create empty form file for %s: %w", fieldName, err)
-			}
 		}
 	}
 	writer.Close()
@@ -963,11 +1351,11 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 	}
 
 	if IsBinaryDownload(resp) {
-		filePath, written, err := SaveBinaryStream(resp, toolName)
+		info, err := SaveBinaryStream(resp, toolName)
 		if err != nil {
 			return mcp.NewToolResultError(err.Error()), nil
 		}
-		return mcp.NewToolResultText(fmt.Sprintf("Saved to: %s (%d bytes)", filePath, written)), nil
+		return binaryDownloadToolResult(ctx, info)
 	}
 
 	body, err := io.ReadAll(resp.Body)
@@ -1002,55 +1390,99 @@ func generateFileID(originalName string) string {
 	return uuid.New().String() + suffix
 }
 
+func validIFSObjectName(name string) bool {
+	if name == "" || name == "." || name == ".." {
+		return false
+	}
+	if strings.ContainsAny(name, `/\`) {
+		return false
+	}
+	return !strings.HasSuffix(name, ifsInProgressSuffix)
+}
+
+func contentDispositionAttachment(name string) string {
+	if name == "" {
+		return "attachment"
+	}
+	safe := strings.NewReplacer("\\", "_", `"`, "_", "\r", "_", "\n", "_").Replace(filepath.Base(name))
+	return fmt.Sprintf(`attachment; filename="%s"; filename*=UTF-8''%s`, safe, url.PathEscape(safe))
+}
+
+func resolveIFSObjectPath(fileID string, dirs ...func() (string, error)) (string, error) {
+	for _, resolve := range dirs {
+		dir, err := resolve()
+		if err != nil {
+			continue
+		}
+		filePath := filepath.Clean(filepath.Join(dir, fileID))
+		if !isPathWithinDir(filePath, dir) {
+			continue
+		}
+		if _, err := os.Stat(filePath); err == nil {
+			return filePath, nil
+		}
+	}
+	return "", os.ErrNotExist
+}
+
 // ---- IFS Data Plane HTTP Handlers ----
 //
 // These built-in REST endpoints form the "data plane" for binary file transfer,
 // separate from the JSON-RPC 2.0 "control plane" at /mcp.
 
-// HandleIFSDownload serves binary files from the IFS download directory.
-// URL pattern: GET /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}
+// HandleIFSDownload serves a binary file from the IFS download/upload staging
+// directories once.
+// URL pattern: GET /_/ifs/download/{uuid}
 func HandleIFSDownload(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	// Extract path after /_/ifs/download/
-	relPath := strings.TrimPrefix(r.URL.Path, "/_/ifs/download/")
-	if relPath == "" || relPath == r.URL.Path {
+	fileID := strings.TrimPrefix(r.URL.Path, "/_/ifs/download/")
+	if fileID == "" || fileID == r.URL.Path || !validIFSObjectName(fileID) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
-	// Validate path: must be {yyyyMMdd}/{uuid}.{suffix}
-	parts := strings.SplitN(relPath, "/", 2)
-	if len(parts) != 2 {
-		http.Error(w, "invalid IFS download path, expected /_/ifs/download/{yyyyMMdd}/{uuid}.{suffix}", http.StatusBadRequest)
+	filePath, err := resolveIFSObjectPath(fileID, resolveDownloadDir, resolveUploadDir)
+	if err != nil {
+		http.NotFound(w, r)
 		return
 	}
+	f, err := os.Open(filePath)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	defer os.Remove(filePath)
+	defer ifsDownloadMeta.Delete(fileID)
 
-	downloadDir, err := resolveDownloadDir()
+	stat, err := f.Stat()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-
-	filePath := filepath.Join(downloadDir, relPath)
-	// Prevent directory traversal
-	filePath = filepath.Clean(filePath)
-	if !strings.HasPrefix(filePath, filepath.Clean(downloadDir)) {
-		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+	if metaRaw, ok := ifsDownloadMeta.Load(fileID); ok {
+		if meta, ok := metaRaw.(ifsFileMeta); ok {
+			if meta.ContentType != "" {
+				w.Header().Set("Content-Type", meta.ContentType)
+			}
+			if meta.Name != "" {
+				w.Header().Set("Content-Disposition", contentDispositionAttachment(meta.Name))
+			}
+		}
 	}
-
-	http.ServeFile(w, r, filePath)
+	http.ServeContent(w, r, fileID, stat.ModTime(), f)
 }
 
-// HandleIFSUpload accepts binary file upload to the IFS upload directory.
-// URL pattern: POST /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}
+// HandleIFSUpload accepts binary file upload into the IFS data plane.
+// URL pattern: POST /_/ifs/upload/{uuid}
 // The client can POST raw binary body (Content-Type: application/octet-stream)
 // or multipart/form-data with a "file" field.
-// Returns the download URL for the stored file.
+// Returns the one-time download URL for the stored file.
 func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost && r.Method != http.MethodPut {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -1058,53 +1490,51 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Extract path after /_/ifs/upload/
-	relPath := strings.TrimPrefix(r.URL.Path, "/_/ifs/upload/")
-	if relPath == "" || relPath == r.URL.Path {
+	fileID := strings.TrimPrefix(r.URL.Path, "/_/ifs/upload/")
+	if fileID == "" || fileID == r.URL.Path || !validIFSObjectName(fileID) {
 		http.Error(w, "invalid path", http.StatusBadRequest)
 		return
 	}
 
-	// Validate path: must be {yyyyMMdd}/{uuid}.{suffix}
-	parts := strings.SplitN(relPath, "/", 2)
-	if len(parts) != 2 {
-		http.Error(w, "invalid IFS upload path, expected /_/ifs/upload/{yyyyMMdd}/{uuid}.{suffix}", http.StatusBadRequest)
-		return
-	}
-
-	// Save uploaded files to the download directory — they are immediately
-	// available for retrieval via the download URL returned below.
-	downloadDir, err := resolveDownloadDir()
+	// Save uploaded files to the upload directory. Tool forwarding treats this
+	// as temporary staging and removes IFS upload files once upstream forwarding
+	// completes.
+	uploadDir, err := resolveUploadDir()
 	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
 
-	dateDir := filepath.Join(downloadDir, parts[0])
-	if err := os.MkdirAll(dateDir, 0755); err != nil {
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
 		http.Error(w, fmt.Sprintf("failed to create upload directory: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	destPath := filepath.Join(dateDir, parts[1])
+	destPath := filepath.Join(uploadDir, fileID)
 	// Prevent directory traversal
 	destPath = filepath.Clean(destPath)
-	if !strings.HasPrefix(destPath, filepath.Clean(downloadDir)) {
+	if !isPathWithinDir(destPath, uploadDir) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	// Accept raw binary body or multipart file upload
 	var fileData []byte
+	fileName := fileID
 	contentType := r.Header.Get("Content-Type")
-	if strings.Contains(contentType, "multipart/form-data") {
+	mediaType, _, _ := mime.ParseMediaType(contentType)
+	if mediaType == "multipart/form-data" {
 		if err := r.ParseMultipartForm(32 << 20); err != nil {
 			http.Error(w, fmt.Sprintf("failed to parse multipart form: %v", err), http.StatusBadRequest)
 			return
 		}
-		file, _, err := r.FormFile("file")
+		file, header, err := r.FormFile("file")
 		if err != nil {
 			http.Error(w, fmt.Sprintf("missing 'file' field in multipart form: %v", err), http.StatusBadRequest)
 			return
+		}
+		if header != nil && header.Filename != "" {
+			fileName = filepath.Base(header.Filename)
 		}
 		defer file.Close()
 		fileData, err = io.ReadAll(file)
@@ -1119,19 +1549,32 @@ func HandleIFSUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if contentType == "" || mediaType == "multipart/form-data" {
+		contentType = "application/octet-stream"
+	} else if mediaType != "" {
+		contentType = mediaType
+	}
 
-	if err := os.WriteFile(destPath, fileData, 0644); err != nil {
+	inProgressPath := destPath + ifsInProgressSuffix
+	if err := os.WriteFile(inProgressPath, fileData, 0644); err != nil {
 		http.Error(w, fmt.Sprintf("failed to write file: %v", err), http.StatusInternalServerError)
+		return
+	}
+	if err := os.Rename(inProgressPath, destPath); err != nil {
+		os.Remove(inProgressPath)
+		http.Error(w, fmt.Sprintf("failed to finalize file: %v", err), http.StatusInternalServerError)
 		return
 	}
 
 	// Return the download URL
-	downloadURL := fmt.Sprintf("/_/ifs/download/%s", relPath)
+	ifsPath := fmt.Sprintf("/_/ifs/download/%s", fileID)
+	ifsDownloadMeta.Store(fileID, ifsFileMeta{Name: fileName, ContentType: contentType})
+	downloadURL := resolveIFSDownloadURL(WithHTTPRequest(r.Context(), r), ifsPath, fileURI(destPath))
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"status":       "ok",
-		"path":         destPath,
+		"path":         fileURI(destPath),
 		"download_url": downloadURL,
 		"size":         len(fileData),
 	})

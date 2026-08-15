@@ -84,6 +84,9 @@ type FileArg struct {
 	Name        string // e.g., "file"
 	Description string
 	Required    bool
+	// ContentType is an optional per-part content type from
+	// multipart/form-data encoding.<field>.contentType.
+	ContentType string
 }
 
 // Arg represents an argument in an API, which can come from path, query, or body
@@ -94,6 +97,9 @@ type Arg struct {
 	Required    bool    `json:"required"`
 	Deprecated  bool    `json:"deprecated,omitempty"`
 	Schema      *Schema `json:"schema"`
+	// MultipartContentType is an optional per-part content type from
+	// multipart/form-data encoding.<field>.contentType.
+	MultipartContentType string `json:"multipartContentType,omitempty"`
 	// For request bodies with multiple content types
 	ContentTypes map[string]*Schema `json:"contentTypes,omitempty"`
 }
