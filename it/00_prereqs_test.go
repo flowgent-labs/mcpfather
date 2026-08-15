@@ -18,9 +18,53 @@ import (
 // binaries (kubectl, helm, k3s), starts a k3s cluster if none is reachable,
 // then probes the environment.
 func TestMain(m *testing.M) {
+	cleanupStaleITResources()
 	autoSetup()
 	probeEnvironment()
-	os.Exit(m.Run())
+	code := m.Run()
+	cleanupStaleITResources()
+	os.Exit(code)
+}
+
+func cleanupStaleITResources() {
+	_ = exec.Command("/bin/docker", "rm", "-f", "mcpfather-keycloak").Run()
+	cleanupSharedMockOIDCProviders()
+	cleanupStaleTempProcesses()
+}
+
+func cleanupStaleTempProcesses() {
+	procEntries, err := os.ReadDir("/proc")
+	if err != nil {
+		return
+	}
+	self := os.Getpid()
+	for _, entry := range procEntries {
+		if !entry.IsDir() {
+			continue
+		}
+		pid := entry.Name()
+		for _, r := range pid {
+			if r < '0' || r > '9' {
+				pid = ""
+				break
+			}
+		}
+		if pid == "" || pid == fmt.Sprint(self) {
+			continue
+		}
+		cmdline, err := os.ReadFile(filepath.Join("/proc", pid, "cmdline"))
+		if err != nil || len(cmdline) == 0 {
+			continue
+		}
+		cmd := strings.ReplaceAll(string(cmdline), "\x00", " ")
+		if !strings.Contains(cmd, "/tmp/Test") {
+			continue
+		}
+		if !strings.Contains(cmd, "/bin/") && !strings.Contains(cmd, "mockoidcsvc") {
+			continue
+		}
+		_ = exec.Command("kill", "-9", pid).Run()
+	}
 }
 
 // ─── multi-path binary lookup + auto-install ──────────────────────────────
@@ -338,7 +382,10 @@ func probeEnvironment() {
 
 	ttyPrintf("\n")
 	ttyPrintf("  ╔══════════════════════════════════════════════════════════════╗\n")
-	ttyPrintf("  ║  IT Environment Probe  %s                            ║\n", ts)
+	probeBannerLine(fmt.Sprintf("  IT Environment Probe  %s", ts))
+	if batch := strings.TrimSpace(os.Getenv("IT_BATCH")); batch != "" {
+		probeBannerLine("  Batch " + batch)
+	}
 	ttyPrintf("  ╚══════════════════════════════════════════════════════════════╝\n")
 	ttyPrintf("  ┌─ Network ────────────────────────────────────────────────────┐\n")
 	ttyPrintf("  │ %s %-12s %s\n", mark(gfwVal == "true"), "IN_CN_GFW", gfwDetail)
@@ -372,4 +419,12 @@ func probeEnvironment() {
 	ttyPrintf("  │ %s %-12s %s\n", mark(helmOK), "helm", helmDetail)
 
 	ttyPrintf("  └──────────────────────────────────────────────────────────────┘\n\n")
+}
+
+func probeBannerLine(text string) {
+	const width = 60
+	if len(text) > width {
+		text = text[:width-3] + "..."
+	}
+	ttyPrintf("  ║%-*s║\n", width, text)
 }

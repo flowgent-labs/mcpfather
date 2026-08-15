@@ -3,13 +3,15 @@
 package mcputils
 
 import (
-	"bytes"
 	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFormatAuthorizationHeader(t *testing.T) {
@@ -422,6 +424,104 @@ func TestGetHTTPHeaders_Nil(t *testing.T) {
 	}
 }
 
+func TestIFSDownloadURLResolution(t *testing.T) {
+	ifsPath := "/_/ifs/download/550e8400-e29b-41d4-a716-446655440000"
+	localURL := "file:///tmp/550e8400-e29b-41d4-a716-446655440000"
+
+	t.Run("configured base URI wins", func(t *testing.T) {
+		SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{BaseURI: "https://files.example.com/base/"}}})
+		req := httptest.NewRequest("POST", "http://internal:8080/mcp", nil)
+		ctx := WithHTTPRequest(context.Background(), req)
+		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
+		want := "https://files.example.com/base" + ifsPath
+		if got != want {
+			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("forwarded headers", func(t *testing.T) {
+		SetConfig(&Config{})
+		req := httptest.NewRequest("POST", "http://internal:8080/mcp", nil)
+		req.Header.Set("X-Forwarded-Proto", "https")
+		req.Header.Set("X-Forwarded-Host", "mcp.example.com")
+		ctx := WithHTTPRequest(context.Background(), req)
+		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
+		want := "https://mcp.example.com" + ifsPath
+		if got != want {
+			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("request host", func(t *testing.T) {
+		SetConfig(&Config{})
+		req := httptest.NewRequest("POST", "http://localhost:18889/mcp", nil)
+		ctx := WithHTTPRequest(context.Background(), req)
+		got := resolveIFSDownloadURL(ctx, ifsPath, localURL)
+		want := "http://localhost:18889" + ifsPath
+		if got != want {
+			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("no request returns file URL", func(t *testing.T) {
+		SetConfig(&Config{})
+		if got := resolveIFSDownloadURL(context.Background(), ifsPath, localURL); got != localURL {
+			t.Fatalf("resolveIFSDownloadURL = %q, want %q", got, localURL)
+		}
+	})
+}
+
+func TestIFSCleanJobTTL(t *testing.T) {
+	oldCfg := GetConfig()
+	defer SetConfig(oldCfg)
+
+	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "30s"}}})
+	if got := ifsCleanJobTTL(); got != 30*time.Second {
+		t.Fatalf("ifsCleanJobTTL = %v, want 30s", got)
+	}
+
+	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "45"}}})
+	if got := ifsCleanJobTTL(); got != 45*time.Second {
+		t.Fatalf("ifsCleanJobTTL = %v, want 45s", got)
+	}
+
+	SetConfig(&Config{Server: ServerConfig{IFS: IFSConfig{CleanJobTTLSeconds: "not-a-duration"}}})
+	if got := ifsCleanJobTTL(); got != defaultIFSCleanJobTTL {
+		t.Fatalf("ifsCleanJobTTL = %v, want default %v", got, defaultIFSCleanJobTTL)
+	}
+}
+
+func TestCleanIFSDirSkipsInProgressFiles(t *testing.T) {
+	root := t.TempDir()
+	oldFormal := filepath.Join(root, "old-formal")
+	oldInProgress := filepath.Join(root, "old-formal"+ifsInProgressSuffix)
+	youngFormal := filepath.Join(root, "young-formal")
+	for _, path := range []string{oldFormal, oldInProgress, youngFormal} {
+		if err := os.WriteFile(path, []byte("x"), 0644); err != nil {
+			t.Fatalf("write %s: %v", path, err)
+		}
+	}
+	oldTime := time.Now().Add(-10 * time.Minute)
+	if err := os.Chtimes(oldFormal, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes old formal: %v", err)
+	}
+	if err := os.Chtimes(oldInProgress, oldTime, oldTime); err != nil {
+		t.Fatalf("chtimes old in-progress: %v", err)
+	}
+
+	cleanIFSDir(root, time.Now().Add(-5*time.Minute))
+
+	if _, err := os.Stat(oldFormal); !os.IsNotExist(err) {
+		t.Fatalf("old formal file should be removed, stat err=%v", err)
+	}
+	if _, err := os.Stat(oldInProgress); err != nil {
+		t.Fatalf("old in-progress file should remain, stat err=%v", err)
+	}
+	if _, err := os.Stat(youngFormal); err != nil {
+		t.Fatalf("young formal file should remain, stat err=%v", err)
+	}
+}
+
 func TestForwardBinaryUploadRequest(t *testing.T) {
 	t.Run("downloads file URI and sends raw binary", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -458,6 +558,69 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 		}
 	})
 
+	t.Run("deletes IFS upload source after forwarding", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			body, _ := io.ReadAll(r.Body)
+			if string(body) != "ifs upload content" {
+				t.Fatalf("unexpected body: %q", string(body))
+			}
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+		}))
+		defer ts.Close()
+
+		oldCfg := GetConfig()
+		t.Setenv("HOME", t.TempDir())
+		LoadConfig("{{.ServiceName}}")
+		defer SetConfig(oldCfg)
+
+		uploadDir, err := resolveUploadDir()
+		if err != nil {
+			t.Fatalf("resolveUploadDir: %v", err)
+		}
+		if err := os.MkdirAll(uploadDir, 0755); err != nil {
+			t.Fatalf("mkdir upload dir: %v", err)
+		}
+		sourceFile := filepath.Join(uploadDir, "upload-source.bin")
+		if err := os.WriteFile(sourceFile, []byte("ifs upload content"), 0644); err != nil {
+			t.Fatalf("write upload source: %v", err)
+		}
+
+		fileRefs := map[string]string{"file": "file://" + sourceFile}
+		if _, err := ForwardBinaryUploadRequest(context.Background(), ts.URL, "PUT", "/api/upload", map[string]interface{}{}, fileRefs, "application/octet-stream", "TestBinaryUpload"); err != nil {
+			t.Fatalf("ForwardBinaryUploadRequest failed: %v", err)
+		}
+		if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
+			t.Fatalf("IFS upload source should be removed after forwarding, stat err=%v", err)
+		}
+	})
+
+	t.Run("keeps non-IFS file URI after forwarding", func(t *testing.T) {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"ok":true}`))
+		}))
+		defer ts.Close()
+
+		oldCfg := GetConfig()
+		t.Setenv("HOME", t.TempDir())
+		LoadConfig("{{.ServiceName}}")
+		defer SetConfig(oldCfg)
+
+		sourceFile := filepath.Join(t.TempDir(), "regular-source.bin")
+		if err := os.WriteFile(sourceFile, []byte("regular content"), 0644); err != nil {
+			t.Fatalf("write regular source: %v", err)
+		}
+
+		fileRefs := map[string]string{"file": "file://" + sourceFile}
+		if _, err := ForwardBinaryUploadRequest(context.Background(), ts.URL, "PUT", "/api/upload", map[string]interface{}{}, fileRefs, "application/octet-stream", "TestBinaryUpload"); err != nil {
+			t.Fatalf("ForwardBinaryUploadRequest failed: %v", err)
+		}
+		if _, err := os.Stat(sourceFile); err != nil {
+			t.Fatalf("non-IFS source should remain after forwarding, stat err=%v", err)
+		}
+	})
+
 	t.Run("empty file ref sends empty body", func(t *testing.T) {
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			body, _ := io.ReadAll(r.Body)
@@ -478,4 +641,52 @@ func TestForwardBinaryUploadRequest(t *testing.T) {
 			t.Fatal("result is nil")
 		}
 	})
+}
+
+func TestForwardMultipartRequestDeletesIFSUploadSource(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+			t.Fatalf("expected multipart content type, got %q", r.Header.Get("Content-Type"))
+		}
+		if err := r.ParseMultipartForm(32 << 20); err != nil {
+			t.Fatalf("parse multipart: %v", err)
+		}
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			t.Fatalf("missing file part: %v", err)
+		}
+		defer file.Close()
+		body, _ := io.ReadAll(file)
+		if string(body) != "multipart upload content" {
+			t.Fatalf("unexpected file body: %q", string(body))
+		}
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte(`{"ok":true}`))
+	}))
+	defer ts.Close()
+
+	oldCfg := GetConfig()
+	t.Setenv("HOME", t.TempDir())
+	LoadConfig("{{.ServiceName}}")
+	defer SetConfig(oldCfg)
+
+	uploadDir, err := resolveUploadDir()
+	if err != nil {
+		t.Fatalf("resolveUploadDir: %v", err)
+	}
+	if err := os.MkdirAll(uploadDir, 0755); err != nil {
+		t.Fatalf("mkdir upload dir: %v", err)
+	}
+	sourceFile := filepath.Join(uploadDir, "multipart-source.bin")
+	if err := os.WriteFile(sourceFile, []byte("multipart upload content"), 0644); err != nil {
+		t.Fatalf("write upload source: %v", err)
+	}
+
+	fileRefs := map[string]string{"file": "file://" + sourceFile}
+	if _, err := ForwardMultipartRequest(context.Background(), ts.URL, "POST", "/api/upload", map[string]interface{}{}, fileRefs, nil, "TestMultipartUpload"); err != nil {
+		t.Fatalf("ForwardMultipartRequest failed: %v", err)
+	}
+	if _, err := os.Stat(sourceFile); !os.IsNotExist(err) {
+		t.Fatalf("IFS upload source should be removed after multipart forwarding, stat err=%v", err)
+	}
 }

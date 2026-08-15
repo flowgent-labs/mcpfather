@@ -26,15 +26,17 @@ func dockerAvailable() bool {
 }
 
 // ---------------------------------------------------------------------------
-// Real Keycloak provider — upstream OIDC tests
+// OIDC provider — upstream OIDC tests
 // ---------------------------------------------------------------------------
 
 // ensureUpstreamKeycloak makes sure a Keycloak OIDC provider is reachable.
-// Delegates to the shared Keycloak instance (sync.Once) managed by ensureKeycloak.
-func ensureUpstreamKeycloak(t *testing.T) (cleanup func()) {
+// Delegates to the shared provider (sync.Once) managed by ensureKeycloak; if
+// a real Keycloak container cannot become ready, tests use the mock OIDC
+// provider fallback from 03_server_oidc_test.go.
+func ensureUpstreamKeycloak(t *testing.T) (issuer string, cleanup func()) {
 	t.Helper()
-	_, cleanup = ensureKeycloak(t)
-	return cleanup
+	issuer, cleanup = ensureKeycloak(t)
+	return issuer, cleanup
 }
 
 // ---------------------------------------------------------------------------
@@ -43,12 +45,12 @@ func ensureUpstreamKeycloak(t *testing.T) (cleanup func()) {
 
 // TestOIDCConfigEnvOverrides verifies that MCP__ env vars override OIDC config values.
 func TestOIDCConfigEnvOverrides(t *testing.T) {
-	cleanup := ensureUpstreamKeycloak(t)
+	issuer, cleanup := ensureUpstreamKeycloak(t)
 	defer cleanup()
 
 	envVars := []string{
 		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ENABLED=true",
-		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ISSUER=http://127.0.0.1:8080/realms/master",
+		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__ISSUER=" + issuer,
 		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_ID=mcpfather-client",
 		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__CLIENT_SECRET=mcpfather-secret",
 		"MCP__UPSTREAM__DEFAULT__AUTH__OIDC__SCOPES=openid",
@@ -62,22 +64,22 @@ func TestOIDCConfigEnvOverrides(t *testing.T) {
 	t.Logf("MCP__ env vars set for OIDC config testing")
 }
 
-// TestOIDCKeycloakDiscovery verifies OIDC discovery against a real Keycloak instance.
+// TestOIDCKeycloakDiscovery verifies OIDC discovery against the configured provider.
 func TestOIDCKeycloakDiscovery(t *testing.T) {
-	cleanup := ensureUpstreamKeycloak(t)
+	issuer, cleanup := ensureUpstreamKeycloak(t)
 	defer cleanup()
 
-	resp, err := http.Get("http://127.0.0.1:8080/realms/master/.well-known/openid-configuration")
+	resp, err := http.Get(issuer + "/.well-known/openid-configuration")
 	if err != nil {
-		t.Fatalf("Keycloak discovery request failed: %v", err)
+		t.Fatalf("OIDC discovery request failed: %v", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("Keycloak discovery returned %d", resp.StatusCode)
+		t.Fatalf("OIDC discovery returned %d", resp.StatusCode)
 	}
 
-	t.Logf("Real Keycloak OIDC discovery OK at http://127.0.0.1:8080/realms/master")
+	t.Logf("OIDC discovery OK at %s", issuer)
 }
 
 // ---------------------------------------------------------------------------
@@ -111,7 +113,8 @@ func startMockOIDCServer(t *testing.T) *mockOIDCServer {
 	binPath := filepath.Join(t.TempDir(), "mockoidcsvc")
 	srcDir := filepath.Join(repoRoot(t), "it", "cmd", "mockoidcsvc")
 	logProgress("[mock-oidc] building mockoidcsvc from %s", srcDir)
-	buildCmd := exec.Command("go", "build", "-o", binPath, srcDir)
+	buildCmd := exec.Command("go", "build", "-p", "1", "-o", binPath, srcDir)
+	buildCmd.Env = append(os.Environ(), testBuildEnv(t)...)
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("build mockoidcsvc: %v\n%s", err, out)
 	}
@@ -221,11 +224,11 @@ func TestOIDCTokenExchange(t *testing.T) {
 	if len(parts) != 3 {
 		t.Fatalf("expected 3-part JWT, got %d parts", len(parts))
 	}
-	t.Logf("OIDC token exchange OK (real Keycloak client_credentials grant)")
+	t.Logf("OIDC token exchange OK (client_credentials grant)")
 }
 
-// TestOIDCFullE2E runs a full end-to-end backend OIDC flow against real Keycloak:
-// MCP server → Keycloak token endpoint → Bearer token forwarded to upstream.
+// TestOIDCFullE2E runs a full end-to-end backend OIDC flow:
+// MCP server → OIDC token endpoint → Bearer token forwarded to upstream.
 func TestOIDCFullE2E(t *testing.T) {
 	issuer, cleanup := ensureKeycloak(t)
 	defer cleanup()
@@ -290,7 +293,7 @@ upstream:
 	} else if !strings.HasPrefix(auth, "Bearer ") {
 		t.Errorf("expected Bearer token, got: %s", auth)
 	} else {
-		t.Logf("Upstream received valid Bearer token from real Keycloak (len=%d)", len(auth))
+		t.Logf("Upstream received valid Bearer token from OIDC provider (len=%d)", len(auth))
 	}
 }
 

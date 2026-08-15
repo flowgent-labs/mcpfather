@@ -23,6 +23,8 @@ data:
             {{- end }}
       ifs:
         enabled: {{ .Values.config.server.ifs.enabled }}
+        base_uri: {{ .Values.config.server.ifs.base_uri | quote }}
+        clean-job-ttl-seconds: {{ .Values.config.server.ifs.clean_job_ttl_seconds | quote }}
       read_timeout_seconds: {{ .Values.config.server.read_timeout_seconds }}
       write_timeout_seconds: {{ .Values.config.server.write_timeout_seconds }}
       idle_timeout_seconds: {{ .Values.config.server.idle_timeout_seconds }}

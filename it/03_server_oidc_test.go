@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"bufio"
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
@@ -171,6 +172,9 @@ var (
 	sharedKeycloakOnce   sync.Once
 	sharedKeycloakIssuer string
 	sharedKeycloakOK     bool
+
+	sharedMockOIDCMu   sync.Mutex
+	sharedMockOIDCCmds []*exec.Cmd
 )
 
 func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
@@ -203,8 +207,11 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 		cmd := exec.Command("/bin/docker", "run", "-d", "--name", "mcpfather-keycloak",
 			"--network", "host",
 			"--hostname", "127.0.0.1",
+			"--cpus", "1",
+			"--memory", "1536m",
 			"-e", "KC_BOOTSTRAP_ADMIN_USERNAME=admin",
 			"-e", "KC_BOOTSTRAP_ADMIN_PASSWORD=admin",
+			"-e", "JAVA_OPTS_APPEND=-Xms128m -Xmx768m -XX:MaxMetaspaceSize=256m -XX:ActiveProcessorCount=1",
 			"registry.cn-shenzhen.aliyuncs.com/wl4g/keycloak:26.7.0",
 			"start-dev", "--hostname=127.0.0.1", "--hostname-strict=false",
 		)
@@ -214,8 +221,14 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 		}
 
 		issuer := "http://127.0.0.1:8080/realms/master"
-		if !waitForURL(t, issuer+"/.well-known/openid-configuration", 120) {
-			t.Logf("Keycloak did not become ready within 120s")
+		if !waitForURL(t, issuer+"/.well-known/openid-configuration", 90) {
+			t.Logf("Keycloak did not become ready within 90s; falling back to mock OIDC provider")
+			_ = exec.Command("/bin/docker", "rm", "-f", "mcpfather-keycloak").Run()
+			mockIssuer, ok := startSharedMockOIDCProvider(t)
+			if ok {
+				sharedKeycloakIssuer = mockIssuer
+				sharedKeycloakOK = true
+			}
 			return
 		}
 
@@ -231,6 +244,100 @@ func ensureKeycloak(t *testing.T) (issuer string, cleanup func()) {
 		t.Skipf("Keycloak not available -- skipping")
 	}
 	return sharedKeycloakIssuer, noop
+}
+
+func startSharedMockOIDCProvider(t *testing.T) (issuer string, ok bool) {
+	t.Helper()
+
+	binPath := filepath.Join(t.TempDir(), "mockoidcsvc")
+	srcDir := filepath.Join(repoRoot(t), "it", "cmd", "mockoidcsvc")
+	logProgress("[mock-oidc] building shared mockoidcsvc from %s", srcDir)
+	buildCmd := exec.Command("go", "build", "-p", "1", "-o", binPath, srcDir)
+	buildCmd.Env = append(os.Environ(), testBuildEnv(t)...)
+	if out, err := buildCmd.CombinedOutput(); err != nil {
+		t.Logf("build shared mockoidcsvc: %v\n%s", err, out)
+		return "", false
+	}
+
+	cmd := exec.Command(binPath, "-clients", "mcpfather-client:mcpfather-secret,test-client:test-secret")
+	cmd.Stderr = os.Stderr
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Logf("shared mockoidcsvc stdout pipe: %v", err)
+		return "", false
+	}
+	if err := cmd.Start(); err != nil {
+		t.Logf("start shared mockoidcsvc: %v", err)
+		return "", false
+	}
+
+	ch := make(chan string, 1)
+	go func() {
+		reader := bufio.NewReader(stdout)
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			ch <- ""
+			return
+		}
+		go io.Copy(io.Discard, reader)
+		ch <- strings.TrimSpace(line)
+	}()
+
+	var addr string
+	select {
+	case addr = <-ch:
+	case <-time.After(10 * time.Second):
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Log("shared mockoidcsvc did not print address within 10s")
+		return "", false
+	}
+	if addr == "" {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		t.Log("shared mockoidcsvc failed to print listen address")
+		return "", false
+	}
+
+	baseURL := "http://" + addr
+	for i := 0; i < 50; i++ {
+		resp, err := http.Get(baseURL + "/health")
+		if err == nil {
+			resp.Body.Close()
+			if resp.StatusCode == http.StatusOK {
+				t.Logf("Shared mock OIDC provider ready at %s", baseURL)
+				registerSharedMockOIDCProvider(cmd)
+				return baseURL, true
+			}
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	_ = cmd.Process.Kill()
+	_ = cmd.Wait()
+	t.Log("shared mockoidcsvc health check failed")
+	return "", false
+}
+
+func registerSharedMockOIDCProvider(cmd *exec.Cmd) {
+	sharedMockOIDCMu.Lock()
+	defer sharedMockOIDCMu.Unlock()
+	sharedMockOIDCCmds = append(sharedMockOIDCCmds, cmd)
+}
+
+func cleanupSharedMockOIDCProviders() {
+	sharedMockOIDCMu.Lock()
+	cmds := sharedMockOIDCCmds
+	sharedMockOIDCCmds = nil
+	sharedMockOIDCMu.Unlock()
+
+	for _, cmd := range cmds {
+		if cmd == nil || cmd.Process == nil {
+			continue
+		}
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+	}
 }
 
 func waitForURL(t *testing.T, u string, maxSec int) bool {
@@ -397,7 +504,8 @@ func setupKeycloakTestRealm(t *testing.T, adminToken, importFile string) {
 
 func keycloakClientCredentialsToken(t *testing.T, issuer string) string {
 	t.Helper()
-	resp, err := http.PostForm(issuer+"/protocol/openid-connect/token",
+	discovery := oidcDiscovery(t, issuer)
+	resp, err := http.PostForm(discovery.TokenEndpoint,
 		url.Values{
 			"grant_type":    {"client_credentials"},
 			"client_id":     {"mcpfather-client"},
@@ -420,6 +528,36 @@ func keycloakClientCredentialsToken(t *testing.T, issuer string) string {
 		t.Fatal("client_credentials response missing access_token")
 	}
 	return result.AccessToken
+}
+
+type oidcDiscoveryDocument struct {
+	TokenEndpoint               string `json:"token_endpoint"`
+	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
+}
+
+func oidcDiscovery(t *testing.T, issuer string) oidcDiscoveryDocument {
+	t.Helper()
+	resp, err := http.Get(issuer + "/.well-known/openid-configuration")
+	if err != nil {
+		t.Fatalf("OIDC discovery request failed: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("OIDC discovery: HTTP %d: %s", resp.StatusCode, string(body))
+	}
+	var doc oidcDiscoveryDocument
+	if err := json.NewDecoder(resp.Body).Decode(&doc); err != nil {
+		t.Fatalf("decode OIDC discovery: %v", err)
+	}
+	if doc.TokenEndpoint == "" {
+		t.Fatal("OIDC discovery missing token_endpoint")
+	}
+	return doc
+}
+
+func isRealKeycloakIssuer(issuer string) bool {
+	return strings.Contains(issuer, "/realms/")
 }
 
 // ---------------------------------------------------------------------------
@@ -577,8 +715,9 @@ func keycloakApproveDeviceCode(t *testing.T, issuer, userCode string) {
 
 func keycloakPollDeviceToken(t *testing.T, issuer, deviceCode string) string {
 	t.Helper()
+	discovery := oidcDiscovery(t, issuer)
 	for attempt := 0; attempt < 30; attempt++ {
-		resp, err := http.PostForm(issuer+"/protocol/openid-connect/token",
+		resp, err := http.PostForm(discovery.TokenEndpoint,
 			url.Values{
 				"grant_type":    {"urn:ietf:params:oauth:grant-type:device_code"},
 				"device_code":   {deviceCode},
@@ -620,7 +759,11 @@ func keycloakPollDeviceToken(t *testing.T, issuer, deviceCode string) string {
 
 func keycloakInitDeviceAuth(t *testing.T, issuer string) (deviceCode, userCode string) {
 	t.Helper()
-	resp, err := http.PostForm(issuer+"/protocol/openid-connect/auth/device",
+	discovery := oidcDiscovery(t, issuer)
+	if discovery.DeviceAuthorizationEndpoint == "" {
+		t.Fatal("OIDC discovery missing device_authorization_endpoint")
+	}
+	resp, err := http.PostForm(discovery.DeviceAuthorizationEndpoint,
 		url.Values{
 			"client_id":     {"mcpfather-client"},
 			"client_secret": {"mcpfather-secret"},
@@ -986,8 +1129,12 @@ server:
 	t.Logf("Step 5: device code issued — user_code=%s", userCode)
 
 	// Step 6: User approves on device page (automated)
-	keycloakApproveDeviceCode(t, issuer, userCode)
-	t.Logf("Step 6: device approved by user")
+	if isRealKeycloakIssuer(issuer) {
+		keycloakApproveDeviceCode(t, issuer, userCode)
+		t.Logf("Step 6: device approved by user")
+	} else {
+		t.Logf("Step 6: mock OIDC provider auto-approves device code")
+	}
 
 	// Step 7: Poll token endpoint
 	token := keycloakPollDeviceToken(t, issuer, deviceCode)
