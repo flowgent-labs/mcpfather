@@ -254,12 +254,28 @@ func (c *Converter) extractMultipartFileArgs(operation *openapi3.Operation) ([]F
 		if mediaType == nil || mediaType.Schema == nil || mediaType.Schema.Value == nil {
 			continue
 		}
-		fileArgs, formArgs := c.extractMultipartFileArgsFromSchema(mediaType.Schema.Value)
+		fileArgs, formArgs := c.extractMultipartFileArgsFromSchema(mediaType.Schema.Value, multipartEncodingContentTypes(mediaType))
 		if len(fileArgs) > 0 {
 			return fileArgs, formArgs
 		}
 	}
 	return nil, nil
+}
+
+func multipartEncodingContentTypes(mediaType *openapi3.MediaType) map[string]string {
+	if mediaType == nil || len(mediaType.Encoding) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(mediaType.Encoding))
+	for name, enc := range mediaType.Encoding {
+		if enc == nil {
+			continue
+		}
+		if ct := strings.TrimSpace(enc.ContentType); ct != "" {
+			out[name] = ct
+		}
+	}
+	return out
 }
 
 func replaceBodyWithFileRefArgs(tool *Tool, fileArgs []FileArg, formArgs []Arg) {
@@ -286,7 +302,7 @@ func replaceBodyWithFileRefArgs(tool *Tool, fileArgs []FileArg, formArgs []Arg) 
 	tool.FileArgs = fileArgs
 }
 
-func (c *Converter) extractMultipartFileArgsFromSchema(schema *openapi3.Schema) ([]FileArg, []Arg) {
+func (c *Converter) extractMultipartFileArgsFromSchema(schema *openapi3.Schema, partContentTypes map[string]string) ([]FileArg, []Arg) {
 	properties := make(map[string]*openapi3.Schema)
 	requiredSet := make(map[string]bool)
 	collectObjectProperties(schema, properties, requiredSet, true, make(map[*openapi3.Schema]bool))
@@ -312,6 +328,7 @@ func (c *Converter) extractMultipartFileArgsFromSchema(schema *openapi3.Schema) 
 				Name:        name,
 				Description: prop.Description,
 				Required:    requiredSet[name],
+				ContentType: strings.TrimSpace(partContentTypes[name]),
 			})
 			continue
 		}
@@ -321,10 +338,11 @@ func (c *Converter) extractMultipartFileArgsFromSchema(schema *openapi3.Schema) 
 			continue
 		}
 		formArg := Arg{
-			Name:        name,
-			Description: prop.Description,
-			Source:      "body",
-			Required:    requiredSet[name],
+			Name:                 name,
+			Description:          prop.Description,
+			Source:               "body",
+			Required:             requiredSet[name],
+			MultipartContentType: strings.TrimSpace(partContentTypes[name]),
 		}
 		if propSchema != nil {
 			formArg.Schema = propSchema
