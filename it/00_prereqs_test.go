@@ -368,9 +368,6 @@ func setCNEnv() {
 	if v, ok := os.LookupEnv("GONOSUMDB"); !ok || v == "" {
 		os.Setenv("GONOSUMDB", "*")
 	}
-	if v, ok := os.LookupEnv("GONOSUMCHECK"); !ok || v == "" {
-		os.Setenv("GONOSUMCHECK", "*")
-	}
 }
 
 func testNetworkProxyConfigured() bool {
