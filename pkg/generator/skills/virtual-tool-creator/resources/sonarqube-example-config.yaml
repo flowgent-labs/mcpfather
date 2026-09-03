@@ -136,13 +136,12 @@ native_tools:
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
 # Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtual_tools:
-  # ---- get_newcode_issues --------------------------------------------------
+  # ---- get_newcode_issues ---------------------------------------------------
   - name: get_newcode_issues
     enabled: true
     description: |
-      Get all issues for new/changed code in a pull request on a branch,
-      optionally filtered by source file path. Returns minimal fields +
-      code snippet lines to conserve AI agent tokens.
+      Get compact PR new-code findings for AI agents: Sonar issues, uncovered
+      source lines and conditions, plus duplication metrics by file.
     input_schema:
       type: object
       required: [projectKey, branch, pullRequest]
@@ -162,9 +161,22 @@ virtual_tools:
           description: Optional file path filter. Full SonarQube component key (e.g., "rengine:src/main/java/Foo.java") or relative path under project.
         limit:
           type: integer
-          default: 50
+          default: 500
           minimum: 1
           maximum: 500
+          description: SonarQube API page size used while retrieving all PR issues.
+        coveragePageSize:
+          type: integer
+          default: 500
+          minimum: 1
+          maximum: 500
+          description: SonarQube API page size used while retrieving PR coverage components.
+        sourceLineLimit:
+          type: integer
+          default: 20000
+          minimum: 1
+          maximum: 50000
+          description: Maximum source line number to request per uncovered file.
         snippetConcurrency:
           type: integer
           default: 6
@@ -178,24 +190,339 @@ virtual_tools:
           expr: |
             {
               scope: (if (.component // "") != "" then .component else .projectKey end),
-              limit: (.limit // 50),
+              limit: (.limit // 500),
+              coveragePageSize: (.coveragePageSize // 500),
+              sourceLineLimit: (.sourceLineLimit // 20000),
               snippetConcurrency: (.snippetConcurrency // 6)
             }
-      - id: rawIssues
-        kind: call
+      - id: issueSeed
+        kind: http
         spec:
-          tool: GetIssuesSearch
+          upstream: default
+          method: GET
+          path: /api/issues/search
           parse: json
-          args:
-            components: $opts.scope
-            branch: $input.branch
+          query:
+            componentKeys: $opts.scope
             pullRequest: $input.pullRequest
             types: "CODE_SMELL,BUG,VULNERABILITY"
             resolved: "false"
-            ps: $opts.limit
+            additionalFields: "_all"
+            s: "FILE_LINE"
+            asc: "true"
+            ps: 1
+            p: 1
         require:
           field: "issues"
-          message: SonarQube issues search response is missing the issues field.
+          message: No issues found for the given project, branch and pull request.
+      - id: issuePageNumbers
+        kind: jq
+        spec:
+          from: $issueSeed
+          vars:
+            pageSize: $opts.limit
+          expr: |
+            [range(1; ((((.total // 0) / $pageSize) | ceil) + 1))]
+      - id: issuePages
+        kind: foreach
+        spec:
+          in: $issuePageNumbers
+          as: page
+          onMissing: skip
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: issuePage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: /api/issues/search
+                parse: json
+                query:
+                  componentKeys: $opts.scope
+                  pullRequest: $input.pullRequest
+                  types: "CODE_SMELL,BUG,VULNERABILITY"
+                  resolved: "false"
+                  additionalFields: "_all"
+                  s: "FILE_LINE"
+                  asc: "true"
+                  ps: $opts.limit
+                  p: $page
+            - id: emitIssuePage
+              kind: emit
+              spec:
+                from: $issuePage
+      - id: rawIssues
+        kind: jq
+        spec:
+          from: $issuePages
+          vars:
+            seed: $issueSeed
+          expr: |
+            {
+              total: ($seed.total // 0),
+              issues: [.[] | .issues[]?]
+            }
+      - id: coverageSeed
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /api/measures/component_tree
+          parse: json
+          query:
+            component: $opts.scope
+            pullRequest: $input.pullRequest
+            metricKeys: "new_coverage,new_lines_to_cover,new_uncovered_lines,new_line_coverage,new_conditions_to_cover,new_uncovered_conditions"
+            strategy: leaves
+            qualifiers: FIL
+            s: metric
+            metricSort: new_coverage
+            metricSortFilter: withMeasuresOnly
+            asc: "true"
+            ps: 1
+            p: 1
+      - id: coveragePageNumbers
+        kind: jq
+        spec:
+          from: $coverageSeed
+          vars:
+            pageSize: $opts.coveragePageSize
+          expr: |
+            [range(1; (((((.paging.total // 0) / $pageSize) | ceil) + 1)))]
+      - id: coveragePages
+        kind: foreach
+        spec:
+          in: $coveragePageNumbers
+          as: page
+          onMissing: skip
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: coveragePage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: /api/measures/component_tree
+                parse: json
+                query:
+                  component: $opts.scope
+                  pullRequest: $input.pullRequest
+                  metricKeys: "new_coverage,new_lines_to_cover,new_uncovered_lines,new_line_coverage,new_conditions_to_cover,new_uncovered_conditions"
+                  strategy: leaves
+                  qualifiers: FIL
+                  s: metric
+                  metricSort: new_coverage
+                  metricSortFilter: withMeasuresOnly
+                  asc: "true"
+                  ps: $opts.coveragePageSize
+                  p: $page
+            - id: emitCoveragePage
+              kind: emit
+              spec:
+                from: $coveragePage
+      - id: coverage
+        kind: jq
+        spec:
+          from: $coveragePages
+          vars:
+            seed: $coverageSeed
+          expr: |
+            {
+              baseComponent: ($seed.baseComponent // null),
+              total: ($seed.paging.total // 0),
+              components: [
+                .[] | .components[]?
+                | (.measures // [] | map({
+                    metric,
+                    value: (.value // .period.value // (.periods[0].value? // null)),
+                    bestValue: (.bestValue // .period.bestValue // (.periods[0].bestValue? // null)),
+                    period: (.period // null),
+                    periods: (.periods // [])
+                  })) as $measures
+                | {
+                    key,
+                    name,
+                    qualifier,
+                    path: (.path // null),
+                    language: (.language // null),
+                    newCoverage: (first($measures[]? | select(.metric == "new_coverage") | .value) // null),
+                    newLineCoverage: (first($measures[]? | select(.metric == "new_line_coverage") | .value) // null),
+                    newLinesToCover: (first($measures[]? | select(.metric == "new_lines_to_cover") | .value) // null),
+                    newUncoveredLines: (first($measures[]? | select(.metric == "new_uncovered_lines") | .value) // null),
+                    newConditionsToCover: (first($measures[]? | select(.metric == "new_conditions_to_cover") | .value) // null),
+                    newUncoveredConditions: (first($measures[]? | select(.metric == "new_uncovered_conditions") | .value) // null),
+                    measures: $measures
+                  }
+              ]
+            }
+      - id: duplicateSeed
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /api/measures/component_tree
+          parse: json
+          query:
+            component: $opts.scope
+            pullRequest: $input.pullRequest
+            metricKeys: "new_duplicated_lines_density,new_duplicated_lines,new_duplicated_blocks"
+            strategy: leaves
+            qualifiers: FIL
+            s: metric
+            metricSort: new_duplicated_lines_density
+            metricSortFilter: withMeasuresOnly
+            asc: "false"
+            ps: 1
+            p: 1
+      - id: duplicatePageNumbers
+        kind: jq
+        spec:
+          from: $duplicateSeed
+          vars:
+            pageSize: $opts.coveragePageSize
+          expr: |
+            [range(1; (((((.paging.total // 0) / $pageSize) | ceil) + 1)))]
+      - id: duplicatePages
+        kind: foreach
+        spec:
+          in: $duplicatePageNumbers
+          as: page
+          onMissing: skip
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: duplicatePage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: /api/measures/component_tree
+                parse: json
+                query:
+                  component: $opts.scope
+                  pullRequest: $input.pullRequest
+                  metricKeys: "new_duplicated_lines_density,new_duplicated_lines,new_duplicated_blocks"
+                  strategy: leaves
+                  qualifiers: FIL
+                  s: metric
+                  metricSort: new_duplicated_lines_density
+                  metricSortFilter: withMeasuresOnly
+                  asc: "false"
+                  ps: $opts.coveragePageSize
+                  p: $page
+            - id: emitDuplicatePage
+              kind: emit
+              spec:
+                from: $duplicatePage
+      - id: duplicateMetrics
+        kind: jq
+        spec:
+          from: $duplicatePages
+          vars:
+            seed: $duplicateSeed
+          expr: |
+            {
+              total: ($seed.paging.total // 0),
+              files: [
+                .[] | .components[]?
+                | (.measures // [] | map({
+                    metric,
+                    value: (.value // .period.value // (.periods[0].value? // null))
+                  })) as $measures
+                | {
+                    key,
+                    path: (.path // null),
+                    density: (first($measures[]? | select(.metric == "new_duplicated_lines_density") | .value) // null),
+                    lines: (first($measures[]? | select(.metric == "new_duplicated_lines") | .value) // null),
+                    blocks: (first($measures[]? | select(.metric == "new_duplicated_blocks") | .value) // null)
+                  }
+                | select(((((.density // "0") | tonumber?) // 0) > 0) or ((((.lines // "0") | tonumber?) // 0) > 0) or ((((.blocks // "0") | tonumber?) // 0) > 0))
+              ]
+            }
+      - id: uncoveredCoverageFiles
+        kind: jq
+        spec:
+          from: $coverage
+          expr: |
+            [
+              .components[]?
+              | select((((.newUncoveredLines // "0") | tonumber?) // 0) > 0 or (((.newUncoveredConditions // "0") | tonumber?) // 0) > 0)
+            ]
+      - id: uncoveredCoverage
+        kind: foreach
+        spec:
+          in: $uncoveredCoverageFiles
+          as: file
+          onMissing: skip
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: sourceLines
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: /api/sources/lines
+                parse: json
+                query:
+                  key: $file.key
+                  pullRequest: $input.pullRequest
+                  from: 1
+                  to: $opts.sourceLineLimit
+            - id: emitUncoveredFile
+              kind: emit
+              spec:
+                from: $file
+                vars:
+                  file: $file
+                  sourceLines: $sourceLines
+                expr: |
+                  (($sourceLines.sources // $sourceLines.lines // $sourceLines.source // []) as $lines
+                  | {
+                    key: $file.key,
+                    path: $file.path,
+                    newUncoveredLines: $file.newUncoveredLines,
+                    newUncoveredConditions: $file.newUncoveredConditions,
+                    uncoveredLines: [
+                      $lines[]?
+                      | select((.isNew // .new // false) == true)
+                      | select((((.lineHits // .hits // -1) | tonumber?) // -1) == 0)
+                      | {
+                          line: (.line // .lineNumber),
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          )
+                        }
+                    ],
+                    uncoveredConditions: [
+                      $lines[]?
+                      | select((.isNew // .new // false) == true)
+                      | select(((((.conditions // 0) | tonumber?) // 0) > (((.coveredConditions // 0) | tonumber?) // 0)))
+                      | {
+                          line: (.line // .lineNumber),
+                          code: (.code
+                            | gsub("<[^>]*>"; "")
+                            | gsub("&amp;"; "&")
+                            | gsub("&gt;"; ">")
+                            | gsub("&lt;"; "<")
+                            | gsub("&quot;"; "\"")
+                            | sub("^\\s+"; "")
+                            | sub("\\s+$"; "")
+                          ),
+                          conditions: (.conditions // null),
+                          coveredConditions: (.coveredConditions // null)
+                        }
+                    ]
+                  })
       - id: enriched
         kind: foreach
         spec:
@@ -217,20 +544,22 @@ virtual_tools:
               spec:
                 from: $issue
                 vars:
+                  issue: $issue
                   snippet: $snippet
                 expr: |
                   {
-                    key,
-                    rule,
-                    severity,
-                    type,
-                    message,
-                    component,
-                    startLine: (.textRange.startLine // .line),
-                    endLine: (.textRange.endLine // .line),
-                    debt,
+                    key: $issue.key,
+                    rule: $issue.rule,
+                    severity: $issue.severity,
+                    type: $issue.type,
+                    message: $issue.message,
+                    component: $issue.component,
+                    path: (($issue.component // "") | split(":") | .[-1]),
+                    startLine: ($issue.textRange.startLine // $issue.line),
+                    endLine: ($issue.textRange.endLine // $issue.line),
+                    debt: $issue.debt,
                     codeSnippet: [
-                      ($snippet | .[] | .sources[]?)
+                      ($snippet // {} | to_entries[] | .value | objects | .sources[]?)
                       | {
                           lineNumber: .line,
                           code: (.code
@@ -253,17 +582,66 @@ virtual_tools:
             project: $input.projectKey
             branch: $input.branch
             pullRequest: $input.pullRequest
-            total: $rawIssues.total
+            rawIssues: $rawIssues
+            uncoveredCoverage: $uncoveredCoverage
+            duplicateMetrics: $duplicateMetrics
           expr: |
-            {
+            ($uncoveredCoverage // []) as $coverageFiles
+            | . as $issueItems
+            | [
+                $coverageFiles[]?
+                | select(((((.newUncoveredLines // "0") | tonumber?) // 0) > 0))
+                | {
+                    key: .key,
+                    path: .path,
+                    value: .newUncoveredLines,
+                    lines: (.uncoveredLines // [])
+                  }
+              ] as $uncoveredLineFiles
+            | [
+                $coverageFiles[]?
+                | select(((((.newUncoveredConditions // "0") | tonumber?) // 0) > 0))
+                | {
+                    key: .key,
+                    path: .path,
+                    value: .newUncoveredConditions,
+                    lines: (.uncoveredConditions // [])
+                  }
+              ] as $uncoveredConditionFiles
+            | [
+                ($duplicateMetrics.files // [])[]?
+                | select(((((.density // "0") | tonumber?) // 0) > 0))
+                | {key, path, value: .density, lines: .lines, blocks: .blocks}
+              ] as $duplicateDensityFiles
+            | [
+                ($duplicateMetrics.files // [])[]?
+                | select(((((.lines // "0") | tonumber?) // 0) > 0))
+                | {key, path, value: .lines, density: .density, blocks: .blocks}
+              ] as $duplicateLineFiles
+            | {
               project: $project,
               branch: $branch,
               pullRequest: $pullRequest,
               summary: {
-                total: $total,
-                returned: length
+                sonarIssues: {
+                  total: ($rawIssues.total // ($issueItems | length)),
+                  returned: ($issueItems | length)
+                },
+                uncoveredLineFiles: ($uncoveredLineFiles | length),
+                uncoveredLines: ([$uncoveredLineFiles[]? | .lines[]?] | length),
+                uncoveredConditionFiles: ($uncoveredConditionFiles | length),
+                uncoveredConditions: ([$uncoveredConditionFiles[]? | .lines[]?] | length),
+                duplicateDensityFiles: ($duplicateDensityFiles | length),
+                duplicateLineFiles: ($duplicateLineFiles | length),
+                totalActionItems: (($issueItems | length) + ($uncoveredLineFiles | length) + ($uncoveredConditionFiles | length) + ($duplicateDensityFiles | length) + ($duplicateLineFiles | length))
               },
-              issues: .
+              buckets: {
+                sonarIssues: $issueItems,
+                uncoveredLines: $uncoveredLineFiles,
+                uncoveredConditions: $uncoveredConditionFiles,
+                duplicateDensity: $duplicateDensityFiles,
+                duplicateLines: $duplicateLineFiles
+              }
             }
 
   # ---- get_overall_issues ---------------------------------------------------
@@ -326,7 +704,8 @@ virtual_tools:
             ps: $opts.limit
         require:
           field: "issues"
-          message: SonarQube issues search response is missing the issues field.
+          nonEmpty: true
+          message: No issues found for the given project and branch.
       - id: enriched
         kind: foreach
         spec:
@@ -348,20 +727,22 @@ virtual_tools:
               spec:
                 from: $issue
                 vars:
+                  issue: $issue
                   snippet: $snippet
                 expr: |
                   {
-                    key,
-                    rule,
-                    severity,
-                    type,
-                    message,
-                    component,
-                    startLine: (.textRange.startLine // .line),
-                    endLine: (.textRange.endLine // .line),
-                    debt,
+                    key: $issue.key,
+                    rule: $issue.rule,
+                    severity: $issue.severity,
+                    type: $issue.type,
+                    message: $issue.message,
+                    component: $issue.component,
+                    path: (($issue.component // "") | split(":") | .[-1]),
+                    startLine: ($issue.textRange.startLine // $issue.line),
+                    endLine: ($issue.textRange.endLine // $issue.line),
+                    debt: $issue.debt,
                     codeSnippet: [
-                      ($snippet | .[] | .sources[]?)
+                      ($snippet // {} | to_entries[] | .value | objects | .sources[]?)
                       | {
                           lineNumber: .line,
                           code: (.code
@@ -385,12 +766,19 @@ virtual_tools:
             branch: $input.branch
             total: $rawIssues.total
           expr: |
-            {
+            . as $issueItems
+            | {
               project: $project,
               branch: $branch,
               summary: {
-                total: $total,
-                returned: length
+                sonarIssues: {
+                  total: $total,
+                  returned: ($issueItems | length)
+                },
+                totalActionItems: ($issueItems | length)
               },
-              issues: .
+              buckets: {
+                sonarIssues: $issueItems
+              },
+              issues: $issueItems
             }
