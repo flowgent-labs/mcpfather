@@ -1108,25 +1108,159 @@ func assertVirtualMockRequest(t *testing.T, request VirtualMockRequest, path str
 	}
 }
 
-func expectedSonarQubeEmptyIssuesResult(t *testing.T, pullRequest string) []byte {
+func sonarQubeNewCodeIssueQuery(scope, pullRequest, pageSize string) map[string]string {
+	return map[string]string{
+		"componentKeys":    scope,
+		"pullRequest":      pullRequest,
+		"types":            "CODE_SMELL,BUG,VULNERABILITY",
+		"resolved":         "false",
+		"additionalFields": "_all",
+		"s":                "FILE_LINE",
+		"asc":              "true",
+		"ps":               pageSize,
+		"p":                "1",
+	}
+}
+
+func sonarQubeNewCodeMeasureQuery(scope, pullRequest, metricKeys, metricSort, ascending, pageSize string) map[string]string {
+	return map[string]string{
+		"component":        scope,
+		"pullRequest":      pullRequest,
+		"metricKeys":       metricKeys,
+		"strategy":         "leaves",
+		"qualifiers":       "FIL",
+		"s":                "metric",
+		"metricSort":       metricSort,
+		"metricSortFilter": "withMeasuresOnly",
+		"asc":              ascending,
+		"ps":               pageSize,
+		"p":                "1",
+	}
+}
+
+func marshalExpectedVirtualResult(t *testing.T, result map[string]interface{}) []byte {
 	t.Helper()
-	result := map[string]interface{}{
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatalf("marshal expected virtual result: %v", err)
+	}
+	return data
+}
+
+func expectedSonarQubeIssues(t *testing.T, fixture []byte) []interface{} {
+	t.Helper()
+	result := mustJSON(t, string(fixture))
+	issues, ok := result["issues"].([]interface{})
+	if !ok {
+		t.Fatalf("SonarQube fixture issues = %T, want array", result["issues"])
+	}
+	for _, rawIssue := range issues {
+		issue, ok := rawIssue.(map[string]interface{})
+		if !ok {
+			t.Fatalf("SonarQube fixture issue = %T, want object", rawIssue)
+		}
+		issue["path"] = sonarQubeComponentPath
+	}
+	return issues
+}
+
+func expectedSonarQubeOverallResult(t *testing.T, issues []interface{}) []byte {
+	t.Helper()
+	return marshalExpectedVirtualResult(t, map[string]interface{}{
 		"project": sonarQubeProject,
 		"branch":  sonarQubeBranch,
 		"summary": map[string]interface{}{
-			"total":    0,
-			"returned": 0,
+			"sonarIssues": map[string]interface{}{
+				"total":    len(issues),
+				"returned": len(issues),
+			},
+			"totalActionItems": len(issues),
 		},
-		"issues": []interface{}{},
+		"buckets": map[string]interface{}{
+			"sonarIssues": issues,
+		},
+		"issues": issues,
+	})
+}
+
+func expectedSonarQubeNewCodeResult(t *testing.T, issues []interface{}, pullRequest string) []byte {
+	t.Helper()
+	uncoveredLineFiles := []interface{}{}
+	uncoveredConditionFiles := []interface{}{}
+	duplicateDensityFiles := []interface{}{}
+	duplicateLineFiles := []interface{}{}
+	if len(issues) > 0 {
+		uncoveredLineFiles = []interface{}{
+			map[string]interface{}{
+				"key":   sonarQubeComponent,
+				"path":  sonarQubeComponentPath,
+				"value": "2",
+				"lines": []interface{}{
+					map[string]interface{}{"line": 66, "code": "if (risky && untested) {"},
+				},
+			},
+		}
+		uncoveredConditionFiles = []interface{}{
+			map[string]interface{}{
+				"key":   sonarQubeComponent,
+				"path":  sonarQubeComponentPath,
+				"value": "1",
+				"lines": []interface{}{
+					map[string]interface{}{
+						"line":              66,
+						"code":              "if (risky && untested) {",
+						"conditions":        2,
+						"coveredConditions": 1,
+					},
+				},
+			},
+		}
+		duplicateDensityFiles = []interface{}{
+			map[string]interface{}{
+				"key":    sonarQubeComponent,
+				"path":   sonarQubeComponentPath,
+				"value":  "3.5",
+				"lines":  "2",
+				"blocks": "1",
+			},
+		}
+		duplicateLineFiles = []interface{}{
+			map[string]interface{}{
+				"key":     sonarQubeComponent,
+				"path":    sonarQubeComponentPath,
+				"value":   "2",
+				"density": "3.5",
+				"blocks":  "1",
+			},
+		}
 	}
-	if pullRequest != "" {
-		result["pullRequest"] = pullRequest
-	}
-	data, err := json.Marshal(result)
-	if err != nil {
-		t.Fatalf("marshal empty SonarQube result: %v", err)
-	}
-	return data
+
+	totalActionItems := len(issues) + len(uncoveredLineFiles) + len(uncoveredConditionFiles) + len(duplicateDensityFiles) + len(duplicateLineFiles)
+	return marshalExpectedVirtualResult(t, map[string]interface{}{
+		"project":     sonarQubeProject,
+		"branch":      sonarQubeBranch,
+		"pullRequest": pullRequest,
+		"summary": map[string]interface{}{
+			"sonarIssues": map[string]interface{}{
+				"total":    len(issues),
+				"returned": len(issues),
+			},
+			"uncoveredLineFiles":      len(uncoveredLineFiles),
+			"uncoveredLines":          len(uncoveredLineFiles),
+			"uncoveredConditionFiles": len(uncoveredConditionFiles),
+			"uncoveredConditions":     len(uncoveredConditionFiles),
+			"duplicateDensityFiles":   len(duplicateDensityFiles),
+			"duplicateLineFiles":      len(duplicateLineFiles),
+			"totalActionItems":        totalActionItems,
+		},
+		"buckets": map[string]interface{}{
+			"sonarIssues":         issues,
+			"uncoveredLines":      uncoveredLineFiles,
+			"uncoveredConditions": uncoveredConditionFiles,
+			"duplicateDensity":    duplicateDensityFiles,
+			"duplicateLines":      duplicateLineFiles,
+		},
+	})
 }
 
 func startVirtualTestServer(t *testing.T, projectDir string, mockURL string, homeDir string) (cleanup func(), baseURL string) {
@@ -1162,7 +1296,9 @@ func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
 	issues := readVirtualFixture(t, "sonarqube/issues_search.json")
 	emptyIssues := readVirtualFixture(t, "sonarqube/issues_search_empty.json")
 	snippets := readVirtualFixture(t, "sonarqube/issue_snippets.json")
-	expectedOverall := readVirtualFixture(t, "sonarqube/overall_issues_expected.json")
+	expectedIssueFixture := readVirtualFixture(t, "sonarqube/overall_issues_expected.json")
+	expectedIssues := expectedSonarQubeIssues(t, expectedIssueFixture)
+	expectedOverall := expectedSonarQubeOverallResult(t, expectedIssues)
 
 	mock := NewVirtualMockService()
 	mock.RegisterSonarQubeRealScenario(issues, emptyIssues, snippets)
@@ -1267,35 +1403,51 @@ func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
 		})
 	})
 
-	t.Run("new code issues forwards pull request", func(t *testing.T) {
+	t.Run("new code issues returns all action buckets", func(t *testing.T) {
 		mock.Reset()
 		const pullRequest = "42"
 		result := mcpCallVirtualTool(t, baseURL, "get_newcode_issues", map[string]interface{}{
-			"projectKey":  sonarQubeProject,
-			"branch":      sonarQubeBranch,
-			"pullRequest": pullRequest,
-			"component":   sonarQubeComponent,
+			"projectKey":         sonarQubeProject,
+			"branch":             sonarQubeBranch,
+			"pullRequest":        pullRequest,
+			"component":          sonarQubeComponent,
+			"limit":              float64(7),
+			"coveragePageSize":   float64(9),
+			"sourceLineLimit":    float64(1234),
+			"snippetConcurrency": float64(2),
 		})
-
-		want := mustJSON(t, string(expectedOverall))
-		want["pullRequest"] = pullRequest
-		wantJSON, err := json.Marshal(want)
-		if err != nil {
-			t.Fatalf("marshal expected new-code result: %v", err)
-		}
-		assertJSONEqual(t, wantJSON, result)
+		assertJSONEqual(t, expectedSonarQubeNewCodeResult(t, expectedIssues, pullRequest), result)
 
 		requests := mock.Requests()
-		if len(requests) != 2 {
-			t.Fatalf("upstream request count = %d, want 2", len(requests))
+		if len(requests) != 8 {
+			t.Fatalf("upstream request count = %d, want 8", len(requests))
 		}
-		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
-			"branch":      sonarQubeBranch,
-			"components":  sonarQubeComponent,
-			"ps":          "50",
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", sonarQubeNewCodeIssueQuery(
+			sonarQubeComponent, pullRequest, "1",
+		))
+		assertVirtualMockRequest(t, requests[1], "/api/issues/search", sonarQubeNewCodeIssueQuery(
+			sonarQubeComponent, pullRequest, "7",
+		))
+		assertVirtualMockRequest(t, requests[2], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeComponent, pullRequest, sonarQubeCoverageMetrics, "new_coverage", "true", "1",
+		))
+		assertVirtualMockRequest(t, requests[3], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeComponent, pullRequest, sonarQubeCoverageMetrics, "new_coverage", "true", "9",
+		))
+		assertVirtualMockRequest(t, requests[4], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeComponent, pullRequest, sonarQubeDuplicateMetrics, "new_duplicated_lines_density", "false", "1",
+		))
+		assertVirtualMockRequest(t, requests[5], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeComponent, pullRequest, sonarQubeDuplicateMetrics, "new_duplicated_lines_density", "false", "9",
+		))
+		assertVirtualMockRequest(t, requests[6], "/api/sources/lines", map[string]string{
+			"key":         sonarQubeComponent,
 			"pullRequest": pullRequest,
-			"resolved":    "false",
-			"types":       "CODE_SMELL,BUG,VULNERABILITY",
+			"from":        "1",
+			"to":          "1234",
+		})
+		assertVirtualMockRequest(t, requests[7], "/api/sources/issue_snippets", map[string]string{
+			"issueKey": sonarQubeIssueKey,
 		})
 	})
 
@@ -1306,7 +1458,7 @@ func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
 			"branch":     sonarQubeBranch,
 			"component":  sonarQubeEmptyComponent,
 		})
-		assertJSONEqual(t, expectedSonarQubeEmptyIssuesResult(t, ""), result)
+		assertJSONEqual(t, expectedSonarQubeOverallResult(t, []interface{}{}), result)
 
 		requests := mock.Requests()
 		if len(requests) != 1 {
@@ -1331,20 +1483,21 @@ func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
 			"pullRequest": pullRequest,
 			"component":   sonarQubeEmptyComponent,
 		})
-		assertJSONEqual(t, expectedSonarQubeEmptyIssuesResult(t, pullRequest), result)
+		assertJSONEqual(t, expectedSonarQubeNewCodeResult(t, []interface{}{}, pullRequest), result)
 
 		requests := mock.Requests()
-		if len(requests) != 1 {
-			t.Fatalf("upstream request count = %d, want 1 search and no snippet calls", len(requests))
+		if len(requests) != 3 {
+			t.Fatalf("upstream request count = %d, want 3 seed requests and no enrichment calls", len(requests))
 		}
-		assertVirtualMockRequest(t, requests[0], "/api/issues/search", map[string]string{
-			"branch":      sonarQubeBranch,
-			"components":  sonarQubeEmptyComponent,
-			"ps":          "50",
-			"pullRequest": pullRequest,
-			"resolved":    "false",
-			"types":       "CODE_SMELL,BUG,VULNERABILITY",
-		})
+		assertVirtualMockRequest(t, requests[0], "/api/issues/search", sonarQubeNewCodeIssueQuery(
+			sonarQubeEmptyComponent, pullRequest, "1",
+		))
+		assertVirtualMockRequest(t, requests[1], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeEmptyComponent, pullRequest, sonarQubeCoverageMetrics, "new_coverage", "true", "1",
+		))
+		assertVirtualMockRequest(t, requests[2], "/api/measures/component_tree", sonarQubeNewCodeMeasureQuery(
+			sonarQubeEmptyComponent, pullRequest, sonarQubeDuplicateMetrics, "new_duplicated_lines_density", "false", "1",
+		))
 	})
 
 	t.Run("missing required arguments fail before upstream", func(t *testing.T) {

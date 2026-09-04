@@ -112,16 +112,20 @@ func (m *VirtualMockService) Reset() {
 // ===========================================================================
 
 const (
-	sonarQubeProject        = "rengine"
-	sonarQubeBranch         = "main"
-	sonarQubeComponent      = "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java"
-	sonarQubeEmptyComponent = "rengine:__mcpfather_it_missing__.go"
-	sonarQubeIssueKey       = "94d52855-937e-4ff7-8ccf-86ebc3e53c87"
+	sonarQubeProject          = "rengine"
+	sonarQubeBranch           = "main"
+	sonarQubeComponent        = "rengine:apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java"
+	sonarQubeComponentPath    = "apiserver/src/main/java/com/wl4g/rengine/apiserver/controller/WorkflowController.java"
+	sonarQubeEmptyComponent   = "rengine:__mcpfather_it_missing__.go"
+	sonarQubeIssueKey         = "94d52855-937e-4ff7-8ccf-86ebc3e53c87"
+	sonarQubeCoverageMetrics  = "new_coverage,new_lines_to_cover,new_uncovered_lines,new_line_coverage,new_conditions_to_cover,new_uncovered_conditions"
+	sonarQubeDuplicateMetrics = "new_duplicated_lines_density,new_duplicated_lines,new_duplicated_blocks"
 )
 
-// RegisterSonarQubeRealScenario registers the two SonarQube API endpoints used
-// by the issue-enrichment virtual tools. Payloads are captured, unmodified
-// responses from the real API so the mock preserves the production schema.
+// RegisterSonarQubeRealScenario registers the SonarQube API endpoints used by
+// the issue, coverage, and duplication pipelines. Issue and snippet payloads
+// are captured responses; metric and source payloads preserve the production
+// response shape while keeping the expected action buckets deterministic.
 func (m *VirtualMockService) RegisterSonarQubeRealScenario(issues, emptyIssues, snippets []byte) {
 	m.Handle("/api/issues/search", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
@@ -129,8 +133,13 @@ func (m *VirtualMockService) RegisterSonarQubeRealScenario(issues, emptyIssues, 
 			return
 		}
 
+		query := r.URL.Query()
+		scope := query.Get("components")
+		if scope == "" {
+			scope = query.Get("componentKeys")
+		}
 		payload := issues
-		if r.URL.Query().Get("components") == sonarQubeEmptyComponent {
+		if scope == sonarQubeEmptyComponent {
 			payload = emptyIssues
 		}
 		writeRawJSON(w, payload)
@@ -146,6 +155,91 @@ func (m *VirtualMockService) RegisterSonarQubeRealScenario(issues, emptyIssues, 
 			return
 		}
 		writeRawJSON(w, snippets)
+	})
+
+	m.Handle("/api/measures/component_tree", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		query := r.URL.Query()
+		if query.Get("component") == sonarQubeEmptyComponent {
+			writeJSON(w, map[string]interface{}{
+				"paging":     map[string]interface{}{"pageIndex": 1, "pageSize": 1, "total": 0},
+				"components": []interface{}{},
+			})
+			return
+		}
+
+		metricKeys := query.Get("metricKeys")
+		switch metricKeys {
+		case sonarQubeCoverageMetrics:
+			writeJSON(w, map[string]interface{}{
+				"paging": map[string]interface{}{"pageIndex": 1, "pageSize": 500, "total": 1},
+				"components": []interface{}{
+					map[string]interface{}{
+						"key":       sonarQubeComponent,
+						"name":      "WorkflowController.java",
+						"qualifier": "FIL",
+						"path":      sonarQubeComponentPath,
+						"language":  "java",
+						"measures": []interface{}{
+							map[string]interface{}{"metric": "new_coverage", "period": map[string]interface{}{"value": "75.0"}},
+							map[string]interface{}{"metric": "new_uncovered_lines", "period": map[string]interface{}{"value": "2"}},
+							map[string]interface{}{"metric": "new_uncovered_conditions", "period": map[string]interface{}{"value": "1"}},
+						},
+					},
+				},
+			})
+		case sonarQubeDuplicateMetrics:
+			writeJSON(w, map[string]interface{}{
+				"paging": map[string]interface{}{"pageIndex": 1, "pageSize": 500, "total": 1},
+				"components": []interface{}{
+					map[string]interface{}{
+						"key":  sonarQubeComponent,
+						"path": sonarQubeComponentPath,
+						"measures": []interface{}{
+							map[string]interface{}{"metric": "new_duplicated_lines_density", "period": map[string]interface{}{"value": "3.5"}},
+							map[string]interface{}{"metric": "new_duplicated_lines", "period": map[string]interface{}{"value": "2"}},
+							map[string]interface{}{"metric": "new_duplicated_blocks", "period": map[string]interface{}{"value": "1"}},
+						},
+					},
+				},
+			})
+		default:
+			http.Error(w, "unexpected metricKeys", http.StatusBadRequest)
+		}
+	})
+
+	m.Handle("/api/sources/lines", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Query().Get("key") != sonarQubeComponent {
+			http.Error(w, "component not found", http.StatusNotFound)
+			return
+		}
+		writeJSON(w, map[string]interface{}{
+			"sources": []interface{}{
+				map[string]interface{}{
+					"line":              66,
+					"code":              "  if (risky &amp;&amp; untested) {  ",
+					"isNew":             true,
+					"lineHits":          0,
+					"conditions":        2,
+					"coveredConditions": 1,
+				},
+				map[string]interface{}{
+					"line":       67,
+					"code":       "covered();",
+					"isNew":      true,
+					"lineHits":   1,
+					"conditions": 0,
+				},
+			},
+		})
 	})
 }
 
