@@ -169,7 +169,7 @@ func mcpfatherBuildRequired(t *testing.T, root, bin string) bool {
 		}
 		if info.IsDir() {
 			switch info.Name() {
-			case ".git", "bin", "usecase":
+			case ".git", "bin", "use-cases":
 				return filepath.SkipDir
 			}
 			return nil

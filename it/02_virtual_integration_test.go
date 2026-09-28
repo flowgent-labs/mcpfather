@@ -21,6 +21,7 @@ import (
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/config"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/engine"
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/pipeline"
+	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/schemagen"
 )
 
 // ===========================================================================
@@ -1312,14 +1313,15 @@ func TestE2E_SonarQube_RealVirtualTools(t *testing.T) {
 		t.Fatalf("read production SonarQube config: %v", err)
 	}
 
-	homeDir := t.TempDir()
-	writeVirtualConfig(t, homeDir, "sonarqube-mcp", string(configData))
-	cleanup, baseURL := startVirtualTestServer(
+	projectDir := genProjectWithSpec(
 		t,
-		filepath.Join(root, "usecase", "sonarqube-mcp"),
-		mockURL,
-		homeDir,
+		"../use-cases/swaggers/sonarqube/sonarqube-v2026.4.0.124573.oas.3.1.0.json",
+		"getIssuesSearch,getSourcesIssueSnippets",
+		"",
 	)
+	homeDir := t.TempDir()
+	writeVirtualConfig(t, homeDir, filepath.Base(projectDir), string(configData))
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mockURL, homeDir)
 	defer cleanup()
 
 	t.Run("overall issues matches captured response", func(t *testing.T) {
@@ -3288,7 +3290,7 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	serviceName := "sonatypeiq-mcp"
 
@@ -3648,7 +3650,7 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "usecase", "sonatypeiq-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "sonatypeiq-mcp")
 	homeDir := t.TempDir()
 	serviceName := "sonatypeiq-mcp"
 
@@ -3873,6 +3875,43 @@ virtual_tools:
 	validateDSLConfig(t, configYAML, true)
 }
 
+// TestDSLSchema_HTTPResponseShape validates HTTP response references and keeps
+// the generated schema documentation for the body/headers contract covered.
+func TestDSLSchema_HTTPResponseShape(t *testing.T) {
+	configYAML := `
+virtual_tools:
+  - name: csrf_bootstrap
+    input_schema:
+      type: object
+    pipeline:
+      - id: bootstrap
+        kind: http
+        spec:
+          upstream: iq
+          method: GET
+          path: /assets/index.html
+      - id: done
+        kind: return
+        spec:
+          from: $bootstrap.headers.Set-Cookie
+`
+	validateDSLConfig(t, configYAML, true)
+
+	schema := dslschema.Generate()
+	defs, ok := schema["$defs"].(schemagen.Schema)
+	if !ok {
+		t.Fatal("generated schema has no $defs")
+	}
+	httpSpec, ok := defs["HTTPSpec"].(schemagen.Schema)
+	if !ok {
+		t.Fatal("generated schema has no HTTPSpec")
+	}
+	description, _ := httpSpec["description"].(string)
+	if !strings.Contains(description, "body and headers") {
+		t.Fatalf("HTTPSpec response contract is undocumented: %q", description)
+	}
+}
+
 // TestDSLSchema_AnnotationsField validates the 'annotations' field on virtual tools.
 func TestDSLSchema_AnnotationsField(t *testing.T) {
 	configYAML := `
@@ -3960,6 +3999,25 @@ func TestDSLSchema_SchemaFileIsCurrent(t *testing.T) {
 
 	if string(genJSON) != string(fileJSON) {
 		t.Error("dsl-schema.json is out of date. Run: make gen-config-dsl-schema")
+	}
+}
+
+// TestDSLSchema_ShippedVirtualToolConfigs verifies every maintained example
+// config stays valid as the HTTP response contract evolves.
+func TestDSLSchema_ShippedVirtualToolConfigs(t *testing.T) {
+	resourceDir := filepath.Join(repoRoot(t), "pkg", "generator", "skills", "virtual-tool-creator", "resources")
+	for _, name := range []string{
+		"sonarqube-example-config.yaml",
+		"sonatypeiq-example-config.yaml",
+		"sonatypenexus-example-config.yaml",
+	} {
+		t.Run(name, func(t *testing.T) {
+			config, err := os.ReadFile(filepath.Join(resourceDir, name))
+			if err != nil {
+				t.Fatalf("read example config: %v", err)
+			}
+			validateDSLConfig(t, string(config), true)
+		})
 	}
 }
 
@@ -4457,7 +4515,7 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 	defer iqMock.Close()
 
 	// ── Config ──
-	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
 	homeDir := t.TempDir()
 
 	// Build the complete config with both upstreams
@@ -4780,7 +4838,7 @@ func TestE2E_HTTPStep_Minimal(t *testing.T) {
 	})
 	defer echoMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
 	homeDir := t.TempDir()
 
 	configYAML := fmt.Sprintf(`
@@ -4865,6 +4923,87 @@ virtual_tools:
 	}
 }
 
+// TestE2E_HTTPStep_ResponseHeadersAvailableToNextStep covers the CSRF bootstrap
+// flow: the first HTTP step exposes Set-Cookie and the next HTTP step references
+// it as its Cookie request header.
+func TestE2E_HTTPStep_ResponseHeadersAvailableToNextStep(t *testing.T) {
+	const csrfCookie = "CLM-CSRF-TOKEN=csrf-123"
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/assets/index.html":
+			w.Header().Set("Content-Type", "text/html")
+			w.Header().Set("Set-Cookie", csrfCookie)
+			w.Write([]byte("<html></html>"))
+		case "/api/acknowledge":
+			w.Header().Set("Content-Type", "application/json")
+			if got := r.Header.Get("Cookie"); got != csrfCookie {
+				http.Error(w, "missing CSRF cookie", http.StatusForbidden)
+				return
+			}
+			w.Write([]byte(`{"acknowledged":true}`))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(projectDir)
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+native_tools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtual_tools:
+  - name: acknowledge_with_csrf
+    description: Bootstrap a CSRF cookie and use it in the next request
+    input_schema:
+      type: object
+      properties: {}
+    pipeline:
+      - id: csrfBootstrap
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /assets/index.html
+      - id: acknowledge
+        kind: http
+        spec:
+          upstream: default
+          method: POST
+          path: /api/acknowledge
+          parse: json
+          headers:
+            Cookie: $csrfBootstrap.headers.Set-Cookie
+          body: {}
+      - id: done
+        kind: return
+        spec:
+          from: $acknowledge.body
+`, mock.server.URL)
+	writeVirtualConfig(t, homeDir, serviceName, configYAML)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallVirtualTool(t, baseURL, "acknowledge_with_csrf", map[string]interface{}{})
+	data := mustJSON(t, result)
+	if acknowledged, _ := data["acknowledged"].(bool); !acknowledged {
+		t.Fatalf("acknowledged = %v, want true; result: %s", data["acknowledged"], result)
+	}
+	if got := mock.requestCount(); got != 2 {
+		t.Fatalf("upstream request count = %d, want 2", got)
+	}
+}
+
 // TestE2E_HTTPStep_WithJSONBody verifies the http step sends and parses JSON
 // with a map body (the maven_top5_versions_safe pattern). Uses hardcoded data
 // to eliminate ListSearch as a variable.
@@ -4879,7 +5018,7 @@ func TestE2E_HTTPStep_WithJSONBody(t *testing.T) {
 	})
 	defer echoMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
 	homeDir := t.TempDir()
 
 	configYAML := fmt.Sprintf(`
@@ -5042,7 +5181,7 @@ func TestE2E_NexusFirewall_MinThreatLevelFiltering(t *testing.T) {
 	})
 	defer iqMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "usecase", "nexus-mcp")
+	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
 
 	baseVTConfig := `
 upstream:

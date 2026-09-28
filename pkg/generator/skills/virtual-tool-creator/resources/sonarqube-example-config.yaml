@@ -213,12 +213,12 @@ virtual_tools:
             ps: 1
             p: 1
         require:
-          field: "issues"
+          field: "body.issues"
           message: No issues found for the given project, branch and pull request.
       - id: issuePageNumbers
         kind: jq
         spec:
-          from: $issueSeed
+          from: $issueSeed.body
           vars:
             pageSize: $opts.limit
           expr: |
@@ -252,13 +252,13 @@ virtual_tools:
             - id: emitIssuePage
               kind: emit
               spec:
-                from: $issuePage
+                from: $issuePage.body
       - id: rawIssues
         kind: jq
         spec:
           from: $issuePages
           vars:
-            seed: $issueSeed
+            seed: $issueSeed.body
           expr: |
             {
               total: ($seed.total // 0),
@@ -286,7 +286,7 @@ virtual_tools:
       - id: coveragePageNumbers
         kind: jq
         spec:
-          from: $coverageSeed
+          from: $coverageSeed.body
           vars:
             pageSize: $opts.coveragePageSize
           expr: |
@@ -322,13 +322,13 @@ virtual_tools:
             - id: emitCoveragePage
               kind: emit
               spec:
-                from: $coveragePage
+                from: $coveragePage.body
       - id: coverage
         kind: jq
         spec:
           from: $coveragePages
           vars:
-            seed: $coverageSeed
+            seed: $coverageSeed.body
           expr: |
             {
               baseComponent: ($seed.baseComponent // null),
@@ -380,7 +380,7 @@ virtual_tools:
       - id: duplicatePageNumbers
         kind: jq
         spec:
-          from: $duplicateSeed
+          from: $duplicateSeed.body
           vars:
             pageSize: $opts.coveragePageSize
           expr: |
@@ -416,13 +416,13 @@ virtual_tools:
             - id: emitDuplicatePage
               kind: emit
               spec:
-                from: $duplicatePage
+                from: $duplicatePage.body
       - id: duplicateMetrics
         kind: jq
         spec:
           from: $duplicatePages
           vars:
-            seed: $duplicateSeed
+            seed: $duplicateSeed.body
           expr: |
             {
               total: ($seed.paging.total // 0),
@@ -478,7 +478,7 @@ virtual_tools:
                 from: $file
                 vars:
                   file: $file
-                  sourceLines: $sourceLines
+                  sourceLines: $sourceLines.body
                 expr: |
                   (($sourceLines.sources // $sourceLines.lines // $sourceLines.source // []) as $lines
                   | {

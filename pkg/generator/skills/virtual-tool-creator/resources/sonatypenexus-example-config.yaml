@@ -362,7 +362,7 @@ virtual_tools:
       - id: iqIndex
         kind: jq
         spec:
-          from: $iqEval
+          from: $iqEval.body
           expr: |
             [.results[]?
             | select(.component.packageUrl != null)
@@ -526,7 +526,7 @@ virtual_tools:
       - id: searchPage3Path
         kind: jq
         spec:
-          from: $search2
+          from: $search2.body
           vars:
             repo: $input.repository
             groupId: $input.groupId
@@ -546,7 +546,7 @@ virtual_tools:
       - id: searchPage4Path
         kind: jq
         spec:
-          from: $search3
+          from: $search3.body
           vars:
             repo: $input.repository
             groupId: $input.groupId
@@ -570,9 +570,9 @@ virtual_tools:
           vars:
             limit: $input.limit
             uiRepository: $input.repository
-            search2: $search2
-            search3: $search3
-            search4: $search4
+            search2: $search2.body
+            search3: $search3.body
+            search4: $search4.body
           expr: |
             ([.items[]?, $search2.items[]?, $search3.items[]?, $search4.items[]?]
             | reduce .[] as $component ([];
@@ -643,7 +643,7 @@ virtual_tools:
             - id: annotated
               kind: jq
               spec:
-                from: $asset
+                from: $asset.body
                 vars:
                   candidate: $candidate
                 expr: |

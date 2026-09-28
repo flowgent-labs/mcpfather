@@ -4,10 +4,11 @@ package pipeline
 // This is the single source of truth — both the validator and the schema
 // generator derive their configuration from this registry.
 type StepKindDef struct {
-	Name     string   // "call", "jq", "foreach", "return", "emit"
-	Fields   []string // StepSpec yaml-tag field names used by this kind
-	Required []string // subset of Fields that are required
-	DefName  string   // $def key for this kind's spec in JSON Schema
+	Name        string   // "call", "http", "jq", "foreach", "return", "emit"
+	Fields      []string // StepSpec yaml-tag field names used by this kind
+	Required    []string // subset of Fields that are required
+	DefName     string   // $def key for this kind's spec in JSON Schema
+	Description string   // optional JSON Schema description
 }
 
 // StepKinds lists all supported pipeline step kinds.
@@ -18,7 +19,7 @@ type StepKindDef struct {
 //  4. The schema generator picks this up automatically
 var StepKinds = []StepKindDef{
 	{Name: "call", Fields: []string{"tool", "parse", "args"}, Required: []string{"tool", "args"}, DefName: "CallSpec"},
-	{Name: "http", Fields: []string{"upstream", "method", "path", "query", "headers", "body", "parse"}, Required: []string{"upstream", "method", "path"}, DefName: "HTTPSpec"},
+	{Name: "http", Fields: []string{"upstream", "method", "path", "query", "headers", "body", "parse"}, Required: []string{"upstream", "method", "path"}, DefName: "HTTPSpec", Description: "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values."},
 	{Name: "jq", Fields: []string{"from", "vars", "expr"}, Required: []string{"expr"}, DefName: "JQSpec"},
 	{Name: "foreach", Fields: []string{"in", "as", "concurrency", "preserveOrder", "onMissing", "pipeline"}, Required: []string{"in", "as", "pipeline"}, DefName: "ForeachSpec"},
 	{Name: "return", Fields: []string{"from", "vars", "expr"}, DefName: "ReturnSpec"},

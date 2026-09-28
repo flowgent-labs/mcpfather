@@ -343,11 +343,12 @@ func TestExecutor_RequireValidation(t *testing.T) {
 
 type mockHTTPClient struct {
 	statusCode int
+	headers    map[string][]string
 	body       []byte
 }
 
-func (m *mockHTTPClient) Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (int, []byte, error) {
-	return m.statusCode, m.body, nil
+func (m *mockHTTPClient) Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
+	return &pipeline.HTTPResponse{StatusCode: m.statusCode, Headers: m.headers, Body: m.body}, nil
 }
 
 func TestExecutor_HTTPStep(t *testing.T) {

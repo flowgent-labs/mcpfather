@@ -69,7 +69,14 @@ type ToolRegistry interface {
 // HTTPClient makes HTTP requests to named backend upstream endpoints.
 // The implementation resolves upstream base URL and auth from server config.
 type HTTPClient interface {
-	Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (int, []byte, error)
+	Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (*HTTPResponse, error)
+}
+
+// HTTPResponse contains the parts of an upstream response used by HTTP nodes.
+type HTTPResponse struct {
+	StatusCode int
+	Headers    map[string][]string
+	Body       []byte
 }
 
 // CallToolResult is a minimal representation of an MCP tool call result.

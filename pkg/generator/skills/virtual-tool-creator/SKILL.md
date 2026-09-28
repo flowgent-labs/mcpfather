@@ -107,6 +107,7 @@ The first path segment after `$` resolves to:
 - Add `parse: json` to a `call` step to unmarshal upstream JSON responses automatically
 - Without `parse: json`, the response body is kept as a raw text string
 - Parsed JSON enables dot-path access: `$stepId.field.subfield`
+- HTTP steps return `{body, headers}`. Read payload fields through `$stepId.body` and response headers through `$stepId.headers`; single-value headers are strings and multi-value headers are arrays (for example, `$csrfBootstrap.headers.Set-Cookie`).
 
 ---
 

@@ -34,8 +34,8 @@ make
 
 ```sh
 ./bin/mcpfather -v \
-    -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o usecase/confluence-mcp \
+    -i use-cases/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o use-cases/confluence-mcp \
     --includes "listSpaces,createPage,updatePage,deletePage"
 ```
 
@@ -48,11 +48,11 @@ export MCP__UPSTREAM__DEFAULT__ENDPOINT=https://api.example.com
 
 # Optional 1: setup token from env
 export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=your-token
-usecase/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
+use-cases/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 
 # Optional 2: setup token from file (e.g: echo -n "YOUR_TOKEN" > /path/to/.credentials)
 export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN_FILE=/path/to/.credentials
-usecase/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
+use-cases/confluence-mcp/bin/confluence-mcp -v 10 --transport http --port 8080
 ```
 
 - Test with `mcpclient.sh` (for `HTTP` transport only)
@@ -88,20 +88,20 @@ export MCP__UPSTREAM__DEFAULT__ENDPOINT=https://api.example.com
 export MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN=your-token
 
 # First call: list available tools
-usecase/confluence-mcp/bin/confluence-mcp -t cli list
+use-cases/confluence-mcp/bin/confluence-mcp -t cli list
 
 # First tool call: fetch a page by ID
-usecase/confluence-mcp/bin/confluence-mcp -t cli Getpage --id 123456
+use-cases/confluence-mcp/bin/confluence-mcp -t cli Getpage --id 123456
 
 # Show tool-specific help (GNU-style usage)
-usecase/confluence-mcp/bin/confluence-mcp -t cli Getpage --help
+use-cases/confluence-mcp/bin/confluence-mcp -t cli Getpage --help
 
 # Call a tool with GNU-style --flag arguments
-usecase/confluence-mcp/bin/confluence-mcp -t cli ListSpaces --limit=5 --type global
-usecase/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
+use-cases/confluence-mcp/bin/confluence-mcp -t cli ListSpaces --limit=5 --type global
+use-cases/confluence-mcp/bin/confluence-mcp -t cli SearchContent --cql 'type=page AND text~"API"' --limit 10
 
 # Call a tool without arguments (for tools that have no required params)
-usecase/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
+use-cases/confluence-mcp/bin/confluence-mcp -t cli ListSpaces
 ```
 
 ## Generator Self Configuration
@@ -129,20 +129,20 @@ Use `--includes` and `--excludes` to control which operations generate MCP tools
 
 ```sh
 # Only generate tools for specific operations
-./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o usecase/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
+./bin/mcpfather -i use-cases/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o use-cases/confluence-mcp --includes "listSpaces,createPage,getSpaceContent"
 
 # Generate all tools except health checks
-./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o usecase/confluence-mcp --excludes "healthCheck,status"
+./bin/mcpfather -i use-cases/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o use-cases/confluence-mcp --excludes "healthCheck,status"
 
 # Generate all tools except a few
-./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o usecase/confluence-mcp --excludes "uploadAttachment,removeLabel"
+./bin/mcpfather -i use-cases/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o use-cases/confluence-mcp --excludes "uploadAttachment,removeLabel"
 
 # Preview what gets included/excluded
-./bin/mcpfather -i usecase/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
-    -o usecase/confluence-mcp --includes "listSpaces" -v
+./bin/mcpfather -i use-cases/swaggers/confluence-server-v10.2.14.oas.v3.0.1.json \
+    -o use-cases/confluence-mcp --includes "listSpaces" -v
 ```
 
 ### Tool name truncation
@@ -259,7 +259,7 @@ The AI agent's own Authorization header is deliberately excluded from upstream f
 
 ```sh
 # Print the default config template
-usecase/confluence-mcp/bin/confluence-mcp --print-default-config
+use-cases/confluence-mcp/bin/confluence-mcp --print-default-config
 
 # Edit: ~/.confluence-mcp/config.yaml and list only the tools you want
 ```
@@ -344,6 +344,7 @@ virtual_tools:
 ```
 
 - Pipeline step kinds: `call` (invoke an MCP tool), `http` (direct HTTP API call on a named upstream), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
+- HTTP step outputs use `{body, headers}`; reference payloads as `$stepId.body` and response headers as `$stepId.headers.<Header-Name>`.
 
 ## Generated MCP Server - Agent Integration
 
@@ -572,7 +573,7 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 ### Sonarqube
 
 - [SonarQube APIs official schema - (*No Native Swagger format*)](https://next.sonarqube.com/sonarqube/api/webservices/list?include_internals=true)
-    - You can use this tool convert ([sonarqube-convert-to-oas.py](usecase/swaggers/sonarqube/sonarqube-convert-to-oas.py)) to OAS format from [Sonarqube official schema](usecase/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
+    - You can use this tool convert ([sonarqube-convert-to-oas.py](use-cases/swaggers/sonarqube/sonarqube-convert-to-oas.py)) to OAS format from [Sonarqube official schema](use-cases/swaggers/sonarqube/sonarqube-v2026.4.0.124573.webservices.json).
 - ~~[SonarQube API (Page) - @Deprecated](https://next.sonarqube.com/sonarqube/web_api) (Many commonly used APIs are missing)~~
 - ~~[SonarQube API (custom schema) - @Deprecated](https://next.sonarqube.com/sonarqube/api/v2/api-docs) (Many commonly used APIs are missing)~~
 - ~~[sonarqube-mcp-server - @Deprecated](https://github.com/sonarsource/sonarqube-mcp-server) (official java edition)~~
@@ -587,7 +588,7 @@ on every tagged release (`feat:`, `fix:`, `refactor:` commits to `main`).
 ### Telegram
 
 - [Telegram APIs official schema - (*No Native Swagger format*)](https://core.telegram.org/schema/json)
-    - You can use this tool convert ([telegram-convert-to-oas.py](usecase/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](usecase/swaggers/telegram/telegram-v20260715.schema.json).
+    - You can use this tool convert ([telegram-convert-to-oas.py](use-cases/swaggers/telegram/telegram-convert-to-oas.py)) to OAS format from [Telegram official schema](use-cases/swaggers/telegram/telegram-v20260715.schema.json).
 
 ### Binance
 
@@ -618,4 +619,3 @@ Built with these excellent open-source projects:
 - [Viper](https://github.com/spf13/viper) — Go configuration management
 - [go-jq](https://github.com/itchyny/gojq) — Pure Go implementation of jq
 - [Keycloak](https://www.keycloak.org/) — Open Source Identity and Access Management
-

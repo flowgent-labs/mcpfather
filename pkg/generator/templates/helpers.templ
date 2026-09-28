@@ -25,6 +25,8 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/google/uuid"
+
+	"{{.ModuleName}}/pkg/mcpvirtual/pipeline"
 )
 
 type contextKey string
@@ -211,10 +213,10 @@ func FormatAuthorizationHeader(token string) string {
 // NamedUpstreamHTTPClient implements pipeline.HTTPClient for extra_upstream endpoints.
 type NamedUpstreamHTTPClient struct{}
 
-func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, path string, queryParams, headers map[string]string, body interface{}) (int, []byte, error) {
+func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, path string, queryParams, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
 	endpoint := GetNamedUpstreamEndpoint(upstream)
 	if endpoint == "" {
-		return 0, nil, fmt.Errorf("extra_upstream %q not found in config", upstream)
+		return nil, fmt.Errorf("extra_upstream %q not found in config", upstream)
 	}
 
 	fullURL := strings.TrimSuffix(endpoint, "/") + path
@@ -232,14 +234,14 @@ func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, pa
 		var err error
 		bodyBytes, err = marshalJSONNoSci(body)
 		if err != nil {
-			return 0, nil, fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 		bodyReader = strings.NewReader(string(bodyBytes))
 	}
 
 	req, err := http.NewRequestWithContext(ctx, method, fullURL, bodyReader)
 	if err != nil {
-		return 0, nil, fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	if bodyReader != nil {
@@ -301,16 +303,20 @@ func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, pa
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, nil, fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return 0, nil, fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 
-	return resp.StatusCode, respBody, nil
+	return &pipeline.HTTPResponse{
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header.Clone(),
+		Body:       respBody,
+	}, nil
 }
 
 // valueToString converts an interface{} to a string suitable for URLs and

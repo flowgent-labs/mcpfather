@@ -99,6 +99,7 @@
     },
     "HTTPSpec": {
       "additionalProperties": false,
+      "description": "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values.",
       "properties": {
         "body": {},
         "headers": {
