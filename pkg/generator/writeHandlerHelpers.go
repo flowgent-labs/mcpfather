@@ -121,7 +121,7 @@ func (g *Generator) generateClientGo() error {
 		return fmt.Errorf("failed to parse helpers template: %w", err)
 	}
 
-	data := struct{}{}
+	data := struct{ ModuleName string }{ModuleName: BuildModuleName(g.outputDir)}
 
 	var buffer bytes.Buffer
 	if err := tmpl.Execute(&buffer, data); err != nil {

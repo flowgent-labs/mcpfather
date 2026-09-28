@@ -50,6 +50,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v2/components"
   kind: http
   spec:
     # named upstream key (added under upstream map): sonatypeiq
+    upstream: sonatypeiq
     method: GET
     path: /api/v2/components
     parse: json
@@ -57,7 +58,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v2/components"
 - id: done
   kind: return
   spec:
-    from: $fetchComponents
+    from: $fetchComponents.body
 ```
 
 **Config** (`backend` entry):
@@ -73,7 +74,7 @@ upstream:
         web_token: "${MCP__UPSTREAM__SONATYPEIQ__AUTH__STATIC__WEB_TOKEN}"
 ```
 
-The `http` step supports `query`, `headers`, and `body` fields with `$ref` resolution, and auto-detects JSON responses when `parse` is omitted. A non-2xx response causes the step to fail.
+The `http` step supports `query`, `headers`, and `body` fields with `$ref` resolution, and auto-detects JSON responses when `parse` is omitted. Its output is `{body, headers}`; downstream steps read the payload through `$stepId.body` and response headers through `$stepId.headers`. A non-2xx response causes the step to fail.
 
 ## Chained Calls (B depends on A)
 

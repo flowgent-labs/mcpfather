@@ -281,6 +281,9 @@ func buildKindSpec(specType reflect.Type, sk pipeline.StepKindDef, defs Schema, 
 		"properties":           props,
 		"additionalProperties": false,
 	}
+	if sk.Description != "" {
+		schema["description"] = sk.Description
+	}
 	if len(sk.Required) > 0 {
 		schema["required"] = strSliceToIface(sk.Required)
 	}

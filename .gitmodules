@@ -1,18 +1,18 @@
-[submodule "usecase/confluence-mcp"]
-	path = usecase/confluence-mcp
+[submodule "use-cases/confluence-mcp"]
+	path = use-cases/confluence-mcp
 	url = ../confluence-mcp.git
-[submodule "usecase/jira-mcp"]
-        path = usecase/jira-mcp
+[submodule "use-cases/jira-mcp"]
+        path = use-cases/jira-mcp
 	url = ../jira-mcp.git
-[submodule "usecase/sonarqube-mcp"]
-        path = usecase/sonarqube-mcp
+[submodule "use-cases/sonarqube-mcp"]
+        path = use-cases/sonarqube-mcp
 	url = ../sonarqube-mcp.git
-[submodule "usecase/sonatypeiq-mcp"]
-        path = usecase/sonatypeiq-mcp
+[submodule "use-cases/sonatypeiq-mcp"]
+        path = use-cases/sonatypeiq-mcp
 	url = ../sonatypeiq-mcp.git
-[submodule "usecase/nexus-mcp"]
-        path = usecase/nexus-mcp
+[submodule "use-cases/nexus-mcp"]
+        path = use-cases/nexus-mcp
 	url = ../nexus-mcp.git
-[submodule "usecase/telegram-mcp"]
-        path = usecase/telegram-mcp
+[submodule "use-cases/telegram-mcp"]
+        path = use-cases/telegram-mcp
         url = ../telegram-mcp.git

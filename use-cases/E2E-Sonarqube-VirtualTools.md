@@ -52,7 +52,7 @@ Key environment variables:
 | Test project | `$SONARQUBE_PROJECT_KEY` (from `.env`) |
 | Test branch | `$SONARQUBE_TEST_BRANCH` (from `.env`) |
 | Test file | `$SONARQUBE_TEST_COMPONENT` (from `.env`) |
-| OpenAPI spec | `usecase/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json` (385 paths) |
+| OpenAPI spec | `use-cases/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json` (385 paths) |
 | Native tools | 385 generated MCP tools |
 
 ## 2. Setup Steps
@@ -68,8 +68,8 @@ make build
 
 ```bash
 bin/mcpfather \
-  -i usecase/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
-  -o usecase/sonarqube-mcp
+  -i use-cases/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
+  -o use-cases/sonarqube-mcp
 ```
 
 If behind a restricted network, prefix with proxy env vars:
@@ -77,8 +77,8 @@ If behind a restricted network, prefix with proxy env vars:
 ```bash
 HTTPS_PROXY="$HTTPS_PROXY" HTTP_PROXY="$HTTP_PROXY" \
   bin/mcpfather \
-    -i usecase/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
-    -o usecase/sonarqube-mcp
+    -i use-cases/swaggers/sonarqube-v2026.4.0.124573.oas.3.1.0.json \
+    -o use-cases/sonarqube-mcp
 ```
 
 Output: 385 native tools, including the required upstream tools:
@@ -91,7 +91,7 @@ Output: 385 native tools, including the required upstream tools:
 ### 2.3 Build the sonarqube-mcp binary
 
 ```bash
-make -C usecase/sonarqube-mcp
+make -C use-cases/sonarqube-mcp
 # → bin/sonarqube-mcp
 ```
 
@@ -150,7 +150,7 @@ source .env
 ### 4.1 `get_overall_issues` — by branch (no component filter)
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_issues \
+source .env && use-cases/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_issues \
   --projectKey="$SONARQUBE_PROJECT_KEY" \
   --branch="$SONARQUBE_TEST_BRANCH" \
   --limit="2"
@@ -182,7 +182,7 @@ source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_
 ### 4.2 `get_overall_issues` — by branch + file filter
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_issues \
+source .env && use-cases/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli get_overall_issues \
   --projectKey="$SONARQUBE_PROJECT_KEY" \
   --branch="$SONARQUBE_TEST_BRANCH" \
   --component="$SONARQUBE_TEST_COMPONENT" \
@@ -223,14 +223,14 @@ Community Edition does not support pull-request/new-code branch analysis, so thi
 Look up the component file:
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetComponentsShow \
+source .env && use-cases/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetComponentsShow \
   --component="$SONARQUBE_TEST_COMPONENT"
 ```
 
 Fetch raw issues for the same file:
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetIssuesSearch \
+source .env && use-cases/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t cli GetIssuesSearch \
   --components="$SONARQUBE_TEST_COMPONENT" \
   --branch="$SONARQUBE_TEST_BRANCH" \
   --types="CODE_SMELL,BUG,VULNERABILITY"
@@ -245,7 +245,7 @@ The same virtual tools work over the MCP HTTP transport (`StreamableHTTPServer`)
 In one terminal, start the HTTP server:
 
 ```bash
-source .env && usecase/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18889
+source .env && use-cases/sonarqube-mcp/bin/sonarqube-mcp -v 10 -t http -p 18889
 ```
 
 Wait for the log line `MCP server listening on :18889/mcp`.
@@ -256,7 +256,7 @@ In another terminal, call the virtual tool through the MCP HTTP endpoint:
 
 ```bash
 export MCP_SERVER_ENDPOINT=http://localhost:18889/mcp
-source .env && ./usecase/sonarqube-mcp/mcpclient.sh call get_overall_issues \
+source .env && ./use-cases/sonarqube-mcp/mcpclient.sh call get_overall_issues \
     --projectKey $SONARQUBE_PROJECT_KEY \
     --branch $SONARQUBE_TEST_BRANCH \
     --component $SONARQUBE_TEST_COMPONENT | jq -r '.result.content[].text' | jq
@@ -290,13 +290,13 @@ source .env && ./usecase/sonarqube-mcp/mcpclient.sh call get_overall_issues \
 #### 4.5.3 List tools via HTTP
 
 ```bash
-source .env && ./usecase/sonarqube-mcp/mcpclient.sh list-tools
+source .env && ./use-cases/sonarqube-mcp/mcpclient.sh list-tools
 ```
 
 #### 4.5.4 Native tool via HTTP
 
 ```bash
-source .env && ./usecase/sonarqube-mcp/mcpclient.sh call GetComponentsShow \
+source .env && ./use-cases/sonarqube-mcp/mcpclient.sh call GetComponentsShow \
   --component "$SONARQUBE_TEST_COMPONENT"
 ```
 
@@ -369,7 +369,7 @@ All downstream steps reference `$opts.xxx` instead of `$input.xxx` for optional 
 In restricted network environments, prefix all `go` commands with proxy env vars:
 
 ```bash
-HTTPS_PROXY="$HTTPS_PROXY" HTTP_PROXY="$HTTP_PROXY" make -C usecase/sonarqube-mcp
+HTTPS_PROXY="$HTTPS_PROXY" HTTP_PROXY="$HTTP_PROXY" make -C use-cases/sonarqube-mcp
 ```
 
 ## 7. Production Config

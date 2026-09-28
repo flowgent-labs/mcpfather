@@ -32,16 +32,30 @@ func HTTPNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 		return nil, fmt.Errorf("http body: %w", err)
 	}
 
-	statusCode, respBody, err := client.Call(ctx, spec.Upstream, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
+	resp, err := client.Call(ctx, spec.Upstream, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
 	if err != nil {
 		return nil, fmt.Errorf("http %s %q on upstream %q failed: %w", spec.Method, spec.Path, spec.Upstream, err)
 	}
-
-	if statusCode < 200 || statusCode >= 300 {
-		return nil, fmt.Errorf("http %s %q returned %d", spec.Method, spec.Path, statusCode)
+	if resp == nil {
+		return nil, fmt.Errorf("http %s %q on upstream %q returned an empty response", spec.Method, spec.Path, spec.Upstream)
 	}
 
-	if spec.Parse == "json" {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, fmt.Errorf("http %s %q returned %d", spec.Method, spec.Path, resp.StatusCode)
+	}
+
+	parsedBody, err := parseHTTPResponseBody(resp.Body, spec.Parse)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"body":    parsedBody,
+		"headers": normalizeHTTPResponseHeaders(resp.Headers),
+	}, nil
+}
+
+func parseHTTPResponseBody(respBody []byte, parse string) (interface{}, error) {
+	if parse == "json" {
 		var parsed interface{}
 		if err := json.Unmarshal(respBody, &parsed); err != nil {
 			return nil, fmt.Errorf("failed to parse http response as JSON: %w", err)
@@ -55,6 +69,25 @@ func HTTPNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 		return parsed, nil
 	}
 	return string(respBody), nil
+}
+
+func normalizeHTTPResponseHeaders(headers map[string][]string) map[string]interface{} {
+	normalized := make(map[string]interface{}, len(headers))
+	for name, values := range headers {
+		switch len(values) {
+		case 0:
+			normalized[name] = ""
+		case 1:
+			normalized[name] = values[0]
+		default:
+			items := make([]interface{}, len(values))
+			for i, value := range values {
+				items[i] = value
+			}
+			normalized[name] = items
+		}
+	}
+	return normalized
 }
 
 func resolveHTTPString(s string, rctx pipeline.StepContext) (string, error) {
