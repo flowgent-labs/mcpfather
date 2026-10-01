@@ -32,7 +32,7 @@ func HTTPNode(ctx context.Context, step *pipeline.StepConfig, rctx pipeline.Step
 		return nil, fmt.Errorf("http body: %w", err)
 	}
 
-	resp, err := client.Call(ctx, spec.Upstream, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
+	resp, err := client.Call(ctx, spec.Upstream, spec.Pool, spec.Retry, spec.Method, resolvedPath, resolvedQuery, resolvedHeaders, resolvedBody)
 	if err != nil {
 		return nil, fmt.Errorf("http %s %q on upstream %q failed: %w", spec.Method, spec.Path, spec.Upstream, err)
 	}

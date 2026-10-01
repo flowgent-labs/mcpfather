@@ -191,7 +191,8 @@ func autoSetup() {
 	if _, err := os.Stat("/etc/rancher/k3s/k3s.yaml"); err == nil {
 		home, _ := os.UserHomeDir()
 		cfgFile := filepath.Join(home, ".kube", "config")
-		if _, err := os.Stat(cfgFile); os.IsNotExist(err) {
+		cfgInfo, statErr := os.Stat(cfgFile)
+		if os.IsNotExist(statErr) || (statErr == nil && cfgInfo.Size() == 0) {
 			os.MkdirAll(filepath.Dir(cfgFile), 0700)
 			data, _ := os.ReadFile("/etc/rancher/k3s/k3s.yaml")
 			if len(data) > 0 {

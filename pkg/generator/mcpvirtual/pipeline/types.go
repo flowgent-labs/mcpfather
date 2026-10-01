@@ -20,6 +20,8 @@ type StepSpec struct {
 
 	// http — call an external HTTP API on a named backend upstream
 	Upstream string                 `yaml:"upstream,omitempty"`
+	Pool     string                 `yaml:"pool,omitempty"`    // named middleware.http_client_pool policy
+	Retry    string                 `yaml:"retry,omitempty"`   // named middleware.retry policy
 	Method   string                 `yaml:"method,omitempty"`  // GET, POST, PUT, DELETE
 	Path     string                 `yaml:"path,omitempty"`    // e.g. /api/v2/components
 	Query    map[string]interface{} `yaml:"query,omitempty"`   // query params with $ref resolution
@@ -69,7 +71,13 @@ type ToolRegistry interface {
 // HTTPClient makes HTTP requests to named backend upstream endpoints.
 // The implementation resolves upstream base URL and auth from server config.
 type HTTPClient interface {
-	Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (*HTTPResponse, error)
+	Call(ctx context.Context, upstream, pool, retry, method, path string, query, headers map[string]string, body interface{}) (*HTTPResponse, error)
+}
+
+// HTTPMiddlewareValidator is optionally implemented by HTTP clients that can
+// validate named pool/retry references while virtual tools are registered.
+type HTTPMiddlewareValidator interface {
+	ValidateHTTPMiddleware(pool, retry, method string) error
 }
 
 // HTTPResponse contains the parts of an upstream response used by HTTP nodes.

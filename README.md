@@ -346,6 +346,66 @@ virtual_tools:
 - Pipeline step kinds: `call` (invoke an MCP tool), `http` (direct HTTP API call on a named upstream), `jq` (jq expression transform), `foreach` (concurrent iteration over arrays), `emit` (output within foreach), and `return` (final result). Full documentation in [.agents/skills/virtual-tool-creator/](.agents/skills/virtual-tool-creator/).
 - HTTP step outputs use `{body, headers}`; reference payloads as `$stepId.body` and response headers as `$stepId.headers.<Header-Name>`.
 
+#### HTTP node connection pool, timeout, and retry
+
+Define reusable policies once and select them from an HTTP node. `dial_timeout`
+limits TCP connection establishment; `request_timeout` limits one complete
+attempt, including reading the response body. Retry has its own total budget.
+
+```yaml
+middleware:
+  http_client_pool:
+    large:
+      max_idle_conns: 128          # reusable idle connections across all upstream hosts
+      max_idle_conns_per_host: 32  # reusable idle connections retained per upstream host
+      max_conns_per_host: 64       # hard cap: active + dialing + idle connections per host
+      dial_timeout: 10s            # TCP connection establishment timeout
+      request_timeout: 60s         # complete attempt, including response-body reads
+    medium:
+      max_idle_conns: 64
+      max_idle_conns_per_host: 16
+      max_conns_per_host: 32
+      dial_timeout: 5s
+      request_timeout: 30s
+    small:
+      max_idle_conns: 16
+      max_idle_conns_per_host: 4
+      max_conns_per_host: 8
+      dial_timeout: 3s
+      request_timeout: 15s
+  retry:
+    reliable:
+      max_retries: 4               # extra attempts after the first request
+      max_elapsed_time: 30s        # hard budget for all attempts and backoff
+    standard:
+      max_retries: 2
+      max_elapsed_time: 15s
+    besteffort:
+      max_retries: 0
+
+# Select one policy from each group in an HTTP pipeline step:
+virtual_tools:
+  - name: fetch_issues
+    input_schema: {type: object}
+    pipeline:
+      - id: request
+        kind: http
+        spec:
+          upstream: default
+          pool: medium
+          retry: standard
+          method: GET
+          path: /api/issues
+      - id: done
+        kind: return
+        spec:
+          from: $request.body
+```
+
+The QoS-style names communicate retry intent without promising application-level
+success. Omitted references use process-wide built-ins: pool limits `32/32/32`,
+disabled request timeout, and `max_retries: 0`.
+
 ## Generated MCP Server - Agent Integration
 
 ### OpenCode

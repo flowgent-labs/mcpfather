@@ -6,11 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -38,6 +40,696 @@ func TestFormatAuthorizationHeader(t *testing.T) {
 				t.Errorf("FormatAuthorizationHeader(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestUpstreamHTTPClientPoolConfig(t *testing.T) {
+	client, err := currentHTTPMiddlewareRegistry().pool("")
+	if err != nil {
+		t.Fatalf("resolve built-in pool: %v", err)
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("transport type = %T, want *http.Transport", client.Transport)
+	}
+	if transport.DisableKeepAlives {
+		t.Fatal("upstream transport must keep connections alive")
+	}
+	defaults := builtinHTTPClientPoolConfig()
+	if defaults.MaxIdleConns != 32 || defaults.MaxIdleConnsPerHost != 32 || defaults.MaxConnsPerHost != 32 {
+		t.Fatalf("built-in pool limits = %d/%d/%d, want 32/32/32", defaults.MaxIdleConns, defaults.MaxIdleConnsPerHost, defaults.MaxConnsPerHost)
+	}
+	if client.Timeout != 0 {
+		t.Fatalf("built-in request timeout = %s, want disabled", client.Timeout)
+	}
+	if transport.MaxIdleConns != defaults.MaxIdleConns {
+		t.Errorf("MaxIdleConns = %d, want %d", transport.MaxIdleConns, defaults.MaxIdleConns)
+	}
+	if transport.MaxIdleConnsPerHost != defaults.MaxIdleConnsPerHost {
+		t.Errorf("MaxIdleConnsPerHost = %d, want %d", transport.MaxIdleConnsPerHost, defaults.MaxIdleConnsPerHost)
+	}
+	if transport.MaxConnsPerHost != defaults.MaxConnsPerHost {
+		t.Errorf("MaxConnsPerHost = %d, want %d", transport.MaxConnsPerHost, defaults.MaxConnsPerHost)
+	}
+	if !transport.ForceAttemptHTTP2 {
+		t.Fatal("upstream transport must attempt HTTP/2")
+	}
+	retry, err := currentHTTPMiddlewareRegistry().retry("")
+	if err != nil {
+		t.Fatalf("resolve built-in retry: %v", err)
+	}
+	if retry.maxRetries != 0 {
+		t.Fatalf("built-in retry count = %d, want 0", retry.maxRetries)
+	}
+}
+
+func TestUpstreamHTTPClientReusesConnection(t *testing.T) {
+	client, err := currentHTTPMiddlewareRegistry().pool("")
+	if err != nil {
+		t.Fatalf("resolve built-in pool: %v", err)
+	}
+	remoteAddrs := map[string]struct{}{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		remoteAddrs[r.RemoteAddr] = struct{}{}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	defer client.CloseIdleConnections()
+
+	for i := 0; i < 64; i++ {
+		resp, err := client.Get(server.URL)
+		if err != nil {
+			t.Fatalf("request %d failed: %v", i, err)
+		}
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			resp.Body.Close()
+			t.Fatalf("read response %d: %v", i, err)
+		}
+		if err := resp.Body.Close(); err != nil {
+			t.Fatalf("close response %d: %v", i, err)
+		}
+	}
+
+	if got := len(remoteAddrs); got != 1 {
+		t.Fatalf("64 sequential requests used %d TCP connections, want 1", got)
+	}
+}
+
+func TestConfigureHTTPMiddlewareCustomPool(t *testing.T) {
+	forceHTTP2 := false
+	cfg := &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"iq": {
+			MaxIdleConns:          40,
+			MaxIdleConnsPerHost:   12,
+			MaxConnsPerHost:       15,
+			IdleConnTimeout:       "45s",
+			DialTimeout:           "3s",
+			KeepAlive:             "20s",
+			TLSHandshakeTimeout:   "4s",
+			ResponseHeaderTimeout: "12s",
+			RequestTimeout:        "5s",
+			ExpectContinueTimeout: "500ms",
+			ForceHTTP2:            &forceHTTP2,
+		},
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatalf("configure middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	client, err := currentHTTPMiddlewareRegistry().pool("iq")
+	if err != nil {
+		t.Fatalf("resolve custom pool: %v", err)
+	}
+	transport := client.Transport.(*http.Transport)
+	if transport.MaxIdleConns != 40 || transport.MaxIdleConnsPerHost != 12 || transport.MaxConnsPerHost != 15 {
+		t.Fatalf("custom connection limits not applied: %+v", transport)
+	}
+	if transport.IdleConnTimeout != 45*time.Second || transport.ResponseHeaderTimeout != 12*time.Second {
+		t.Fatalf("custom timeouts not applied: idle=%s responseHeader=%s", transport.IdleConnTimeout, transport.ResponseHeaderTimeout)
+	}
+	if client.Timeout != 5*time.Second {
+		t.Fatalf("request timeout = %s, want 5s", client.Timeout)
+	}
+	if transport.ForceAttemptHTTP2 {
+		t.Fatal("ForceAttemptHTTP2 = true, want false")
+	}
+}
+
+func TestHTTPMiddlewareNamedPoolsAreIsolated(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"small": {MaxIdleConns: 8, MaxIdleConnsPerHost: 2, MaxConnsPerHost: 4},
+		"large": {MaxIdleConns: 64, MaxIdleConnsPerHost: 16, MaxConnsPerHost: 32},
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatalf("configure middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	small, err := currentHTTPMiddlewareRegistry().pool("small")
+	if err != nil {
+		t.Fatal(err)
+	}
+	large, err := currentHTTPMiddlewareRegistry().pool("large")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if small == large || small.Transport == large.Transport {
+		t.Fatal("named pools must not share clients or transports")
+	}
+	if got := small.Transport.(*http.Transport).MaxConnsPerHost; got != 4 {
+		t.Fatalf("small MaxConnsPerHost = %d, want 4", got)
+	}
+	if got := large.Transport.(*http.Transport).MaxConnsPerHost; got != 32 {
+		t.Fatalf("large MaxConnsPerHost = %d, want 32", got)
+	}
+}
+
+func TestNewHTTPMiddlewareRegistryRejectsInvalidPolicies(t *testing.T) {
+	poolConfig := func(name string, pool HTTPClientPoolConfig) *Config {
+		return &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{name: pool}}}
+	}
+	retryConfig := func(name string, retry RetryConfig) *Config {
+		return &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{name: retry}}}
+	}
+
+	tests := []struct {
+		name string
+		cfg  *Config
+		want string
+	}{
+		{name: "negative connection limit", cfg: poolConfig("bad", HTTPClientPoolConfig{MaxConnsPerHost: -1}), want: "connection limits must be greater than zero"},
+		{name: "zero idle timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{IdleConnTimeout: "0s"}), want: "idle_conn_timeout must be greater than zero"},
+		{name: "invalid dial timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{DialTimeout: "invalid"}), want: "dial_timeout must be a valid duration"},
+		{name: "zero keep alive", cfg: poolConfig("bad", HTTPClientPoolConfig{KeepAlive: "0s"}), want: "keep_alive must be greater than zero"},
+		{name: "zero TLS handshake timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{TLSHandshakeTimeout: "0s"}), want: "tls_handshake_timeout must be greater than zero"},
+		{name: "zero response header timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{ResponseHeaderTimeout: "0s"}), want: "response_header_timeout must be greater than zero"},
+		{name: "negative request timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{RequestTimeout: "-1ms"}), want: "request_timeout must not be negative"},
+		{name: "zero expect continue timeout", cfg: poolConfig("bad", HTTPClientPoolConfig{ExpectContinueTimeout: "0s"}), want: "expect_continue_timeout must be greater than zero"},
+		{name: "reserved pool name", cfg: poolConfig("default", HTTPClientPoolConfig{}), want: "policy name \"default\" is reserved or empty"},
+		{name: "empty pool name", cfg: poolConfig("", HTTPClientPoolConfig{}), want: "policy name \"\" is reserved or empty"},
+		{name: "negative retries", cfg: retryConfig("bad", RetryConfig{MaxRetries: -1}), want: "max_retries must not be negative"},
+		{name: "small multiplier", cfg: retryConfig("bad", RetryConfig{Multiplier: 0.5}), want: "multiplier must be at least 1"},
+		{name: "negative jitter", cfg: retryConfig("bad", RetryConfig{Jitter: -0.1}), want: "jitter must be between 0 and 1"},
+		{name: "large jitter", cfg: retryConfig("bad", RetryConfig{Jitter: 1.1}), want: "jitter must be between 0 and 1"},
+		{name: "zero initial backoff", cfg: retryConfig("bad", RetryConfig{InitialBackoff: "0s"}), want: "initial_backoff must be greater than zero"},
+		{name: "backoff order", cfg: retryConfig("bad", RetryConfig{InitialBackoff: "2s", MaxBackoff: "1s"}), want: "max_backoff must not be less than initial_backoff"},
+		{name: "zero elapsed time", cfg: retryConfig("bad", RetryConfig{MaxElapsedTime: "0s"}), want: "max_elapsed_time must be greater than zero"},
+		{name: "empty method", cfg: retryConfig("bad", RetryConfig{Methods: []string{""}}), want: "methods must not contain an empty value"},
+		{name: "small status code", cfg: retryConfig("bad", RetryConfig{RetryOn: RetryOnConfig{StatusCodes: []int{99}}}), want: "invalid retry status code 99"},
+		{name: "large status code", cfg: retryConfig("bad", RetryConfig{RetryOn: RetryOnConfig{StatusCodes: []int{600}}}), want: "invalid retry status code 600"},
+		{name: "reserved retry name", cfg: retryConfig("default", RetryConfig{}), want: "policy name \"default\" is reserved or empty"},
+		{name: "empty retry name", cfg: retryConfig("", RetryConfig{}), want: "policy name \"\" is reserved or empty"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry, err := newHTTPMiddlewareRegistry(tt.cfg)
+			if registry != nil {
+				registry.closeIdleConnections()
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("newHTTPMiddlewareRegistry() error = %v, want containing %q", err, tt.want)
+			}
+		})
+	}
+}
+
+func TestConfigureHTTPMiddlewareFailureKeepsPreviousRegistry(t *testing.T) {
+	valid := &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"stable": {MaxConnsPerHost: 7},
+	}}}
+	if err := ConfigureHTTPMiddleware(valid); err != nil {
+		t.Fatalf("configure valid middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	before := currentHTTPMiddlewareRegistry()
+	invalid := &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"default": {},
+	}}}
+	if err := ConfigureHTTPMiddleware(invalid); err == nil {
+		t.Fatal("expected invalid reconfiguration to fail")
+	}
+	if after := currentHTTPMiddlewareRegistry(); after != before {
+		t.Fatal("failed reconfiguration replaced the active middleware registry")
+	}
+	client, err := currentHTTPMiddlewareRegistry().pool("stable")
+	if err != nil {
+		t.Fatalf("previous pool was lost: %v", err)
+	}
+	if got := client.Transport.(*http.Transport).MaxConnsPerHost; got != 7 {
+		t.Fatalf("stable MaxConnsPerHost = %d, want 7", got)
+	}
+}
+
+func TestConfigureHTTPMiddlewareClosesPreviousIdleConnections(t *testing.T) {
+	if err := ConfigureHTTPMiddleware(&Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"old": {MaxConnsPerHost: 1},
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	closed := make(chan struct{}, 1)
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("ok"))
+	}))
+	server.Config.ConnState = func(_ net.Conn, state http.ConnState) {
+		if state == http.StateClosed {
+			select {
+			case closed <- struct{}{}:
+			default:
+			}
+		}
+	}
+	server.Start()
+	defer server.Close()
+
+	client, err := currentHTTPMiddlewareRegistry().pool("old")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		t.Fatal(err)
+	}
+	if err := resp.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ConfigureHTTPMiddleware(nil); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("previous registry idle connection was not closed")
+	}
+}
+
+func TestHTTPClientRequestTimeoutIncludesResponseBody(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{HTTPClientPool: map[string]HTTPClientPoolConfig{
+		"short": {RequestTimeout: "40ms"},
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatalf("configure middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"partial":`))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(150 * time.Millisecond)
+		_, _ = w.Write([]byte(`true}`))
+	}))
+	defer server.Close()
+
+	client, err := currentHTTPMiddlewareRegistry().pool("short")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := client.Get(server.URL)
+	if err != nil {
+		t.Fatalf("receive response headers: %v", err)
+	}
+	defer resp.Body.Close()
+	if _, err := io.ReadAll(resp.Body); err == nil {
+		t.Fatal("expected response body read to time out")
+	}
+}
+
+func retryConfigForTest(maxRetries int, networkErrors bool, statusCodes []int, methods ...string) RetryConfig {
+	respectRetryAfter := false
+	return RetryConfig{
+		MaxRetries:     maxRetries,
+		InitialBackoff: "1ms",
+		MaxBackoff:     "1ms",
+		Multiplier:     1,
+		MaxElapsedTime: "1s",
+		Methods:        methods,
+		RetryOn: RetryOnConfig{
+			NetworkErrors: &networkErrors,
+			StatusCodes:   statusCodes,
+		},
+		RespectRetryAfter: &respectRetryAfter,
+	}
+}
+
+func TestResilientUpstreamRequestDiscardsRetryableResponse(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"fast": retryConfigForTest(1, true, []int{http.StatusServiceUnavailable}, http.MethodPost),
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatalf("configure middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		body, err := io.ReadAll(r.Body)
+		if err != nil || string(body) != `{"query":true}` {
+			t.Errorf("attempt %d request body = %q, err=%v", attempt, body, err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if attempt == 1 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			_, _ = w.Write([]byte(`{"attempt":1,"stale":true}`))
+			return
+		}
+		_, _ = w.Write([]byte(`{"attempt":2,"stale":false}`))
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL, strings.NewReader(`{"query":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "fast", req)
+	if err != nil {
+		t.Fatalf("resilient request: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK || string(body) != `{"attempt":2,"stale":false}` {
+		t.Fatalf("returned stale retry response: status=%d body=%s", resp.StatusCode, body)
+	}
+	if got := attempts.Load(); got != 2 {
+		t.Fatalf("attempt count = %d, want 2", got)
+	}
+}
+
+func TestRetryBackoffAndRetryAfter(t *testing.T) {
+	networkErrors := true
+	respectRetryAfter := true
+	policy, err := compileRetryPolicy(RetryConfig{
+		MaxRetries:     3,
+		InitialBackoff: "100ms",
+		MaxBackoff:     "250ms",
+		Multiplier:     2,
+		Jitter:         0,
+		MaxElapsedTime: "5s",
+		Methods:        []string{http.MethodGet},
+		RetryOn: RetryOnConfig{
+			NetworkErrors: &networkErrors,
+			StatusCodes:   []int{http.StatusServiceUnavailable},
+		},
+		RespectRetryAfter: &respectRetryAfter,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, tt := range []struct {
+		attempt int
+		want    time.Duration
+	}{
+		{attempt: 1, want: 100 * time.Millisecond},
+		{attempt: 2, want: 200 * time.Millisecond},
+		{attempt: 3, want: 250 * time.Millisecond},
+		{attempt: 8, want: 250 * time.Millisecond},
+	} {
+		if got := policy.backoff(tt.attempt, nil); got != tt.want {
+			t.Errorf("backoff(%d) = %s, want %s", tt.attempt, got, tt.want)
+		}
+	}
+
+	resp := &http.Response{Header: http.Header{"Retry-After": {"10"}}}
+	if got := policy.backoff(1, resp); got != 250*time.Millisecond {
+		t.Fatalf("Retry-After backoff = %s, want max_backoff 250ms", got)
+	}
+}
+
+func TestParseRetryAfter(t *testing.T) {
+	for _, value := range []string{"", "invalid", "-1"} {
+		if got, ok := parseRetryAfter(value); ok {
+			t.Errorf("parseRetryAfter(%q) = %s, true; want false", value, got)
+		}
+	}
+	if got, ok := parseRetryAfter("2"); !ok || got != 2*time.Second {
+		t.Fatalf("numeric Retry-After = %s, %v; want 2s, true", got, ok)
+	}
+
+	future := time.Now().Add(2 * time.Second).UTC().Format(http.TimeFormat)
+	if got, ok := parseRetryAfter(future); !ok || got <= 0 || got > 2*time.Second {
+		t.Fatalf("HTTP-date Retry-After = %s, %v; want within (0s, 2s]", got, ok)
+	}
+	past := time.Now().Add(-time.Hour).UTC().Format(http.TimeFormat)
+	if got, ok := parseRetryAfter(past); !ok || got != 0 {
+		t.Fatalf("past Retry-After = %s, %v; want 0s, true", got, ok)
+	}
+}
+
+func TestResilientUpstreamRequestStopsAfterMaxRetries(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"limited": retryConfigForTest(2, true, []int{http.StatusServiceUnavailable}, http.MethodGet),
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_ = json.NewEncoder(w).Encode(map[string]interface{}{"attempt": attempt})
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "limited", req)
+	if err != nil {
+		t.Fatalf("retry exhaustion returned transport error: %v", err)
+	}
+	defer resp.Body.Close()
+	var body map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatal(err)
+	}
+	if got := attempts.Load(); got != 3 {
+		t.Fatalf("attempts = %d, want initial request plus 2 retries", got)
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable || body["attempt"] != float64(3) {
+		t.Fatalf("final response status/body = %d/%v, want final attempt 3", resp.StatusCode, body)
+	}
+}
+
+func TestResilientUpstreamRequestDoesNotRetryNetworkErrorsWhenDisabled(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"status-only": retryConfigForTest(2, false, []int{}, http.MethodGet),
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		conn, rw, err := w.(http.Hijacker).Hijack()
+		if err != nil {
+			t.Errorf("hijack: %v", err)
+			return
+		}
+		_, _ = rw.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 20\r\n\r\npartial")
+		_ = rw.Flush()
+		_ = conn.Close()
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "status-only", req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected truncated response body error")
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("network error attempts = %d, want 1", got)
+	}
+}
+
+func TestResilientUpstreamRequestDoesNotReplayNonReplayableBody(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"post": retryConfigForTest(2, true, []int{http.StatusServiceUnavailable}, http.MethodPost),
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"attempt":1}`))
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL, io.NopCloser(strings.NewReader("payload")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if req.GetBody != nil {
+		t.Fatal("test request unexpectedly has a replayable body")
+	}
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "post", req)
+	if err != nil {
+		t.Fatalf("status response should be returned for normal HTTP handling: %v", err)
+	}
+	defer resp.Body.Close()
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("non-replayable request attempts = %d, want 1", got)
+	}
+	if resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want 503", resp.StatusCode)
+	}
+}
+
+func TestRetryMaxElapsedTimeIsAHardBudget(t *testing.T) {
+	retry := retryConfigForTest(10, true, []int{}, http.MethodGet)
+	retry.MaxElapsedTime = "50ms"
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"bounded": retry,
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatalf("configure middleware: %v", err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := time.Now()
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "bounded", req)
+	if resp != nil {
+		resp.Body.Close()
+	}
+	if err == nil {
+		t.Fatal("expected max elapsed time to cancel the in-flight request")
+	}
+	if elapsed := time.Since(started); elapsed > 250*time.Millisecond {
+		t.Fatalf("retry budget took %s, want at most 250ms", elapsed)
+	}
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("attempts = %d, want 1 because the first attempt exhausted the budget", got)
+	}
+}
+
+func TestBuiltInRetryPolicyIsDisabled(t *testing.T) {
+	if err := ConfigureHTTPMiddleware(nil); err != nil {
+		t.Fatalf("configure built-in middleware: %v", err)
+	}
+	var attempts atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempts.Add(1)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		_, _ = w.Write([]byte(`{"unavailable":true}`))
+	}))
+	defer server.Close()
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := doResilientUpstreamRequest(req.Context(), "", "", req)
+	if err != nil {
+		t.Fatalf("request with disabled retry: %v", err)
+	}
+	defer resp.Body.Close()
+	if got := attempts.Load(); got != 1 {
+		t.Fatalf("built-in retry made %d requests, want 1", got)
+	}
+}
+
+func TestNamedUpstreamHTTPClientValidatesMiddlewareReferences(t *testing.T) {
+	cfg := &Config{Middleware: MiddlewareConfig{Retry: map[string]RetryConfig{
+		"get-only": retryConfigForTest(1, true, []int{http.StatusServiceUnavailable}, http.MethodGet),
+	}}}
+	if err := ConfigureHTTPMiddleware(cfg); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	client := &NamedUpstreamHTTPClient{}
+	if err := client.ValidateHTTPMiddleware("missing", "", http.MethodGet); err == nil {
+		t.Fatal("expected unknown pool validation error")
+	}
+	if err := client.ValidateHTTPMiddleware("", "missing", http.MethodGet); err == nil {
+		t.Fatal("expected unknown retry validation error")
+	}
+	if err := client.ValidateHTTPMiddleware("", "", http.MethodPost); err != nil {
+		t.Fatalf("built-in disabled retry must accept existing POST nodes: %v", err)
+	}
+	if err := client.ValidateHTTPMiddleware("", "get-only", http.MethodPost); err == nil {
+		t.Fatal("expected configured GET-only retry policy to reject POST")
+	}
+	if err := client.ValidateHTTPMiddleware("", "get-only", "get"); err != nil {
+		t.Fatalf("method validation should be case-insensitive: %v", err)
+	}
+}
+
+func TestNamedUpstreamHTTPClientCallReturnsCurrentResponse(t *testing.T) {
+	oldConfig := GetConfig()
+	defer SetConfig(oldConfig)
+	if err := ConfigureHTTPMiddleware(nil); err != nil {
+		t.Fatal(err)
+	}
+	defer ConfigureHTTPMiddleware(nil)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || r.URL.Query().Get("id") != "42" || r.Header.Get("X-Test") != "request" {
+			t.Errorf("unexpected request: method=%s query=%s X-Test=%q", r.Method, r.URL.RawQuery, r.Header.Get("X-Test"))
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Errorf("read request body: %v", err)
+		}
+		if string(body) != `{"hello":"world"}` {
+			t.Errorf("request body = %s", body)
+		}
+		w.Header().Add("Set-Cookie", "csrf=one")
+		w.Header().Add("Set-Cookie", "session=two")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"attempt":1,"fresh":true}`))
+	}))
+	defer server.Close()
+
+	SetConfig(&Config{Upstream: map[string]UpstreamEntryConfig{
+		"iq": {Endpoint: server.URL},
+	}})
+	client := &NamedUpstreamHTTPClient{}
+	resp, err := client.Call(
+		context.Background(),
+		"iq",
+		"",
+		"",
+		http.MethodPost,
+		"/api",
+		map[string]string{"id": "42"},
+		map[string]string{"X-Test": "request"},
+		map[string]interface{}{"hello": "world"},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusCreated || string(resp.Body) != `{"attempt":1,"fresh":true}` {
+		t.Fatalf("response = status %d body %s", resp.StatusCode, resp.Body)
+	}
+	if got := resp.Headers["Set-Cookie"]; len(got) != 2 || got[0] != "csrf=one" || got[1] != "session=two" {
+		t.Fatalf("Set-Cookie headers = %v", got)
+	}
+	if _, err := client.Call(context.Background(), "missing", "", "", http.MethodGet, "/", nil, nil, nil); err == nil {
+		t.Fatal("expected missing named upstream error")
 	}
 }
 

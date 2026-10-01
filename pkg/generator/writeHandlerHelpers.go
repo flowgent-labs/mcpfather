@@ -111,33 +111,33 @@ func (g *Generator) generateResourceServerGo() error {
 
 // generateClientGo creates the client.go file (ForwardRequest, params helpers)
 func (g *Generator) generateClientGo() error {
-	helpersTemplate, err := templatesFS.ReadFile("templates/helpers.templ")
+	clientTemplate, err := templatesFS.ReadFile("templates/client.templ")
 	if err != nil {
-		return fmt.Errorf("failed to read helpers template file: %w", err)
+		return fmt.Errorf("failed to read client template file: %w", err)
 	}
 
-	tmpl, err := template.New("helpers").Parse(string(helpersTemplate))
+	tmpl, err := template.New("client").Parse(string(clientTemplate))
 	if err != nil {
-		return fmt.Errorf("failed to parse helpers template: %w", err)
+		return fmt.Errorf("failed to parse client template: %w", err)
 	}
 
 	data := struct{ ModuleName string }{ModuleName: BuildModuleName(g.outputDir)}
 
 	var buffer bytes.Buffer
 	if err := tmpl.Execute(&buffer, data); err != nil {
-		return fmt.Errorf("failed to execute helpers template: %w", err)
+		return fmt.Errorf("failed to execute client template: %w", err)
 	}
 
 	formattedCode, err := format.Source(buffer.Bytes())
 	if err != nil {
-		return fmt.Errorf("failed to format generated helpers code: %w", err)
+		return fmt.Errorf("failed to format generated client code: %w", err)
 	}
 
 	err = writeFileContent(g.outputDir+"/pkg/helpers", "client.go", func() ([]byte, error) {
 		return formattedCode, nil
 	})
 	if err != nil {
-		return fmt.Errorf("failed to write helpers.go file: %w", err)
+		return fmt.Errorf("failed to write client.go file: %w", err)
 	}
 
 	// Remove old params.go if it exists from a previous generation

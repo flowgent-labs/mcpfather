@@ -114,6 +114,24 @@ func ValidateReferences(steps []StepConfig) error {
 	return validateRefsInPipeline(steps, nil)
 }
 
+// ValidateHTTPMiddleware checks named pool/retry references at startup when the
+// configured HTTP client exposes a middleware policy registry.
+func ValidateHTTPMiddleware(steps []StepConfig, validator HTTPMiddlewareValidator) error {
+	for _, step := range steps {
+		if step.Kind == "http" {
+			if err := validator.ValidateHTTPMiddleware(step.Spec.Pool, step.Spec.Retry, step.Spec.Method); err != nil {
+				return fmt.Errorf("Step %q: %w", step.ID, err)
+			}
+		}
+		if step.Kind == "foreach" {
+			if err := ValidateHTTPMiddleware(step.Spec.Pipeline, validator); err != nil {
+				return fmt.Errorf("Step %q foreach.pipeline: %w", step.ID, err)
+			}
+		}
+	}
+	return nil
+}
+
 func validateRefsInPipeline(steps []StepConfig, parentIDs map[string]bool) error {
 	known := map[string]bool{
 		"input": true, // always available

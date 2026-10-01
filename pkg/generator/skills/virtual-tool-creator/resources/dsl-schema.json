@@ -29,6 +29,9 @@
         "mgmt": {
           "$ref": "#/$defs/MgmtConfig"
         },
+        "middleware": {
+          "$ref": "#/$defs/MiddlewareConfig"
+        },
         "native_tools": {
           "$ref": "#/$defs/NativeToolsConfig"
         },
@@ -97,9 +100,48 @@
       ],
       "type": "object"
     },
+    "HTTPClientPoolConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "dial_timeout": {
+          "type": "string"
+        },
+        "expect_continue_timeout": {
+          "type": "string"
+        },
+        "force_http2": {
+          "type": "boolean"
+        },
+        "idle_conn_timeout": {
+          "type": "string"
+        },
+        "keep_alive": {
+          "type": "string"
+        },
+        "max_conns_per_host": {
+          "type": "integer"
+        },
+        "max_idle_conns": {
+          "type": "integer"
+        },
+        "max_idle_conns_per_host": {
+          "type": "integer"
+        },
+        "request_timeout": {
+          "type": "string"
+        },
+        "response_header_timeout": {
+          "type": "string"
+        },
+        "tls_handshake_timeout": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "HTTPSpec": {
       "additionalProperties": false,
-      "description": "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values.",
+      "description": "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values. Pool and retry reference named middleware policies; omitted references use built-in defaults.",
       "properties": {
         "body": {},
         "headers": {
@@ -115,9 +157,15 @@
         "path": {
           "type": "string"
         },
+        "pool": {
+          "type": "string"
+        },
         "query": {
           "additionalProperties": {},
           "type": "object"
+        },
+        "retry": {
+          "type": "string"
         },
         "upstream": {
           "type": "string"
@@ -128,21 +176,6 @@
         "method",
         "path"
       ],
-      "type": "object"
-    },
-    "TFSConfig": {
-      "additionalProperties": false,
-      "properties": {
-        "base_uri": {
-          "type": "string"
-        },
-        "clean-job-ttl-seconds": {
-          "type": "string"
-        },
-        "enabled": {
-          "type": "boolean"
-        }
-      },
       "type": "object"
     },
     "JQSpec": {
@@ -230,6 +263,24 @@
       },
       "type": "object"
     },
+    "MiddlewareConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "http_client_pool": {
+          "additionalProperties": {
+            "$ref": "#/$defs/HTTPClientPoolConfig"
+          },
+          "type": "object"
+        },
+        "retry": {
+          "additionalProperties": {
+            "$ref": "#/$defs/RetryConfig"
+          },
+          "type": "object"
+        }
+      },
+      "type": "object"
+    },
     "NativeToolsConfig": {
       "additionalProperties": false,
       "properties": {
@@ -308,6 +359,57 @@
       },
       "type": "object"
     },
+    "RetryConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "initial_backoff": {
+          "type": "string"
+        },
+        "jitter": {
+          "type": "number"
+        },
+        "max_backoff": {
+          "type": "string"
+        },
+        "max_elapsed_time": {
+          "type": "string"
+        },
+        "max_retries": {
+          "type": "integer"
+        },
+        "methods": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "multiplier": {
+          "type": "number"
+        },
+        "respect_retry_after": {
+          "type": "boolean"
+        },
+        "retry_on": {
+          "$ref": "#/$defs/RetryOnConfig"
+        }
+      },
+      "type": "object"
+    },
+    "RetryOnConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "network_errors": {
+          "type": "boolean"
+        },
+        "status_codes": {
+          "items": {
+            "type": "integer"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
     "ReturnSpec": {
       "additionalProperties": false,
       "properties": {
@@ -342,11 +444,11 @@
         "idle_timeout_seconds": {
           "type": "integer"
         },
-        "tfs": {
-          "$ref": "#/$defs/TFSConfig"
-        },
         "read_timeout_seconds": {
           "type": "integer"
+        },
+        "tfs": {
+          "$ref": "#/$defs/TFSConfig"
         },
         "write_timeout_seconds": {
           "type": "integer"
@@ -526,6 +628,21 @@
       ],
       "type": "object"
     },
+    "TFSConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_uri": {
+          "type": "string"
+        },
+        "clean-job-ttl-seconds": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
     "UpstreamAuthConfig": {
       "additionalProperties": false,
       "properties": {
@@ -661,6 +778,9 @@
     },
     "mgmt": {
       "$ref": "#/$defs/MgmtConfig"
+    },
+    "middleware": {
+      "$ref": "#/$defs/MiddlewareConfig"
     },
     "native_tools": {
       "$ref": "#/$defs/NativeToolsConfig"

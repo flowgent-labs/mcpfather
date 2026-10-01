@@ -347,7 +347,7 @@ type mockHTTPClient struct {
 	body       []byte
 }
 
-func (m *mockHTTPClient) Call(ctx context.Context, upstream, method, path string, query, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
+func (m *mockHTTPClient) Call(ctx context.Context, upstream, pool, retry, method, path string, query, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
 	return &pipeline.HTTPResponse{StatusCode: m.statusCode, Headers: m.headers, Body: m.body}, nil
 }
 

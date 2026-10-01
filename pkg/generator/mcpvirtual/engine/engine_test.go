@@ -2,6 +2,8 @@ package engine
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 
 	"github.com/flowgent-labs/mcpfather/pkg/generator/mcpvirtual/config"
@@ -10,6 +12,22 @@ import (
 
 type mockRegistry struct {
 	results map[string]string
+}
+
+type rejectingHTTPClient struct {
+	pool   string
+	retry  string
+	method string
+	err    error
+}
+
+func (c *rejectingHTTPClient) Call(context.Context, string, string, string, string, string, map[string]string, map[string]string, interface{}) (*pipeline.HTTPResponse, error) {
+	return nil, errors.New("unexpected HTTP call")
+}
+
+func (c *rejectingHTTPClient) ValidateHTTPMiddleware(pool, retry, method string) error {
+	c.pool, c.retry, c.method = pool, retry, method
+	return c.err
 }
 
 func (m *mockRegistry) CallTool(ctx context.Context, name string, args map[string]interface{}) (*pipeline.CallToolResult, error) {
@@ -85,6 +103,47 @@ func TestEngine_BuildTools(t *testing.T) {
 	}
 	if len(result.Content) == 0 {
 		t.Fatal("handler returned no content")
+	}
+}
+
+func TestEngine_RejectsInvalidHTTPMiddlewareReference(t *testing.T) {
+	wantErr := errors.New("retry policy is not registered")
+	client := &rejectingHTTPClient{err: wantErr}
+	cfg := &config.Config{VirtualTools: []config.VirtualToolConfig{{
+		Name:        "invalid_http_policy",
+		Description: "Test HTTP middleware registration validation",
+		InputSchema: map[string]interface{}{"type": "object"},
+		Pipeline: []pipeline.StepConfig{
+			{
+				ID:   "fetch",
+				Kind: "http",
+				Spec: pipeline.StepSpec{
+					Upstream: "iq",
+					Pool:     "large",
+					Retry:    "missing",
+					Method:   "POST",
+					Path:     "/api/issues",
+				},
+			},
+			{ID: "done", Kind: "return", Spec: pipeline.StepSpec{From: "$fetch.body"}},
+		},
+	}}}
+
+	engine, err := NewFromConfig(cfg, nil, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tools, err := engine.Tools()
+	if err == nil {
+		t.Fatalf("Tools() = %v, nil; want middleware validation error", tools)
+	}
+	for _, fragment := range []string{"virtual tool \"invalid_http_policy\"", "HTTP middleware validation", "Step \"fetch\"", wantErr.Error()} {
+		if !strings.Contains(err.Error(), fragment) {
+			t.Errorf("Tools() error %q missing %q", err, fragment)
+		}
+	}
+	if client.pool != "large" || client.retry != "missing" || client.method != "POST" {
+		t.Fatalf("validation args = pool:%q retry:%q method:%q", client.pool, client.retry, client.method)
 	}
 }
 

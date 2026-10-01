@@ -13,10 +13,59 @@ package mcpconfig
 type Config struct {
 	Server       ServerConfig                   `yaml:"server"`
 	Upstream     map[string]UpstreamEntryConfig `yaml:"upstream"`
+	Middleware   MiddlewareConfig               `yaml:"middleware"`
 	Tools        NativeToolsConfig              `yaml:"native_tools"`
 	Mgmt         MgmtConfig                     `yaml:"mgmt"`
 	Logging      LoggingConfig                  `yaml:"logging"`
 	VirtualTools []VirtualToolPipelineConfig    `yaml:"virtual_tools"`
+}
+
+// MiddlewareConfig defines reusable outbound HTTP middleware policies. HTTP
+// pipeline nodes bind policies by name; omitted bindings use built-in policies
+// registered by the generated MCP process.
+type MiddlewareConfig struct {
+	HTTPClientPool map[string]HTTPClientPoolConfig `yaml:"http_client_pool"`
+	Retry          map[string]RetryConfig          `yaml:"retry"`
+}
+
+// HTTPClientPoolConfig controls one reusable outbound HTTP client/transport pool.
+// Duration fields accept Go duration strings such as "200ms", "30s", or "2m".
+type HTTPClientPoolConfig struct {
+	MaxIdleConns          int    `yaml:"max_idle_conns"`
+	MaxIdleConnsPerHost   int    `yaml:"max_idle_conns_per_host"`
+	MaxConnsPerHost       int    `yaml:"max_conns_per_host"`
+	IdleConnTimeout       string `yaml:"idle_conn_timeout"`
+	DialTimeout           string `yaml:"dial_timeout"`
+	KeepAlive             string `yaml:"keep_alive"`
+	TLSHandshakeTimeout   string `yaml:"tls_handshake_timeout"`
+	ResponseHeaderTimeout string `yaml:"response_header_timeout"`
+	// RequestTimeout caps one complete attempt, including response body reads.
+	// "0" disables it for backward compatibility.
+	RequestTimeout        string `yaml:"request_timeout"`
+	ExpectContinueTimeout string `yaml:"expect_continue_timeout"`
+	ForceHTTP2            *bool  `yaml:"force_http2,omitempty"`
+}
+
+// RetryConfig controls application-level retries for an HTTP pipeline node.
+// MaxRetries is the number of additional attempts after the initial request;
+// zero disables retries. Methods form an explicit safety allowlist so
+// write-oriented POST/PATCH requests are never retried by accident.
+type RetryConfig struct {
+	MaxRetries        int           `yaml:"max_retries"`
+	InitialBackoff    string        `yaml:"initial_backoff"`
+	MaxBackoff        string        `yaml:"max_backoff"`
+	Multiplier        float64       `yaml:"multiplier"`
+	Jitter            float64       `yaml:"jitter"`
+	MaxElapsedTime    string        `yaml:"max_elapsed_time"`
+	Methods           []string      `yaml:"methods"`
+	RetryOn           RetryOnConfig `yaml:"retry_on"`
+	RespectRetryAfter *bool         `yaml:"respect_retry_after,omitempty"`
+}
+
+// RetryOnConfig selects the failures which are eligible for a retry.
+type RetryOnConfig struct {
+	NetworkErrors *bool `yaml:"network_errors,omitempty"`
+	StatusCodes   []int `yaml:"status_codes"`
 }
 
 // ServerConfig holds the inbound-facing (AI agent client MCP request) configuration.
@@ -197,7 +246,7 @@ type LoggingConfig struct {
 
 // VirtualToolPipelineConfig holds a single virtual tool pipeline definition.
 // Virtual tools compose multiple native tools into a single AI-callable tool
-// via a declarative pipeline (call -> jq -> foreach -> emit -> return).
+// via a declarative pipeline (call -> jq -> foreach -> http -> emit -> return).
 // Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 type VirtualToolPipelineConfig struct {
 	Name        string                   `yaml:"name"`

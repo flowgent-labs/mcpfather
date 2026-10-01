@@ -250,6 +250,41 @@ func printDefaultConfigYAML() {
 	fmt.Println("        cookie_token: \"\"        # static cookie (e.g. JSESSIONID for legacy systems)")
 	fmt.Println("        cookie_token_file: \"\"   # path to file containing cookie token (K8s secrets)")
 	fmt.Println()
+	fmt.Print(`# ---- Reusable HTTP Middleware Policies ----
+# HTTP nodes select these named policies with spec.pool and spec.retry.
+# Omitted references use built-in "default" policies: pool limits 32/32/32,
+# request_timeout 0s, and max_retries 0.
+middleware:
+  http_client_pool:
+    large:
+      max_idle_conns: 128          # reusable idle connections across all upstream hosts
+      max_idle_conns_per_host: 32  # reusable idle connections retained per upstream host
+      max_conns_per_host: 64       # hard cap: active + dialing + idle connections per host
+      dial_timeout: 10s            # TCP connection establishment timeout
+      request_timeout: 60s         # complete attempt, including response-body reads; 0 disables
+    medium:
+      max_idle_conns: 64
+      max_idle_conns_per_host: 16
+      max_conns_per_host: 32
+      dial_timeout: 5s
+      request_timeout: 30s
+    small:
+      max_idle_conns: 16
+      max_idle_conns_per_host: 4
+      max_conns_per_host: 8
+      dial_timeout: 3s
+      request_timeout: 15s
+  retry:
+    reliable:
+      max_retries: 4               # extra attempts after the first request
+      max_elapsed_time: 30s        # hard budget for all attempts and backoff
+    standard:
+      max_retries: 2
+      max_elapsed_time: 15s
+    besteffort:
+      max_retries: 0               # no automatic retry; max_elapsed_time is unnecessary
+`)
+	fmt.Println()
 	fmt.Println("# ---- Native MCP Tools ----")
 	fmt.Println("native_tools:")
 	fmt.Println("  expose:")
@@ -259,7 +294,7 @@ func printDefaultConfigYAML() {
 	fmt.Println()
 	fmt.Println("# ---- Virtual Tools ----")
 	fmt.Println("# Compose multiple native tools into a single virtual tool via a declarative")
-	fmt.Println("# pipeline (call -> jq -> foreach -> emit -> return).")
+	fmt.Println("# pipeline (call -> jq -> foreach -> http -> emit -> return).")
 	fmt.Println("# Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json")
 	fmt.Println("#")
 	fmt.Println("# Real Enterprise Virtual Tools definitions:")
@@ -305,6 +340,10 @@ func main() {
 		cfg = &mcputils.Config{}
 	}
 	mcputils.SetConfig(cfg)
+	if err := mcputils.ConfigureHTTPMiddleware(cfg); err != nil {
+		fmt.Fprintf(os.Stderr, "Invalid HTTP middleware configuration: %v\n", err)
+		os.Exit(1)
+	}
 
 	// Initialize backend (outbound) credential managers (no-op if disabled)
 	mcputils.InitOIDC(cfg.Upstream["default"].Auth.OIDC)

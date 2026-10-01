@@ -10,8 +10,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/rand"
 	"mime"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/textproto"
 	"net/url"
@@ -40,12 +42,520 @@ const tfsInProgressSuffix = ".inprogress"
 const defaultTFSCleanJobTTL = 5 * time.Minute
 const tfsCleanJobInterval = 10 * time.Second
 
+const (
+	defaultMiddlewarePolicyName = "default"
+	retryDrainLimit             = 64 << 10
+)
+
 type tfsFileMeta struct {
 	Name        string
 	ContentType string
 }
 
-var tfsDownloadMeta sync.Map
+var (
+	tfsDownloadMeta        sync.Map
+	httpMiddlewareMu       sync.RWMutex
+	httpMiddlewareRegistry = mustBuiltinHTTPMiddlewareRegistry()
+)
+
+type compiledRetryPolicy struct {
+	maxRetries        int
+	initialBackoff    time.Duration
+	maxBackoff        time.Duration
+	multiplier        float64
+	jitter            float64
+	maxElapsedTime    time.Duration
+	methods           map[string]struct{}
+	networkErrors     bool
+	statusCodes       map[int]struct{}
+	respectRetryAfter bool
+}
+
+type compiledHTTPMiddlewareRegistry struct {
+	pools   map[string]*http.Client
+	retries map[string]compiledRetryPolicy
+}
+
+func builtinHTTPClientPoolConfig() HTTPClientPoolConfig {
+	forceHTTP2 := true
+	return HTTPClientPoolConfig{
+		MaxIdleConns:          32,
+		MaxIdleConnsPerHost:   32,
+		MaxConnsPerHost:       32,
+		IdleConnTimeout:       "90s",
+		DialTimeout:           "10s",
+		KeepAlive:             "30s",
+		TLSHandshakeTimeout:   "10s",
+		ResponseHeaderTimeout: "30s",
+		RequestTimeout:        "0s",
+		ExpectContinueTimeout: "1s",
+		ForceHTTP2:            &forceHTTP2,
+	}
+}
+
+func builtinRetryConfig() RetryConfig {
+	networkErrors := true
+	respectRetryAfter := true
+	return RetryConfig{
+		MaxRetries:     0,
+		InitialBackoff: "100ms",
+		MaxBackoff:     "1s",
+		Multiplier:     2,
+		Jitter:         0.2,
+		MaxElapsedTime: "5s",
+		Methods:        []string{http.MethodGet, http.MethodHead, http.MethodOptions, http.MethodPut, http.MethodDelete},
+		RetryOn: RetryOnConfig{
+			NetworkErrors: &networkErrors,
+			StatusCodes:   []int{http.StatusTooManyRequests, http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout},
+		},
+		RespectRetryAfter: &respectRetryAfter,
+	}
+}
+
+func mustBuiltinHTTPMiddlewareRegistry() *compiledHTTPMiddlewareRegistry {
+	registry, err := newHTTPMiddlewareRegistry(nil)
+	if err != nil {
+		panic(err)
+	}
+	return registry
+}
+
+// ConfigureHTTPMiddleware compiles all configured policies once during MCP
+// process startup. The built-in "default" pool and retry policies are always
+// registered, so existing HTTP nodes need no configuration changes.
+func ConfigureHTTPMiddleware(cfg *Config) error {
+	next, err := newHTTPMiddlewareRegistry(cfg)
+	if err != nil {
+		return err
+	}
+
+	httpMiddlewareMu.Lock()
+	previous := httpMiddlewareRegistry
+	httpMiddlewareRegistry = next
+	httpMiddlewareMu.Unlock()
+
+	if previous != nil {
+		previous.closeIdleConnections()
+	}
+	return nil
+}
+
+func newHTTPMiddlewareRegistry(cfg *Config) (*compiledHTTPMiddlewareRegistry, error) {
+	registry := &compiledHTTPMiddlewareRegistry{
+		pools:   make(map[string]*http.Client),
+		retries: make(map[string]compiledRetryPolicy),
+	}
+
+	client, err := newUpstreamHTTPClient(builtinHTTPClientPoolConfig())
+	if err != nil {
+		return nil, fmt.Errorf("compile built-in HTTP client pool: %w", err)
+	}
+	registry.pools[defaultMiddlewarePolicyName] = client
+	retry, err := compileRetryPolicy(builtinRetryConfig())
+	if err != nil {
+		return nil, fmt.Errorf("compile built-in retry policy: %w", err)
+	}
+	registry.retries[defaultMiddlewarePolicyName] = retry
+
+	if cfg == nil {
+		return registry, nil
+	}
+	for name, poolConfig := range cfg.Middleware.HTTPClientPool {
+		if name == "" || name == defaultMiddlewarePolicyName {
+			return nil, fmt.Errorf("middleware.http_client_pool policy name %q is reserved or empty", name)
+		}
+		client, err := newUpstreamHTTPClient(mergeHTTPClientPoolConfig(poolConfig))
+		if err != nil {
+			return nil, fmt.Errorf("middleware.http_client_pool.%s: %w", name, err)
+		}
+		registry.pools[name] = client
+	}
+	for name, retryConfig := range cfg.Middleware.Retry {
+		if name == "" || name == defaultMiddlewarePolicyName {
+			return nil, fmt.Errorf("middleware.retry policy name %q is reserved or empty", name)
+		}
+		compiled, err := compileRetryPolicy(mergeRetryConfig(retryConfig))
+		if err != nil {
+			return nil, fmt.Errorf("middleware.retry.%s: %w", name, err)
+		}
+		registry.retries[name] = compiled
+	}
+	return registry, nil
+}
+
+func mergeHTTPClientPoolConfig(config HTTPClientPoolConfig) HTTPClientPoolConfig {
+	defaults := builtinHTTPClientPoolConfig()
+	if config.MaxIdleConns == 0 {
+		config.MaxIdleConns = defaults.MaxIdleConns
+	}
+	if config.MaxIdleConnsPerHost == 0 {
+		config.MaxIdleConnsPerHost = defaults.MaxIdleConnsPerHost
+	}
+	if config.MaxConnsPerHost == 0 {
+		config.MaxConnsPerHost = defaults.MaxConnsPerHost
+	}
+	if config.IdleConnTimeout == "" {
+		config.IdleConnTimeout = defaults.IdleConnTimeout
+	}
+	if config.DialTimeout == "" {
+		config.DialTimeout = defaults.DialTimeout
+	}
+	if config.KeepAlive == "" {
+		config.KeepAlive = defaults.KeepAlive
+	}
+	if config.TLSHandshakeTimeout == "" {
+		config.TLSHandshakeTimeout = defaults.TLSHandshakeTimeout
+	}
+	if config.ResponseHeaderTimeout == "" {
+		config.ResponseHeaderTimeout = defaults.ResponseHeaderTimeout
+	}
+	if config.RequestTimeout == "" {
+		config.RequestTimeout = defaults.RequestTimeout
+	}
+	if config.ExpectContinueTimeout == "" {
+		config.ExpectContinueTimeout = defaults.ExpectContinueTimeout
+	}
+	if config.ForceHTTP2 == nil {
+		config.ForceHTTP2 = defaults.ForceHTTP2
+	}
+	return config
+}
+
+func mergeRetryConfig(config RetryConfig) RetryConfig {
+	defaults := builtinRetryConfig()
+	if config.InitialBackoff == "" {
+		config.InitialBackoff = defaults.InitialBackoff
+	}
+	if config.MaxBackoff == "" {
+		config.MaxBackoff = defaults.MaxBackoff
+	}
+	if config.Multiplier == 0 {
+		config.Multiplier = defaults.Multiplier
+	}
+	if config.MaxElapsedTime == "" {
+		config.MaxElapsedTime = defaults.MaxElapsedTime
+	}
+	if config.Methods == nil {
+		config.Methods = defaults.Methods
+	}
+	if config.RetryOn.NetworkErrors == nil {
+		config.RetryOn.NetworkErrors = defaults.RetryOn.NetworkErrors
+	}
+	if config.RetryOn.StatusCodes == nil {
+		config.RetryOn.StatusCodes = defaults.RetryOn.StatusCodes
+	}
+	if config.RespectRetryAfter == nil {
+		config.RespectRetryAfter = defaults.RespectRetryAfter
+	}
+	return config
+}
+
+func parsePositiveDuration(field, value string) (time.Duration, error) {
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a valid duration: %w", field, err)
+	}
+	if duration <= 0 {
+		return 0, fmt.Errorf("%s must be greater than zero", field)
+	}
+	return duration, nil
+}
+
+func parseNonNegativeDuration(field, value string) (time.Duration, error) {
+	duration, err := time.ParseDuration(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be a valid duration: %w", field, err)
+	}
+	if duration < 0 {
+		return 0, fmt.Errorf("%s must not be negative", field)
+	}
+	return duration, nil
+}
+
+func newUpstreamHTTPClient(config HTTPClientPoolConfig) (*http.Client, error) {
+	if config.MaxIdleConns < 1 || config.MaxIdleConnsPerHost < 1 || config.MaxConnsPerHost < 1 {
+		return nil, fmt.Errorf("connection limits must be greater than zero")
+	}
+	idleConnTimeout, err := parsePositiveDuration("idle_conn_timeout", config.IdleConnTimeout)
+	if err != nil {
+		return nil, err
+	}
+	dialTimeout, err := parsePositiveDuration("dial_timeout", config.DialTimeout)
+	if err != nil {
+		return nil, err
+	}
+	keepAlive, err := parsePositiveDuration("keep_alive", config.KeepAlive)
+	if err != nil {
+		return nil, err
+	}
+	tlsHandshakeTimeout, err := parsePositiveDuration("tls_handshake_timeout", config.TLSHandshakeTimeout)
+	if err != nil {
+		return nil, err
+	}
+	responseHeaderTimeout, err := parsePositiveDuration("response_header_timeout", config.ResponseHeaderTimeout)
+	if err != nil {
+		return nil, err
+	}
+	requestTimeout, err := parseNonNegativeDuration("request_timeout", config.RequestTimeout)
+	if err != nil {
+		return nil, err
+	}
+	expectContinueTimeout, err := parsePositiveDuration("expect_continue_timeout", config.ExpectContinueTimeout)
+	if err != nil {
+		return nil, err
+	}
+
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.DialContext = (&net.Dialer{Timeout: dialTimeout, KeepAlive: keepAlive}).DialContext
+	transport.MaxIdleConns = config.MaxIdleConns
+	transport.MaxIdleConnsPerHost = config.MaxIdleConnsPerHost
+	transport.MaxConnsPerHost = config.MaxConnsPerHost
+	transport.IdleConnTimeout = idleConnTimeout
+	transport.TLSHandshakeTimeout = tlsHandshakeTimeout
+	transport.ResponseHeaderTimeout = responseHeaderTimeout
+	transport.ExpectContinueTimeout = expectContinueTimeout
+	transport.ForceAttemptHTTP2 = config.ForceHTTP2 == nil || *config.ForceHTTP2
+	return &http.Client{Transport: transport, Timeout: requestTimeout}, nil
+}
+
+func compileRetryPolicy(config RetryConfig) (compiledRetryPolicy, error) {
+	if config.MaxRetries < 0 {
+		return compiledRetryPolicy{}, fmt.Errorf("max_retries must not be negative")
+	}
+	if config.Multiplier < 1 {
+		return compiledRetryPolicy{}, fmt.Errorf("multiplier must be at least 1")
+	}
+	if config.Jitter < 0 || config.Jitter > 1 {
+		return compiledRetryPolicy{}, fmt.Errorf("jitter must be between 0 and 1")
+	}
+	initialBackoff, err := parsePositiveDuration("initial_backoff", config.InitialBackoff)
+	if err != nil {
+		return compiledRetryPolicy{}, err
+	}
+	maxBackoff, err := parsePositiveDuration("max_backoff", config.MaxBackoff)
+	if err != nil {
+		return compiledRetryPolicy{}, err
+	}
+	if maxBackoff < initialBackoff {
+		return compiledRetryPolicy{}, fmt.Errorf("max_backoff must not be less than initial_backoff")
+	}
+	maxElapsedTime, err := parsePositiveDuration("max_elapsed_time", config.MaxElapsedTime)
+	if err != nil {
+		return compiledRetryPolicy{}, err
+	}
+
+	policy := compiledRetryPolicy{
+		maxRetries:        config.MaxRetries,
+		initialBackoff:    initialBackoff,
+		maxBackoff:        maxBackoff,
+		multiplier:        config.Multiplier,
+		jitter:            config.Jitter,
+		maxElapsedTime:    maxElapsedTime,
+		methods:           make(map[string]struct{}, len(config.Methods)),
+		networkErrors:     config.RetryOn.NetworkErrors != nil && *config.RetryOn.NetworkErrors,
+		statusCodes:       make(map[int]struct{}, len(config.RetryOn.StatusCodes)),
+		respectRetryAfter: config.RespectRetryAfter != nil && *config.RespectRetryAfter,
+	}
+	for _, method := range config.Methods {
+		method = strings.ToUpper(strings.TrimSpace(method))
+		if method == "" {
+			return compiledRetryPolicy{}, fmt.Errorf("methods must not contain an empty value")
+		}
+		policy.methods[method] = struct{}{}
+	}
+	for _, statusCode := range config.RetryOn.StatusCodes {
+		if statusCode < 100 || statusCode > 599 {
+			return compiledRetryPolicy{}, fmt.Errorf("invalid retry status code %d", statusCode)
+		}
+		policy.statusCodes[statusCode] = struct{}{}
+	}
+	return policy, nil
+}
+
+func currentHTTPMiddlewareRegistry() *compiledHTTPMiddlewareRegistry {
+	httpMiddlewareMu.RLock()
+	defer httpMiddlewareMu.RUnlock()
+	return httpMiddlewareRegistry
+}
+
+func (r *compiledHTTPMiddlewareRegistry) closeIdleConnections() {
+	for _, client := range r.pools {
+		client.CloseIdleConnections()
+	}
+}
+
+func (r *compiledHTTPMiddlewareRegistry) pool(name string) (*http.Client, error) {
+	if name == "" {
+		name = defaultMiddlewarePolicyName
+	}
+	client, ok := r.pools[name]
+	if !ok {
+		return nil, fmt.Errorf("HTTP client pool policy %q is not registered", name)
+	}
+	return client, nil
+}
+
+func (r *compiledHTTPMiddlewareRegistry) retry(name string) (compiledRetryPolicy, error) {
+	if name == "" {
+		name = defaultMiddlewarePolicyName
+	}
+	policy, ok := r.retries[name]
+	if !ok {
+		return compiledRetryPolicy{}, fmt.Errorf("retry policy %q is not registered", name)
+	}
+	return policy, nil
+}
+
+func doPooledUpstreamRequest(req *http.Request) (*http.Response, error) {
+	client, err := currentHTTPMiddlewareRegistry().pool("")
+	if err != nil {
+		return nil, err
+	}
+	return client.Do(req)
+}
+
+func doResilientUpstreamRequest(ctx context.Context, poolName, retryName string, req *http.Request) (*http.Response, error) {
+	registry := currentHTTPMiddlewareRegistry()
+	client, err := registry.pool(poolName)
+	if err != nil {
+		return nil, err
+	}
+	policy, err := registry.retry(retryName)
+	if err != nil {
+		return nil, err
+	}
+	if policy.maxRetries == 0 {
+		return client.Do(req)
+	}
+	_, methodAllowed := policy.methods[strings.ToUpper(req.Method)]
+	if !methodAllowed {
+		if retryName != "" {
+			return nil, fmt.Errorf("retry policy %q does not allow method %s", retryName, req.Method)
+		}
+		return client.Do(req)
+	}
+
+	retryCtx, cancelRetry := context.WithTimeout(ctx, policy.maxElapsedTime)
+	defer cancelRetry()
+	request := req.Clone(retryCtx)
+	for retries := 0; ; retries++ {
+		resp, requestErr := client.Do(request)
+		if requestErr == nil {
+			responseBody, readErr := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
+			if readErr != nil {
+				requestErr = fmt.Errorf("read response body: %w", readErr)
+				resp = nil
+			} else {
+				// HTTP nodes materialize responses before exposing them to the DSL.
+				// Replacing Body with the bytes from this exact attempt guarantees a
+				// disconnected/partial response can never fall back to older data.
+				resp.Body = io.NopCloser(bytes.NewReader(responseBody))
+				resp.ContentLength = int64(len(responseBody))
+			}
+		}
+		retryable := requestErr != nil && policy.networkErrors
+		if requestErr == nil {
+			_, retryable = policy.statusCodes[resp.StatusCode]
+		}
+		if !retryable || retries >= policy.maxRetries || retryCtx.Err() != nil {
+			return resp, requestErr
+		}
+
+		delay := policy.backoff(retries+1, resp)
+		deadline, hasDeadline := retryCtx.Deadline()
+		if hasDeadline && time.Until(deadline) <= delay {
+			return resp, requestErr
+		}
+		nextRequest, cloneErr := cloneRequestForRetry(req)
+		if cloneErr != nil {
+			if requestErr != nil {
+				return nil, fmt.Errorf("request failed and cannot be retried: %v: %w", requestErr, cloneErr)
+			}
+			return resp, nil
+		}
+		if resp != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, retryDrainLimit))
+			_ = resp.Body.Close()
+		}
+
+		vlogCtx(ctx, 3, "retrying %s %s after request %d/%d in %s", req.Method, req.URL.String(), retries+1, policy.maxRetries+1, delay)
+		if err := waitForRetry(retryCtx, delay); err != nil {
+			return nil, err
+		}
+		request = nextRequest.WithContext(retryCtx)
+	}
+}
+
+func cloneRequestForRetry(req *http.Request) (*http.Request, error) {
+	clone := req.Clone(req.Context())
+	if req.Body == nil || req.Body == http.NoBody {
+		return clone, nil
+	}
+	if req.GetBody == nil {
+		return nil, fmt.Errorf("request body is not replayable")
+	}
+	body, err := req.GetBody()
+	if err != nil {
+		return nil, fmt.Errorf("recreate request body: %w", err)
+	}
+	clone.Body = body
+	return clone, nil
+}
+
+func (p compiledRetryPolicy) backoff(attempt int, resp *http.Response) time.Duration {
+	delay := p.initialBackoff
+	for i := 1; i < attempt; i++ {
+		next := time.Duration(float64(delay) * p.multiplier)
+		if next >= p.maxBackoff || next < delay {
+			delay = p.maxBackoff
+			break
+		}
+		delay = next
+	}
+	if p.respectRetryAfter && resp != nil {
+		if retryAfter, ok := parseRetryAfter(resp.Header.Get("Retry-After")); ok {
+			delay = retryAfter
+		}
+	}
+	if delay > p.maxBackoff {
+		delay = p.maxBackoff
+	}
+	if p.jitter > 0 {
+		factor := 1 - p.jitter + rand.Float64()*(2*p.jitter)
+		delay = time.Duration(float64(delay) * factor)
+	}
+	if delay > p.maxBackoff {
+		delay = p.maxBackoff
+	}
+	return delay
+}
+
+func parseRetryAfter(value string) (time.Duration, bool) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil && seconds >= 0 {
+		return time.Duration(seconds) * time.Second, true
+	}
+	when, err := http.ParseTime(value)
+	if err != nil {
+		return 0, false
+	}
+	return max(time.Until(when), 0), true
+}
+
+func waitForRetry(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
 
 // WithHTTPHeaders stores HTTP headers in the context for forwarding to upstream.
 func WithHTTPHeaders(ctx context.Context, headers http.Header) context.Context {
@@ -187,12 +697,7 @@ func ForwardRequest(ctx context.Context, upstreamBase string, method string, pat
 	// Inject W3C trace context for distributed tracing
 	InjectTraceContext(ctx, req.Header)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-	return client.Do(req)
+	return doPooledUpstreamRequest(req)
 }
 
 // FormatAuthorizationHeader normalizes a token for use in an HTTP Authorization header.
@@ -213,7 +718,27 @@ func FormatAuthorizationHeader(token string) string {
 // NamedUpstreamHTTPClient implements pipeline.HTTPClient for extra_upstream endpoints.
 type NamedUpstreamHTTPClient struct{}
 
-func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, path string, queryParams, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
+// ValidateHTTPMiddleware resolves policy references during virtual tool
+// registration so typos fail at startup instead of on the first request.
+func (c *NamedUpstreamHTTPClient) ValidateHTTPMiddleware(pool, retry, method string) error {
+	registry := currentHTTPMiddlewareRegistry()
+	if _, err := registry.pool(pool); err != nil {
+		return err
+	}
+	policy, err := registry.retry(retry)
+	if err != nil {
+		return err
+	}
+	if policy.maxRetries == 0 {
+		return nil
+	}
+	if _, ok := policy.methods[strings.ToUpper(method)]; !ok && retry != "" {
+		return fmt.Errorf("retry policy %q does not allow method %s", retry, method)
+	}
+	return nil
+}
+
+func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, pool, retry, method, path string, queryParams, headers map[string]string, body interface{}) (*pipeline.HTTPResponse, error) {
 	endpoint := GetNamedUpstreamEndpoint(upstream)
 	if endpoint == "" {
 		return nil, fmt.Errorf("extra_upstream %q not found in config", upstream)
@@ -296,12 +821,7 @@ func (c *NamedUpstreamHTTPClient) Call(ctx context.Context, upstream, method, pa
 	InjectTraceContext(ctx, req.Header)
 	LogRequest(method, fullURL, url.Values{}, req.Header, bodyBytes)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := doResilientUpstreamRequest(ctx, pool, retry, req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -858,12 +1378,7 @@ func ForwardBinaryUploadRequest(ctx context.Context, upstreamBase, method, path 
 
 	LogRequest(method, upstreamURL, nil, req.Header, fileData)
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := doPooledUpstreamRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}
@@ -954,12 +1469,7 @@ func downloadFileFromURI(ctx context.Context, uri string, tmpDir string) (localP
 		return "", "", fmt.Errorf("failed to create download request for %s: %w", uri, err)
 	}
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := doPooledUpstreamRequest(req)
 	if err != nil {
 		return "", "", fmt.Errorf("failed to download from %s: %w", uri, err)
 	}
@@ -1338,12 +1848,7 @@ func ForwardMultipartRequest(ctx context.Context, upstreamBase, method, path str
 
 	LogRequest(method, upstreamURL, query, req.Header, buf.Bytes())
 
-	client := &http.Client{
-		Transport: &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-		},
-	}
-	resp, err := client.Do(req)
+	resp, err := doPooledUpstreamRequest(req)
 	if err != nil {
 		return nil, fmt.Errorf("upstream request failed: %w", err)
 	}

@@ -19,7 +19,7 @@ type StepKindDef struct {
 //  4. The schema generator picks this up automatically
 var StepKinds = []StepKindDef{
 	{Name: "call", Fields: []string{"tool", "parse", "args"}, Required: []string{"tool", "args"}, DefName: "CallSpec"},
-	{Name: "http", Fields: []string{"upstream", "method", "path", "query", "headers", "body", "parse"}, Required: []string{"upstream", "method", "path"}, DefName: "HTTPSpec", Description: "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values."},
+	{Name: "http", Fields: []string{"upstream", "pool", "retry", "method", "path", "query", "headers", "body", "parse"}, Required: []string{"upstream", "method", "path"}, DefName: "HTTPSpec", Description: "HTTP steps return an object with body and headers fields. The body field contains the parsed or raw response body; headers contains response header values. Pool and retry reference named middleware policies; omitted references use built-in defaults."},
 	{Name: "jq", Fields: []string{"from", "vars", "expr"}, Required: []string{"expr"}, DefName: "JQSpec"},
 	{Name: "foreach", Fields: []string{"in", "as", "concurrency", "preserveOrder", "onMissing", "pipeline"}, Required: []string{"in", "as", "pipeline"}, DefName: "ForeachSpec"},
 	{Name: "return", Fields: []string{"from", "vars", "expr"}, DefName: "ReturnSpec"},
