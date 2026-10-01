@@ -1,8 +1,8 @@
 # CI workflow — triggered on PR lifecycle events (NOT on merge to main).
 #
 # Event matrix:
-#   pull_request (opened, synchronize, reopened) → build + unit + integration tests
-#   schedule (daily/weekly)                       → same, against main branch
+#   pull_request (opened, synchronize, reopened) → sticky PR status comment + build + unit + integration tests
+#   schedule (daily/weekly)                       → build + unit + integration tests against main (no comment)
 #
 # Deliberately NOT triggered by:
 #   - push to main (merge commits are handled by release.yml)
@@ -43,7 +43,34 @@ env:
   IN_CN_GFW: "false"
 
 jobs:
+  comment-start:
+    name: Report CI start
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout CI comment script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Update PR CI comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MCPFATHER_PR_NUMBER: ${{ github.event.pull_request.number }}
+          MCPFATHER_COMMENT_PHASE: started
+          MCPFATHER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node .github/scripts/upsert-pr-ci-comment.mjs || \
+            echo "::warning title=MCPFather PR CI comment::Could not publish the CI status comment."
+
   build-and-test:
+    name: Build and unit tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -62,7 +89,36 @@ jobs:
       - name: Unit Tests
         run: make test-ut
 
+  comment-build:
+    name: Report build result
+    needs: [comment-start, build-and-test]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout CI comment script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Update PR CI comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MCPFATHER_PR_NUMBER: ${{ github.event.pull_request.number }}
+          MCPFATHER_COMMENT_PHASE: build
+          MCPFATHER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MCPFATHER_BUILD_RESULT: ${{ needs.build-and-test.result }}
+        run: |
+          node .github/scripts/upsert-pr-ci-comment.mjs || \
+            echo "::warning title=MCPFather PR CI comment::Could not publish the CI status comment."
+
   integration-it:
+    name: Integration tests
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -87,3 +143,32 @@ jobs:
 
       - name: Integration Tests
         run: make test-it
+
+  comment-final:
+    name: Report CI result
+    needs: [build-and-test, comment-build, integration-it]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Checkout CI comment script
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      - name: Update PR CI comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MCPFATHER_PR_NUMBER: ${{ github.event.pull_request.number }}
+          MCPFATHER_COMMENT_PHASE: final
+          MCPFATHER_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          MCPFATHER_BUILD_RESULT: ${{ needs.build-and-test.result }}
+          MCPFATHER_INTEGRATION_RESULT: ${{ needs.integration-it.result }}
+        run: |
+          node .github/scripts/upsert-pr-ci-comment.mjs || \
+            echo "::warning title=MCPFather PR CI comment::Could not publish the CI status comment."
