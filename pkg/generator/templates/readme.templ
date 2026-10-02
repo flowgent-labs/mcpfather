@@ -192,6 +192,40 @@ upstream:
       static:
         web_token: "${MCP__UPSTREAM__DEFAULT__AUTH__STATIC__WEB_TOKEN}"   # or set cookie_token
 
+# Reusable policies selected by HTTP-node `spec.pool` and `spec.retry`.
+# Omitted references use pool limits 32/32/32, request_timeout 0s, and 0 retries.
+middleware:
+  http_client_pool:
+    large:
+      max_idle_conns: 128          # reusable idle connections across all upstream hosts
+      max_idle_conns_per_host: 32  # reusable idle connections retained per upstream host
+      max_conns_per_host: 64       # hard cap: active + dialing + idle connections per host
+      dial_timeout: 10s            # TCP connection establishment timeout
+      request_timeout: 60s         # complete attempt, including response-body reads
+    medium:
+      max_idle_conns: 64
+      max_idle_conns_per_host: 16
+      max_conns_per_host: 32
+      dial_timeout: 5s
+      request_timeout: 30s
+    small:
+      max_idle_conns: 16
+      max_idle_conns_per_host: 4
+      max_conns_per_host: 8
+      dial_timeout: 3s
+      request_timeout: 15s
+  retry:
+    reliable:
+      max_retries: 4               # extra attempts after the first request
+      max_elapsed_time: 30s        # hard budget for all attempts and backoff
+    standard:
+      max_retries: 2
+      max_elapsed_time: 15s
+    besteffort:
+      max_retries: 0               # no automatic retry; max_elapsed_time is unnecessary
+
+# QoS-style names communicate retry intent without promising application success.
+
 native_tools:
   expose:
     register_all_tools_by_default: true   # expose all native tools

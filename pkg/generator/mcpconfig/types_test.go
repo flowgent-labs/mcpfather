@@ -122,6 +122,45 @@ func TestUpstreamEntryConfig_Fields(t *testing.T) {
 	}
 }
 
+func TestMiddlewareConfig_Fields(t *testing.T) {
+	forceHTTP2 := true
+	networkErrors := true
+	respectRetryAfter := true
+	cfg := MiddlewareConfig{
+		HTTPClientPool: map[string]HTTPClientPoolConfig{
+			"iq": {
+				MaxIdleConns:        64,
+				MaxConnsPerHost:     16,
+				IdleConnTimeout:     "60s",
+				RequestTimeout:      "30s",
+				ForceHTTP2:          &forceHTTP2,
+				MaxIdleConnsPerHost: 16,
+			},
+		},
+		Retry: map[string]RetryConfig{
+			"iq-read": {
+				MaxRetries:     3,
+				InitialBackoff: "300ms",
+				Methods:        []string{"GET", "POST"},
+				RetryOn: RetryOnConfig{
+					NetworkErrors: &networkErrors,
+					StatusCodes:   []int{429, 503},
+				},
+				RespectRetryAfter: &respectRetryAfter,
+			},
+		},
+	}
+	if got := cfg.HTTPClientPool["iq"].MaxConnsPerHost; got != 16 {
+		t.Fatalf("MaxConnsPerHost = %d, want 16", got)
+	}
+	if got := cfg.HTTPClientPool["iq"].RequestTimeout; got != "30s" {
+		t.Fatalf("RequestTimeout = %q, want 30s", got)
+	}
+	if got := cfg.Retry["iq-read"].MaxRetries; got != 3 {
+		t.Fatalf("MaxRetries = %d, want 3", got)
+	}
+}
+
 func TestTFSConfig_Defaults(t *testing.T) {
 	cfg := DefaultConfig()
 	if !cfg.Server.TFS.Enabled {

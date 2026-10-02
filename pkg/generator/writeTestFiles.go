@@ -15,7 +15,7 @@ func (g *Generator) GenerateCommonTestFiles() error {
 	serverName := filepath.Base(g.outputDir)
 
 	data := struct {
-		ModuleName string
+		ModuleName  string
 		ServiceName string
 	}{ModuleName: moduleName, ServiceName: serverName}
 
@@ -24,10 +24,9 @@ func (g *Generator) GenerateCommonTestFiles() error {
 		outDir   string
 		outFile  string
 	}{
-		{"helpers_client_test.templ", "pkg/helpers", "client_test.go"},
-		{"helpers_config_test.templ", "pkg/helpers", "config_test.go"},
-		{"helpers_resource_server_test.templ", "pkg/helpers", "resource_server_test.go"},
-		{"mcpconfig_types_test.templ", "pkg/mcpconfig", "types_test.go"},
+		{"client_test.templ", "pkg/helpers", "client_test.go"},
+		{"config_test.templ", "pkg/helpers", "config_test.go"},
+		{"resource_server_test.templ", "pkg/helpers", "resource_server_test.go"},
 		{"registry_test.templ", "pkg/mcptools", "registry_test.go"},
 		{"server_test.templ", "pkg/mcpserver", "server_test.go"},
 	}

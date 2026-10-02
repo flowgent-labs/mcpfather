@@ -62,6 +62,11 @@ func (e *Engine) buildTool(at config.VirtualToolConfig) (VirtualToolEntry, error
 	if err := pipeline.ValidateReferences(at.Pipeline); err != nil {
 		return VirtualToolEntry{}, fmt.Errorf("reference validation: %w", err)
 	}
+	if validator, ok := e.httpClient.(pipeline.HTTPMiddlewareValidator); ok {
+		if err := pipeline.ValidateHTTPMiddleware(at.Pipeline, validator); err != nil {
+			return VirtualToolEntry{}, fmt.Errorf("HTTP middleware validation: %w", err)
+		}
+	}
 
 	handler := e.buildHandler(at)
 

@@ -3,6 +3,7 @@ package generator
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,5 +34,28 @@ func TestGenerateHelpers_NoErrorOnSuccess(t *testing.T) {
 	expectedFilePath := filepath.Join(tmpDir, "pkg", "helpers", "client.go")
 	if _, err := os.Stat(expectedFilePath); os.IsNotExist(err) {
 		t.Errorf("expected generated file %s to exist, but it does not", expectedFilePath)
+	}
+
+	content, err := os.ReadFile(expectedFilePath)
+	if err != nil {
+		t.Fatalf("read generated client: %v", err)
+	}
+	generated := string(content)
+	for _, want := range []string{
+		"httpMiddlewareRegistry = mustBuiltinHTTPMiddlewareRegistry()",
+		"http.DefaultTransport.(*http.Transport).Clone()",
+		"transport.MaxIdleConnsPerHost = config.MaxIdleConnsPerHost",
+		"transport.MaxConnsPerHost = config.MaxConnsPerHost",
+		"doResilientUpstreamRequest(ctx, pool, retry, req)",
+	} {
+		if !strings.Contains(generated, want) {
+			t.Errorf("generated client missing %q", want)
+		}
+	}
+	if got := strings.Count(generated, "doPooledUpstreamRequest(req)"); got != 4 {
+		t.Errorf("default pooled client call count = %d, want 4", got)
+	}
+	if got := strings.Count(generated, "&http.Client"); got != 1 {
+		t.Errorf("http.Client construction count = %d, want only the shared client factory", got)
 	}
 }

@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // ---------------------------------------------------------------------------
@@ -360,6 +362,7 @@ type mockUpstream struct {
 type recordedRequest struct {
 	Method        string
 	URL           string
+	RemoteAddr    string
 	Authorization string
 	Headers       http.Header
 	Body          []byte
@@ -373,6 +376,7 @@ func startMockUpstream(handler http.HandlerFunc) *mockUpstream {
 		m.requests = append(m.requests, recordedRequest{
 			Method:        r.Method,
 			URL:           r.URL.String(),
+			RemoteAddr:    r.RemoteAddr,
 			Authorization: r.Header.Get("Authorization"),
 			Headers:       r.Header.Clone(),
 			Body:          body,
@@ -393,6 +397,16 @@ func (m *mockUpstream) requestCount() int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return len(m.requests)
+}
+
+func (m *mockUpstream) connectionCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	connections := make(map[string]struct{})
+	for _, request := range m.requests {
+		connections[request.RemoteAddr] = struct{}{}
+	}
+	return len(connections)
 }
 
 // okHandler returns a handler that writes a simple JSON response (no echo).
@@ -507,6 +521,108 @@ func TestGenerator_GeneratedServerVersionFlag(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestGenerator_PrintDefaultConfigIncludesHTTPMiddlewareProfiles(t *testing.T) {
+	projectDir := genProject(t, "echoHeaders", "")
+	bin := buildServer(t, projectDir)
+	cmd := exec.Command(bin, "--print-default-config")
+	cmd.Env = testProcessEnv("HOME=" + t.TempDir())
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("--print-default-config failed: %v\n%s", err, output)
+	}
+
+	var config struct {
+		Middleware struct {
+			HTTPClientPool map[string]struct {
+				MaxIdleConns    int    `yaml:"max_idle_conns"`
+				MaxConnsPerHost int    `yaml:"max_conns_per_host"`
+				DialTimeout     string `yaml:"dial_timeout"`
+				RequestTimeout  string `yaml:"request_timeout"`
+			} `yaml:"http_client_pool"`
+			Retry map[string]struct {
+				MaxRetries     int    `yaml:"max_retries"`
+				MaxElapsedTime string `yaml:"max_elapsed_time"`
+			} `yaml:"retry"`
+		} `yaml:"middleware"`
+	}
+	if err := yaml.Unmarshal(output, &config); err != nil {
+		t.Fatalf("default config is not valid YAML: %v\n%s", err, output)
+	}
+
+	poolWant := map[string]struct {
+		idle, maxConns int
+		dial, request  string
+	}{
+		"small":  {16, 8, "3s", "15s"},
+		"medium": {64, 32, "5s", "30s"},
+		"large":  {128, 64, "10s", "60s"},
+	}
+	for name, want := range poolWant {
+		got, ok := config.Middleware.HTTPClientPool[name]
+		if !ok {
+			t.Fatalf("default config missing HTTP client pool profile %q", name)
+		}
+		if got.MaxIdleConns != want.idle || got.MaxConnsPerHost != want.maxConns || got.DialTimeout != want.dial || got.RequestTimeout != want.request {
+			t.Fatalf("HTTP client pool %q = %+v, want idle=%d maxConns=%d dial=%s request=%s", name, got, want.idle, want.maxConns, want.dial, want.request)
+		}
+	}
+
+	retryWant := map[string]struct {
+		maxRetries int
+		maxElapsed string
+	}{
+		"reliable":   {4, "30s"},
+		"standard":   {2, "15s"},
+		"besteffort": {0, ""},
+	}
+	for name, want := range retryWant {
+		got, ok := config.Middleware.Retry[name]
+		if !ok {
+			t.Fatalf("default config missing retry profile %q", name)
+		}
+		if got.MaxRetries != want.maxRetries || got.MaxElapsedTime != want.maxElapsed {
+			t.Fatalf("retry profile %q = %+v, want retries=%d elapsed=%s", name, got, want.maxRetries, want.maxElapsed)
+		}
+	}
+
+	text := string(output)
+	for _, description := range []string{
+		"reusable idle connections retained per upstream host",
+		"hard cap: active + dialing + idle connections per host",
+		"TCP connection establishment timeout",
+		"complete attempt, including response-body reads",
+		"extra attempts after the first request",
+		"hard budget for all attempts and backoff",
+	} {
+		if !strings.Contains(text, description) {
+			t.Errorf("default config missing field description %q", description)
+		}
+	}
+
+	for label, readmePath := range map[string]string{
+		"mcpfather":     filepath.Join(repoRoot(t), "README.md"),
+		"generated MCP": filepath.Join(projectDir, "README.md"),
+	} {
+		readme, err := os.ReadFile(readmePath)
+		if err != nil {
+			t.Fatalf("read %s README: %v", label, err)
+		}
+		for _, fragment := range []string{
+			"small:", "medium:", "large:",
+			"reliable:", "standard:", "besteffort:",
+			"max_idle_conns_per_host:", "max_conns_per_host:",
+			"dial_timeout:", "request_timeout:",
+			"max_retries:", "max_elapsed_time:",
+			"TCP connection establishment timeout",
+			"including response-body reads",
+		} {
+			if !strings.Contains(string(readme), fragment) {
+				t.Errorf("%s README missing HTTP middleware documentation %q", label, fragment)
+			}
+		}
 	}
 }
 

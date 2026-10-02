@@ -147,6 +147,34 @@ func TestValidate_HTTPValid(t *testing.T) {
 	}
 }
 
+type stubHTTPMiddlewareValidator struct {
+	pool   string
+	retry  string
+	method string
+	err    error
+}
+
+func (v *stubHTTPMiddlewareValidator) ValidateHTTPMiddleware(pool, retry, method string) error {
+	v.pool, v.retry, v.method = pool, retry, method
+	return v.err
+}
+
+func TestValidateHTTPMiddleware_ForeachReference(t *testing.T) {
+	validator := &stubHTTPMiddlewareValidator{}
+	steps := []StepConfig{{ID: "items", Kind: "foreach", Spec: StepSpec{
+		In: "$input.items", As: "item", Pipeline: []StepConfig{
+			{ID: "fetch", Kind: "http", Spec: StepSpec{Upstream: "iq", Pool: "iq-pool", Retry: "iq-read", Method: "POST", Path: "/api"}},
+			{ID: "emit", Kind: "emit", Spec: StepSpec{From: "$fetch"}},
+		},
+	}}}
+	if err := ValidateHTTPMiddleware(steps, validator); err != nil {
+		t.Fatal(err)
+	}
+	if validator.pool != "iq-pool" || validator.retry != "iq-read" || validator.method != "POST" {
+		t.Fatalf("unexpected middleware validation args: %+v", validator)
+	}
+}
+
 func TestValidate_ForeachValid(t *testing.T) {
 	steps := []StepConfig{
 		{ID: "step1", Kind: "foreach", Spec: StepSpec{In: "$data", As: "item", Pipeline: []StepConfig{

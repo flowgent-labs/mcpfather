@@ -110,6 +110,7 @@ func detectCluster(t *testing.T) (clusterType, string) {
 // Kubernetes cluster is reachable via ~/.kube/config (or KUBECONFIG).
 func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 	t.Helper()
+	configureK3sKubeconfigFallback()
 
 	kubectlPath, err := exec.LookPath("kubectl")
 	if err != nil {
@@ -148,6 +149,85 @@ func deployPrereqsOK(t *testing.T) (_kubectl, helm, docker string) {
 		"Check:  kubectl cluster-info  and  ls -la ~/.kube/config",
 		err, out)
 	return
+}
+
+// configureK3sKubeconfigFallback keeps kubectl and Helm on the same cluster.
+// A kubectl binary provided by k3s can reach the local cluster even when the
+// default kubeconfig is absent or empty, while Helm cannot. Respect any
+// explicit or non-empty user kubeconfig before falling back to k3s.
+func configureK3sKubeconfigFallback() {
+	defaultConfig := ""
+	home, err := os.UserHomeDir()
+	if err == nil {
+		defaultConfig = filepath.Join(home, ".kube", "config")
+	}
+	configureKubeconfigFallback(defaultConfig, "/etc/rancher/k3s/k3s.yaml")
+}
+
+func configureKubeconfigFallback(defaultConfig, fallbackConfig string) {
+	if os.Getenv("KUBECONFIG") != "" {
+		return
+	}
+	if defaultConfig != "" {
+		if info, err := os.Stat(defaultConfig); err == nil && info.Size() > 0 {
+			return
+		}
+	}
+	if info, err := os.Stat(fallbackConfig); err == nil && info.Size() > 0 {
+		_ = os.Setenv("KUBECONFIG", fallbackConfig)
+	}
+}
+
+func TestConfig_KubeconfigFallback(t *testing.T) {
+	t.Run("explicit config wins", func(t *testing.T) {
+		t.Setenv("KUBECONFIG", "/explicit/config")
+		configureKubeconfigFallback("", "/fallback/config")
+		if got := os.Getenv("KUBECONFIG"); got != "/explicit/config" {
+			t.Fatalf("KUBECONFIG = %q, want explicit config", got)
+		}
+	})
+
+	t.Run("non-empty default config wins", func(t *testing.T) {
+		t.Setenv("KUBECONFIG", "")
+		defaultConfig := filepath.Join(t.TempDir(), "config")
+		if err := os.WriteFile(defaultConfig, []byte("default"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		fallbackConfig := filepath.Join(t.TempDir(), "k3s.yaml")
+		if err := os.WriteFile(fallbackConfig, []byte("fallback"), 0600); err != nil {
+			t.Fatal(err)
+		}
+		configureKubeconfigFallback(defaultConfig, fallbackConfig)
+		if got := os.Getenv("KUBECONFIG"); got != "" {
+			t.Fatalf("KUBECONFIG = %q, want default config discovery", got)
+		}
+	})
+
+	for _, tt := range []struct {
+		name          string
+		createDefault bool
+	}{
+		{name: "missing default"},
+		{name: "empty default", createDefault: true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("KUBECONFIG", "")
+			defaultConfig := filepath.Join(t.TempDir(), "config")
+			if tt.createDefault {
+				if err := os.WriteFile(defaultConfig, nil, 0600); err != nil {
+					t.Fatal(err)
+				}
+			}
+			fallbackConfig := filepath.Join(t.TempDir(), "k3s.yaml")
+			if err := os.WriteFile(fallbackConfig, []byte("fallback"), 0600); err != nil {
+				t.Fatal(err)
+			}
+			configureKubeconfigFallback(defaultConfig, fallbackConfig)
+			if got := os.Getenv("KUBECONFIG"); got != fallbackConfig {
+				t.Fatalf("KUBECONFIG = %q, want %q", got, fallbackConfig)
+			}
+		})
+	}
 }
 
 // deployNamespace creates a unique test namespace and returns its name.

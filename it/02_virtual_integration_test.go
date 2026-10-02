@@ -12,7 +12,9 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
 	"gopkg.in/yaml.v3"
@@ -3290,9 +3292,14 @@ func TestE2E_SonatypeIQ_RealFullPipeline(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "sonatypeiq-mcp")
+	projectDir := genProjectWithSpec(
+		t,
+		"../use-cases/swaggers/sonatypeiq-v1.203.0-01.oas.v3.0.1.json",
+		"getPolicyViolations,getReportHistoryForApplication,getSuggestedRemediationForComponent",
+		"",
+	)
 	homeDir := t.TempDir()
-	serviceName := "sonatypeiq-mcp"
+	serviceName := filepath.Base(projectDir)
 
 	virtConfig := `
 virtual_tools:
@@ -3650,9 +3657,14 @@ func TestE2E_SonatypeIQ_RealThreatLevelFiltering(t *testing.T) {
 	_ = mock.Start()
 	defer mock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "sonatypeiq-mcp")
+	projectDir := genProjectWithSpec(
+		t,
+		"../use-cases/swaggers/sonatypeiq-v1.203.0-01.oas.v3.0.1.json",
+		"getPolicyViolations",
+		"",
+	)
 	homeDir := t.TempDir()
-	serviceName := "sonatypeiq-mcp"
+	serviceName := filepath.Base(projectDir)
 
 	virtConfig := `
 virtual_tools:
@@ -3879,6 +3891,14 @@ virtual_tools:
 // the generated schema documentation for the body/headers contract covered.
 func TestDSLSchema_HTTPResponseShape(t *testing.T) {
 	configYAML := `
+middleware:
+  http_client_pool:
+    iq-pool:
+      max_conns_per_host: 16
+  retry:
+    iq-read:
+      max_retries: 2
+      methods: [GET]
 virtual_tools:
   - name: csrf_bootstrap
     input_schema:
@@ -3888,6 +3908,8 @@ virtual_tools:
         kind: http
         spec:
           upstream: iq
+          pool: iq-pool
+          retry: iq-read
           method: GET
           path: /assets/index.html
       - id: done
@@ -4044,6 +4066,33 @@ upstream:
         enabled: false
       static:
         web_token: ""
+middleware:
+  http_client_pool:
+    bounded:
+      max_idle_conns: 64
+      max_idle_conns_per_host: 16
+      max_conns_per_host: 16
+      idle_conn_timeout: 60s
+      dial_timeout: 10s
+      keep_alive: 30s
+      tls_handshake_timeout: 10s
+      response_header_timeout: 30s
+      request_timeout: 45s
+      expect_continue_timeout: 1s
+      force_http2: true
+  retry:
+    read:
+      max_retries: 2
+      initial_backoff: 100ms
+      max_backoff: 1s
+      multiplier: 2
+      jitter: 0.2
+      max_elapsed_time: 5s
+      methods: [GET, HEAD]
+      retry_on:
+        network_errors: true
+        status_codes: [429, 502, 503, 504]
+      respect_retry_after: true
 runtime:
   download_dir: /tmp/download
   log_authorization: false
@@ -4308,27 +4357,15 @@ func validateAgainstSchema(schemaBytes []byte, instanceBytes []byte) error {
 //   - default   → mock Nexus Repository (ListSearch → ComponentXO/PageComponentXO)
 //   - sonatypeiq → mock IQ Firewall (POST /api/v2/firewall/components/{rmId}/{repoId}/evaluate)
 //
-// This is the FIRST and only IT test covering the http pipeline step kind.
-// All other virtual tool tests use call/jq/foreach/emit/return only.
-
-// startNexusMultiUpstreamServer builds the nexus-mcp binary and starts it in
-// HTTP mode. Unlike startVirtualTestServer, this function writes the full
+// startMultiUpstreamServer builds a freshly generated MCP binary and starts it
+// in HTTP mode. Unlike startVirtualTestServer, this function writes the full
 // config (including sonatypeiq upstream) to disk rather than relying on a
 // single env var override. The env var MCP__UPSTREAM__DEFAULT__ENDPOINT is
 // deliberately NOT set — the config YAML provides both endpoints.
-func startNexusMultiUpstreamServer(t *testing.T, projectDir, homeDir, configYAML string) (cleanup func(), baseURL string) {
+func startMultiUpstreamServer(t *testing.T, projectDir, homeDir, configYAML string) (cleanup func(), baseURL string) {
 	t.Helper()
 
-	// Write config to $HOME/.nexus-mcp/config.yaml
-	configDir := filepath.Join(homeDir, ".nexus-mcp")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		t.Fatalf("mkdir config dir: %v", err)
-	}
-	configPath := filepath.Join(configDir, "config.yaml")
-	logProgress("[config] writing nexus-mcp config (%d bytes)", len(configYAML))
-	if err := os.WriteFile(configPath, []byte(configYAML), 0644); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
+	writeVirtualConfig(t, homeDir, filepath.Base(projectDir), configYAML)
 
 	binPath := buildServer(t, projectDir)
 	port := fmt.Sprintf("%d", unusedTCPPort(t))
@@ -4515,7 +4552,12 @@ func TestE2E_NexusFirewall_HTTPStepFullPipeline(t *testing.T) {
 	defer iqMock.Close()
 
 	// ── Config ──
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
+	projectDir := genProjectWithSpec(
+		t,
+		"../use-cases/swaggers/sonatypenexus-v3.94.0-12.oas.v3.0.1.json",
+		"listSearch",
+		"",
+	)
 	homeDir := t.TempDir()
 
 	// Build the complete config with both upstreams
@@ -4643,7 +4685,7 @@ virtual_tools:
       - id: iqIndex
         kind: jq
         spec:
-          from: $iqEval
+          from: $iqEval.body
           expr: |
             [.results[]?
             | select(.component.packageUrl != null)
@@ -4723,7 +4765,7 @@ virtual_tools:
               }
 `, nexusMock.server.URL, iqMock.server.URL)
 
-	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	cleanup, baseURL := startMultiUpstreamServer(t, projectDir, homeDir, configYAML)
 	defer cleanup()
 
 	// ── Call the virtual tool ──
@@ -4838,7 +4880,7 @@ func TestE2E_HTTPStep_Minimal(t *testing.T) {
 	})
 	defer echoMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
+	projectDir := genProject(t, "", "")
 	homeDir := t.TempDir()
 
 	configYAML := fmt.Sprintf(`
@@ -4883,7 +4925,7 @@ virtual_tools:
       - id: extract
         kind: jq
         spec:
-          from: $call_http
+          from: $call_http.body
           expr: '{status, count: (.results | length), first: .results[0].name}'
       - id: done
         kind: return
@@ -4891,7 +4933,7 @@ virtual_tools:
           from: $extract
 `, echoMock.server.URL, echoMock.server.URL)
 
-	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	cleanup, baseURL := startMultiUpstreamServer(t, projectDir, homeDir, configYAML)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "virt_http_test", map[string]interface{}{
@@ -5004,6 +5046,258 @@ virtual_tools:
 	}
 }
 
+// TestE2E_HTTPStep_ReusesConnectionsAtScale verifies the generated HTTP node
+// client handles the Sonatype IQ workload shape without opening one TCP
+// connection per request.
+func TestE2E_HTTPStep_ReusesConnectionsAtScale(t *testing.T) {
+	const requestCount = 1024
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"ok":true}`))
+	})
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(projectDir)
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+middleware:
+  http_client_pool:
+    iq-bounded:
+      max_idle_conns: 32
+      max_idle_conns_per_host: 8
+      max_conns_per_host: 8
+native_tools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtual_tools:
+  - name: fetch_recommendations_at_scale
+    description: Exercise pooled HTTP node connections
+    input_schema:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items: {type: string}
+    pipeline:
+      - id: recommendations
+        kind: foreach
+        spec:
+          in: $input.items
+          as: item
+          concurrency: 32
+          preserveOrder: true
+          pipeline:
+            - id: fetch
+              kind: http
+              spec:
+                upstream: default
+                pool: iq-bounded
+                method: GET
+                path: /api/recommendation
+                parse: json
+                query:
+                  id: $item
+            - id: itemResult
+              kind: emit
+              spec:
+                from: $fetch.body
+      - id: done
+        kind: return
+        spec:
+          from: $recommendations
+          expr: '{count: length}'
+`, mock.server.URL)
+	writeVirtualConfig(t, homeDir, serviceName, configYAML)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	items := make([]interface{}, requestCount)
+	for i := range items {
+		items[i] = fmt.Sprintf("issue-%d", i)
+	}
+	result := mcpCallVirtualTool(t, baseURL, "fetch_recommendations_at_scale", map[string]interface{}{
+		"items": items,
+	})
+	data := mustJSON(t, result)
+	if got, _ := data["count"].(float64); got != requestCount {
+		t.Fatalf("result count = %v, want %d", data["count"], requestCount)
+	}
+	if got := mock.requestCount(); got != requestCount {
+		t.Fatalf("upstream request count = %d, want %d", got, requestCount)
+	}
+	if got := mock.connectionCount(); got > 8 {
+		t.Fatalf("%d requests used %d TCP connections, want at most 8", requestCount, got)
+	} else {
+		t.Logf("%d HTTP node requests reused %d TCP connections", requestCount, got)
+	}
+}
+
+// TestE2E_HTTPStep_RetriesDroppedConnectionWithFreshResponse verifies a broken
+// TCP connection never produces a stale result: the failed attempt is discarded
+// and the successful retry's response is returned.
+func TestE2E_HTTPStep_RetriesDroppedConnectionWithFreshResponse(t *testing.T) {
+	var attempts atomic.Int32
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		attempt := attempts.Add(1)
+		if attempt == 1 {
+			hijacker, ok := w.(http.Hijacker)
+			if !ok {
+				t.Error("test server does not support connection hijacking")
+				return
+			}
+			conn, rw, err := hijacker.Hijack()
+			if err != nil {
+				t.Errorf("hijack connection: %v", err)
+				return
+			}
+			_, _ = fmt.Fprint(rw, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 64\r\n\r\n{\"attempt\":1,\"stale\":true}")
+			_ = rw.Flush()
+			_ = conn.Close()
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"attempt":2,"fresh":true}`))
+	})
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(projectDir)
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+middleware:
+  retry:
+    reconnect:
+      max_retries: 1
+      initial_backoff: 1ms
+      max_backoff: 1ms
+      multiplier: 1
+      jitter: 0
+      max_elapsed_time: 1s
+      methods: [GET]
+      retry_on:
+        network_errors: true
+        status_codes: []
+      respect_retry_after: false
+native_tools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtual_tools:
+  - name: retry_after_disconnect
+    description: Retry a dropped connection
+    input_schema:
+      type: object
+    pipeline:
+      - id: fetch
+        kind: http
+        spec:
+          upstream: default
+          retry: reconnect
+          method: GET
+          path: /unstable
+          parse: json
+      - id: done
+        kind: return
+        spec:
+          from: $fetch.body
+`, mock.server.URL)
+	writeVirtualConfig(t, homeDir, serviceName, configYAML)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	result := mcpCallVirtualTool(t, baseURL, "retry_after_disconnect", map[string]interface{}{})
+	data := mustJSON(t, result)
+	if attempt, _ := data["attempt"].(float64); attempt != 2 || data["fresh"] != true {
+		t.Fatalf("retry returned stale or unexpected result: %s", result)
+	}
+	if got := mock.requestCount(); got != 2 {
+		t.Fatalf("upstream request count = %d, want 2", got)
+	}
+}
+
+// TestE2E_HTTPStep_RequestTimeoutIncludesResponseBody verifies a configured
+// single-attempt timeout also interrupts a response whose headers arrived but
+// whose body stalls.
+func TestE2E_HTTPStep_RequestTimeoutIncludesResponseBody(t *testing.T) {
+	mock := startMockUpstream(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"partial":`))
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		time.Sleep(200 * time.Millisecond)
+		_, _ = w.Write([]byte(`true}`))
+	})
+	defer mock.Close()
+
+	projectDir := genProject(t, "", "")
+	homeDir := t.TempDir()
+	serviceName := filepath.Base(projectDir)
+	configYAML := fmt.Sprintf(`
+upstream:
+  default:
+    endpoint: %s
+    enable_mcp_session_forward: false
+    auth:
+      oidc: {enabled: false}
+      static: {web_token: ""}
+middleware:
+  http_client_pool:
+    short:
+      request_timeout: 50ms
+native_tools:
+  expose:
+    register_all_tools_by_default: false
+    includes: []
+virtual_tools:
+  - name: timeout_slow_body
+    description: Bound a slow HTTP response body
+    input_schema:
+      type: object
+    pipeline:
+      - id: fetch
+        kind: http
+        spec:
+          upstream: default
+          pool: short
+          method: GET
+          path: /slow
+          parse: json
+      - id: done
+        kind: return
+        spec:
+          from: $fetch.body
+`, mock.server.URL)
+	writeVirtualConfig(t, homeDir, serviceName, configYAML)
+	cleanup, baseURL := startVirtualTestServer(t, projectDir, mock.server.URL, homeDir)
+	defer cleanup()
+
+	message := strings.ToLower(mcpCallVirtualToolError(t, baseURL, "timeout_slow_body", map[string]interface{}{}))
+	if !strings.Contains(message, "timeout") && !strings.Contains(message, "deadline") {
+		t.Fatalf("error = %q, want response-body timeout", message)
+	}
+	if got := mock.requestCount(); got != 1 {
+		t.Fatalf("upstream request count = %d, want 1", got)
+	}
+}
+
 // TestE2E_HTTPStep_WithJSONBody verifies the http step sends and parses JSON
 // with a map body (the maven_top5_versions_safe pattern). Uses hardcoded data
 // to eliminate ListSearch as a variable.
@@ -5018,7 +5312,7 @@ func TestE2E_HTTPStep_WithJSONBody(t *testing.T) {
 	})
 	defer echoMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
+	projectDir := genProject(t, "", "")
 	homeDir := t.TempDir()
 
 	configYAML := fmt.Sprintf(`
@@ -5061,7 +5355,7 @@ virtual_tools:
       - id: index
         kind: jq
         spec:
-          from: $call
+          from: $call.body
           expr: |
             [.results[]?
             | select(.component.packageUrl != null)
@@ -5078,7 +5372,7 @@ virtual_tools:
           expr: '{count: length, items: .}'
 `, echoMock.server.URL, echoMock.server.URL)
 
-	cleanup, baseURL := startNexusMultiUpstreamServer(t, projectDir, homeDir, configYAML)
+	cleanup, baseURL := startMultiUpstreamServer(t, projectDir, homeDir, configYAML)
 	defer cleanup()
 
 	result := mcpCallVirtualTool(t, baseURL, "virt_http_json_body", map[string]interface{}{})
@@ -5181,7 +5475,12 @@ func TestE2E_NexusFirewall_MinThreatLevelFiltering(t *testing.T) {
 	})
 	defer iqMock.Close()
 
-	projectDir := filepath.Join(repoRoot(t), "use-cases", "nexus-mcp")
+	projectDir := genProjectWithSpec(
+		t,
+		"../use-cases/swaggers/sonatypenexus-v3.94.0-12.oas.v3.0.1.json",
+		"listSearch",
+		"",
+	)
 
 	baseVTConfig := `
 upstream:
@@ -5271,7 +5570,7 @@ virtual_tools:
       - id: iqIndex
         kind: jq
         spec:
-          from: $iqEval
+          from: $iqEval.body
           expr: |
             [.results[]?
             | select(.component.packageUrl != null)
@@ -5302,7 +5601,7 @@ virtual_tools:
 	// ── Test with minThreatLevel=1 (default strict) ──
 	config1 := fmt.Sprintf(baseVTConfig, nexusMock.server.URL, iqMock.server.URL)
 	homeDir1 := t.TempDir()
-	cleanup1, baseURL1 := startNexusMultiUpstreamServer(t, projectDir, homeDir1, config1)
+	cleanup1, baseURL1 := startMultiUpstreamServer(t, projectDir, homeDir1, config1)
 
 	result1 := mcpCallVirtualTool(t, baseURL1, "maven_top5_versions_safe", map[string]interface{}{
 		"mavenGroupId":        "com.example",
@@ -5328,7 +5627,7 @@ virtual_tools:
 	// ── Test with minThreatLevel=5 (only critical threats block) ──
 	config5 := fmt.Sprintf(baseVTConfig, nexusMock.server.URL, iqMock.server.URL)
 	homeDir5 := t.TempDir()
-	cleanup5, baseURL5 := startNexusMultiUpstreamServer(t, projectDir, homeDir5, config5)
+	cleanup5, baseURL5 := startMultiUpstreamServer(t, projectDir, homeDir5, config5)
 
 	result5 := mcpCallVirtualTool(t, baseURL5, "maven_top5_versions_safe", map[string]interface{}{
 		"mavenGroupId":        "com.example",
