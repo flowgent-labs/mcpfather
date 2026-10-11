@@ -127,6 +127,7 @@ native_tools:
     # the server to fail at startup.
     excludes: []
 
+# ---- Reusable HTTP Middleware Policies ----
 middleware:
   http_client_pool:
     large:
@@ -298,46 +299,44 @@ virtual_tools:
                 }
             ]
             | unique_by(.hash + "|" + .id)
-      - id: applicationPolicyWaivers
-        kind: jq
+      - id: policyWaiverStates
+        kind: foreach
         spec:
-          vars:
-            appInternal: $appInternal
-          expr: '"/api/v2/policyWaivers/application/\($appInternal)"'
-      - id: policyWaivers
-        kind: http
-        spec:
-          upstream: default
-          method: GET
-          path: $applicationPolicyWaivers
-          pool: large
-          parse: json
-      - id: activeApplicationWaiverIds
-        kind: jq
-        spec:
-          from: $policyWaivers.body
-          expr: |
-            [
-              .[]?
-              | select((.isObsolete // false) != true)
-              | select(
-                  .expiryTime == null
-                  or (.expiryTime[0:19] > ((now | todateiso8601)[0:19]))
-                )
-              | .policyViolationId
-            ]
-            | unique
+          in: $policyViolationRefs
+          as: violation
+          concurrency: 32
+          preserveOrder: true
+          pipeline:
+            - id: applicableWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $violation.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: applicableWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $applicableWaiverPath
+                pool: large
+                parse: json
+            - id: policyWaiverState
+              kind: emit
+              spec:
+                from: $violation
+                vars:
+                  applicableWaiver: $applicableWaiver.body
+                expr: '. + {waived: ((($applicableWaiver.activeWaivers // []) | length) > 0)}'
       - id: policyWaiverMap
         kind: jq
         spec:
-          from: $policyViolationRefs
-          vars:
-            activeApplicationWaiverIds: $activeApplicationWaiverIds
+          from: $policyWaiverStates
           expr: |
             reduce .[] as $violation (
               {};
               .[($violation.hash + "|" + $violation.id)] =
-                (($activeApplicationWaiverIds | index($violation.id)) != null)
+                $violation.waived
             )
       - id: identifiableComponents
         kind: jq
@@ -440,10 +439,6 @@ virtual_tools:
                     ]
                     | unique_by(.id)
                     as $visibleVulnerabilities
-                  | select(
-                      ($visiblePolicyViolations | length) > 0
-                      or ($visibleVulnerabilities | length) > 0
-                    )
                   | $component + {
                       violations: $visiblePolicyViolations,
                       active:
@@ -462,7 +457,15 @@ virtual_tools:
           from: $discoveredComponents
           vars:
             policyOnlyComponents: $policyOnlyComponents
-          expr: '. + $policyOnlyComponents'
+          expr: |
+            [
+              .[]
+              | select(
+                  (.violations | length) > 0
+                  or (.securityVulnerabilities | length) > 0
+                )
+            ]
+            + $policyOnlyComponents
       - id: remediableReportComponents
         kind: jq
         spec:
@@ -656,6 +659,7 @@ virtual_tools:
                 },
                 components: $compactComponents
               }
+
   - name: trigger_reevaluate_report
     description: Re-evaluate the latest report for its stage after policy or waiver changes.
     annotations:
@@ -711,7 +715,7 @@ virtual_tools:
           from: $latestReports
           vars:
             scanId: $input.scanId
-          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endwith("/" + $scanId))) | .stage][0]'
+          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endswith("/" + $scanId))) | .stage][0]'
         require:
           nonEmpty: true
           message: Re-evaluation is allowed only for the latest scan of a stage; scanId=$input.scanId is not latest.
@@ -767,6 +771,7 @@ virtual_tools:
             stage: $stage
             quick: $options.quick
           expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered"}'
+
   - name: add_waiver_policy_violations
     description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
     annotations:
@@ -1255,6 +1260,7 @@ virtual_tools:
               count: length,
               issues: .
             }
+
   - name: add_waiver_security_violations
     description: Create temporary SECURITY policy waivers. Waivers do not change the Security tab vulnerability status or scan-time 'Open' condition text.
     annotations:
@@ -1704,261 +1710,262 @@ virtual_tools:
               count: length,
               issues: .
             }
+
   - name: add_acknowledge_security_vulnerabilities
-      description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggested upgrade.
-      annotations:
-        readOnlyHint: false
-        destructiveHint: true
-        idempotentHint: true
-        openWorldHint: true
-      input_schema:
-        type: object
-        required: [applicationPublicId, scanId]
-        properties:
-          applicationPublicId:
-            type: string
-          scanId:
-            type: string
-          targets:
-            type: array
-            default: []
-            description: >-
-              Optional exact Open vulnerability targets from get_scan_all_issues_recommends.
-              Example: [{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}].
-              In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}]'.
-              Empty or omitted processes all eligible issues when allByDefault=true.
-            items:
-              type: object
-              required: [hash, id]
-              properties:
-                hash:
-                  type: string
-                  description: Component hash from query output components[].hash.
-                id:
-                  type: string
-                  description: Vulnerability id from query output components[].issues[].id, for example CVE-2026-86350.
-          allByDefault:
-            type: boolean
-            default: true
-            description: When targets is empty or omitted, process all eligible Open vulnerabilities. Set false to require explicit targets.
-          comment:
-            type: string
-            default: Temporary acknowledgement for emergency release remediation.
-            minLength: 1
-          force:
-            type: boolean
-            default: false
-            description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
-      pipeline:
-        - id: policy
-          kind: call
-          spec:
-            tool: GetPolicyViolations1
-            parse: json
-            args:
-              applicationPublicId: $input.applicationPublicId
-              scanId: $input.scanId
-              includeViolationTimes: true
-        - id: appInternal
-          kind: jq
-          spec:
-            from: $policy
-            expr: .application.id
-          require:
-            nonEmpty: true
-            message: Cannot find internal application id in policy response.
-        - id: history
-          kind: call
-          spec:
-            tool: GetReportHistoryForApplication
-            parse: json
-            args:
-              applicationId: $appInternal
-              limit: 100
-        - id: stage
-          kind: jq
-          spec:
-            from: $history
-            vars:
-              scanId: $input.scanId
-            expr: '[.reports[]? | select(.scanId == $scanId) | .stage][0]'
-          require:
-            nonEmpty: true
-            message: Cannot find stage for scanId=$input.scanId.
-        - id: options
-          kind: jq
-          spec:
-            from: $input
-            expr: '{comment: (.comment // "Temporary acknowledgement for emergency release remediation."), force: (.force // false), targets: (.targets // []), allByDefault: (if .allByDefault == null then true else .allByDefault end)}'
-        - id: csrfBootstrap
-          kind: http
-          spec:
-            upstream: default
-            method: GET
-            path: /assets/index.html
-        - id: csrfToken
-          kind: jq
-          spec:
-            from: $csrfBootstrap.headers
-            expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CRSF-TOKEN=(?<token>[^;]+)").token)'
-          require:
-            nonEmpty: true
-            message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
-        - id: csrfCookie
-          kind: jq
-          spec:
-            vars:
-              csrfToken: $csrfToken
-            expr: '"CLM-CSRF-TOKEN=" + $csrfToken'
-        - id: securityPagePath
-          kind: jq
-          spec:
-            vars:
-              applicationPublicId: $input.applicationPublicId
-            expr: '"/rest/ci/componentDetails/application/\($applicationPublicId)/vulnerabilities"'
-        - id: acknowledgePath
-          kind: jq
-          spec:
-            vars:
-              applicationPublicId: $input.applicationPublicId
-            expr: '"/rest/securityVulnerabilityOverride/application/\($applicationPublicId)"'
-        - id: componentsToScan
-          kind: jq
-          spec:
-            from: $policy
-            vars:
-              targets: $options.targets
-              allByDefault: $options.allByDefault
-            expr: |
-              [
-                .components[]? | . as $component
-                | select(.componentIdentifier != null and .hash != null)
-                | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash))
-                | {
-                    hash: .hash,
-                    name: .displayName,
-                    purl: .packageUrl,
-                    componentIdentifier: .componentIdentifier,
-                    componentIdentifierJSON: (.componentIdentifier | tojson),
-                    remediationRequest: {
-                      displayName,
-                      packageUrl,
-                      hash,
-                      componentIdentifier
-                    }
+    description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggested upgrade.
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: true
+      openWorldHint: true
+    input_schema:
+      type: object
+      required: [applicationPublicId, scanId]
+      properties:
+        applicationPublicId:
+          type: string
+        scanId:
+          type: string
+        targets:
+          type: array
+          default: []
+          description: >-
+            Optional exact Open vulnerability targets from get_scan_all_issues_recommends.
+            Example: [{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}].
+            In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}]'.
+            Empty or omitted processes all eligible issues when allByDefault=true.
+          items:
+            type: object
+            required: [hash, id]
+            properties:
+              hash:
+                type: string
+                description: Component hash from query output components[].hash.
+              id:
+                type: string
+                description: Vulnerability id from query output components[].issues[].id, for example CVE-2026-86350.
+        allByDefault:
+          type: boolean
+          default: true
+          description: When targets is empty or omitted, process all eligible Open vulnerabilities. Set false to require explicit targets.
+        comment:
+          type: string
+          default: Temporary acknowledgement for emergency release remediation.
+          minLength: 1
+        force:
+          type: boolean
+          default: false
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+    pipeline:
+      - id: policy
+        kind: call
+        spec:
+          tool: GetPolicyViolations1
+          parse: json
+          args:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            includeViolationTimes: true
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $policy
+          expr: .application.id
+        require:
+          nonEmpty: true
+          message: Cannot find internal application id in policy response.
+      - id: history
+        kind: call
+        spec:
+          tool: GetReportHistoryForApplication
+          parse: json
+          args:
+            applicationId: $appInternal
+            limit: 100
+      - id: stage
+        kind: jq
+        spec:
+          from: $history
+          vars:
+            scanId: $input.scanId
+          expr: '[.reports[]? | select(.scanId == $scanId) | .stage][0]'
+        require:
+          nonEmpty: true
+          message: Cannot find stage for scanId=$input.scanId.
+      - id: options
+        kind: jq
+        spec:
+          from: $input
+          expr: '{comment: (.comment // "Temporary acknowledgement for emergency release remediation."), force: (.force // false), targets: (.targets // []), allByDefault: (if .allByDefault == null then true else .allByDefault end)}'
+      - id: csrfBootstrap
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /assets/index.html
+      - id: csrfToken
+        kind: jq
+        spec:
+          from: $csrfBootstrap.headers
+          expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CSRF-TOKEN=(?<token>[^;]+)").token)'
+        require:
+          nonEmpty: true
+          message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
+      - id: csrfCookie
+        kind: jq
+        spec:
+          vars:
+            csrfToken: $csrfToken
+          expr: '"CLM-CSRF-TOKEN=" + $csrfToken'
+      - id: securityPagePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '"/rest/ci/componentDetails/application/\($applicationPublicId)/vulnerabilities"'
+      - id: acknowledgePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '"/rest/securityVulnerabilityOverride/application/\($applicationPublicId)"'
+      - id: componentsToScan
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $options.targets
+            allByDefault: $options.allByDefault
+          expr: |
+            [
+              .components[]? | . as $component
+              | select(.componentIdentifier != null and .hash != null)
+              | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash))
+              | {
+                  hash: .hash,
+                  name: .displayName,
+                  purl: .packageUrl,
+                  componentIdentifier: .componentIdentifier,
+                  componentIdentifierJSON: (.componentIdentifier | tojson),
+                  remediationRequest: {
+                    displayName,
+                    packageUrl,
+                    hash,
+                    componentIdentifier
                   }
-              ]
-        - id: securityComponents
-          kind: foreach
-          spec:
-            in: $componentsToScan
-            as: component
-            concurrency: 16
-            preserveOrder: true
-            pipeline:
-              - id: securityPage
-                kind: http
-                spec:
-                  upstream: default
-                  method: GET
-                  path: $securityPagePath
-                  query:
-                    hash: $component.hash
-                    scanId: $input.scanId
-                    componentIdentifier: $component.componentIdentifierJSON
-                  parse: json
-              - id: securityComponent
-                kind: emit
-                spec:
-                  from: $component
-                  vars:
-                    component: $component
-                    securityPage: $securityPage
-                    targets: $options.targets
-                    allByDefault: $options.allByDefault
-                  expr: |
-                    [
-                      $securityPage.body.securityVulnerabilities[]? as $vulnerability
-                      | $vulnerability
-                      | select((.status // "" | ascii_downcase) == "open")
-                      | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId))
-                      | {id: .refId, source: (.source // "cve")}
-                    ] as $issues
-                    | select(($issues | length) > 0)
-                    | . + {issues: $issues}
-        - id: checkedComponents
-          kind: foreach
-          spec:
-            in: $securityComponents
-            as: component
-            concurrency: 4
-            preserveOrder: true
-            pipeline:
-              - id: remediation
-                kind: call
-                spec:
-                  tool: GetSuggestedRemediationForComponent
-                  parse: json
-                  args:
-                    ownerType: application
-                    ownerId: $appInternal
-                    stageId: $stage
-                    scanId: $input.scanId
-                    includeParentRemediation: true
-                    body: $component.remediationRequest
-              - id: checkedComponent
-                kind: emit
-                spec:
-                  from: $component
-                  vars:
-                    remediation: $remediation
-                    force: $options.force
-                    currentPackageUrl: $component.purl
-                  expr: |
-                    any($remediation.remediation.versionChanges[]?; (.data.component.packageUrl // "") != $currentPackageUrl) as $hasUpgrade
-                    | select($force or ($hasUpgrade != true))
-                    | (. | del(.remediationRequest, .componentIdentifier, .componentIdentifierJSON))
-        - id: candidates
-          kind: jq
-          spec:
-            from: $checkedComponents
-            expr: '[.[] as $component | $component.issues[] | {hash: $component.hash, id, source}] | unique_by(.hash + "|" + .id + "|" + .source)'
-        - id: acknowledgements
-          kind: foreach
-          spec:
-            in: $candidates
-            as: target
-            concurrency: 8
-            preserveOrder: true
-            pipeline:
-              - id: acknowledge
-                kind: http
-                spec:
-                  upstream: default
-                  method: PUT
-                  path: $acknowledgePath
-                  headers:
-                    Cookie: $csrfCookie
-                    X-CSRF-TOKEN: $csrfToken
-                  body:
-                    status: ACKNOWLEDGED
-                    comment: $options.comment
-                    referenceId: $target.id
-                    hash: $target.hash
-                    source: $target.source
-                  parse: json
-              - id: acknowledged
-                kind: emit
-                spec:
-                  from: $target
-                  expr: '. + {status: "acknowledged"}'
-        - id: result
-          kind: return
-          spec:
-            vars:
-              applicationPublicId: $input.applicationPublicId
-              scanId: $input.scanId
-              force: $options.force
-              requested: $options.targets
-              acknowledgements: $acknowledgements
-            expr: '{applicationId: $applicationPublicId, scanId: $scanId, force: $force, requestedCount: ($requested | length), count: ($acknowledgements | length), issues: $acknowledgements}'
+                }
+            ]
+      - id: securityComponents
+        kind: foreach
+        spec:
+          in: $componentsToScan
+          as: component
+          concurrency: 16
+          preserveOrder: true
+          pipeline:
+            - id: securityPage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $securityPagePath
+                query:
+                  hash: $component.hash
+                  scanId: $input.scanId
+                  componentIdentifier: $component.componentIdentifierJSON
+                parse: json
+            - id: securityComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  component: $component
+                  securityPage: $securityPage
+                  targets: $options.targets
+                  allByDefault: $options.allByDefault
+                expr: |
+                  [
+                    $securityPage.body.securityVulnerabilities[]? as $vulnerability
+                    | $vulnerability
+                    | select((.status // "" | ascii_downcase) == "open")
+                    | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId))
+                    | {id: .refId, source: (.source // "cve")}
+                  ] as $issues
+                  | select(($issues | length) > 0)
+                  | . + {issues: $issues}
+      - id: checkedComponents
+        kind: foreach
+        spec:
+          in: $securityComponents
+          as: component
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: remediation
+              kind: call
+              spec:
+                tool: GetSuggestedRemediationForComponent
+                parse: json
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  stageId: $stage
+                  scanId: $input.scanId
+                  includeParentRemediation: true
+                  body: $component.remediationRequest
+            - id: checkedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation
+                  force: $options.force
+                  currentPackageUrl: $component.purl
+                expr: |
+                  any($remediation.remediation.versionChanges[]?; (.data.component.packageUrl // "") != $currentPackageUrl) as $hasUpgrade
+                  | select($force or ($hasUpgrade != true))
+                  | (. | del(.remediationRequest, .componentIdentifier, .componentIdentifierJSON))
+      - id: candidates
+        kind: jq
+        spec:
+          from: $checkedComponents
+          expr: '[.[] as $component | $component.issues[] | {hash: $component.hash, id, source}] | unique_by(.hash + "|" + .id + "|" + .source)'
+      - id: acknowledgements
+        kind: foreach
+        spec:
+          in: $candidates
+          as: target
+          concurrency: 8
+          preserveOrder: true
+          pipeline:
+            - id: acknowledge
+              kind: http
+              spec:
+                upstream: default
+                method: PUT
+                path: $acknowledgePath
+                headers:
+                  Cookie: $csrfCookie
+                  X-CSRF-TOKEN: $csrfToken
+                body:
+                  status: ACKNOWLEDGED
+                  comment: $options.comment
+                  referenceId: $target.id
+                  hash: $target.hash
+                  source: $target.source
+                parse: json
+            - id: acknowledged
+              kind: emit
+              spec:
+                from: $target
+                expr: '. + {status: "acknowledged"}'
+      - id: result
+        kind: return
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            force: $options.force
+            requested: $options.targets
+            acknowledgements: $acknowledgements
+          expr: '{applicationId: $applicationPublicId, scanId: $scanId, force: $force, requestedCount: ($requested | length), count: ($acknowledgements | length), issues: $acknowledgements}'
