@@ -173,7 +173,7 @@ virtual_tools:
         includeWaived:
           type: boolean
           default: false
-          description: Include waived policy violations and non-Open Security vulnerabilities. When false, return only current Open is... # ⚠️ 截图截断
+          description: Include waived policy violations and non-Open Security vulnerabilities. When false, return only current Open issues.
     pipeline:
       - id: policyPath
         kind: jq
@@ -509,7 +509,7 @@ virtual_tools:
                   currentPackageUrl: $component.packageUrl
                 expr: |
                   . as $component
-                  | (
+                  | ([
                       $remediation.remediation.versionChanges[]?
                       | select((.data.component.packageUrl // "") != $currentPackageUrl)
                       | {
@@ -711,7 +711,7 @@ virtual_tools:
           from: $latestReports
           vars:
             scanId: $input.scanId
-          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]; strings; contains("/" + ... # ⚠️ 截图截断
+          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endwith("/") | .step][0]'
         require:
           nonEmpty: true
           message: Re-evaluation is allowed only for the latest scan of a stage; scanId=$input.scanId is not latest.
@@ -730,7 +730,7 @@ virtual_tools:
         kind: jq
         spec:
           from: $csrfBootstrap.headers
-          expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN=... # ⚠️ 截图截断
+          expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CSRF-TOKEN=(?<token>[^;]+)").token)'
         require:
           nonEmpty: true
           message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
@@ -766,9 +766,9 @@ virtual_tools:
             scanId: $input.scanId
             stage: $stage
             quick: $options.quick
-          expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), ... # ⚠️ 截图截断
+          expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered")'
   - name: add_waiver_policy_violations
-    description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open... # ⚠️ 截图截断
+    description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -820,7 +820,7 @@ virtual_tools:
         force:
           type: boolean
           default: false
-          description: If set to true, all components are included, this means that components or dependencies with upgrade recommenda... # ⚠️ 截图截断
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
     pipeline:
       - id: applications
         kind: http
@@ -880,9 +880,9 @@ virtual_tools:
             [
               .[]?
               | select(.stage == $stage)
-              | [.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]
+              | [.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]?
               | strings
-              | capture("/reports?/(?<scanId>[^/]+)/(/|$)")?
+              | capture("/reports?/(?<scanId>[^/]+)(/|$)")?
               | .scanId
             ][0]
         require:
@@ -1251,12 +1251,12 @@ virtual_tools:
               apiVerifiedWaived: length,
               apiUnverified: (($attempted | length) - length),
               reportReevaluationRequired: (($alreadyWaived > 0) or (($attempted | length) > 0)),
-              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive all issues." else "" end),
+              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for the latest scan of this stage before checking UI status." end),
               count: length,
               issues: .
             }
   - name: add_waiver_security_violations
-    description: Create temporary SECURITY policy waivers. Waivers do not change the Security tab vulnerability status or scan-time 'Open' status.
+    description: Create temporary SECURITY policy waivers. Waivers do not change the Security tab vulnerability status or scan-time 'Open' condition text.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -1308,7 +1308,7 @@ virtual_tools:
         force:
           type: boolean
           default: false
-          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendat... # ⚠️ 截图截断
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
     pipeline:
       - id: policy
         kind: call
@@ -1700,12 +1700,12 @@ virtual_tools:
               apiVerifiedWaived: length,
               apiUnverified: (($attempted | length) - length),
               reportReevaluationRequired: (($alreadyWaived > 0) or (($attempted | length) > 0)),
-              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive all issues." else "" end),
+              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for latest scan of this stage before checking UI status." end),
               count: length,
               issues: .
             }
   - name: add_acknowledge_security_vulnerabilities
-      description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggest... # ⚠️ 截图截断
+      description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggested upgrade.
       annotations:
         readOnlyHint: false
         destructiveHint: true
@@ -1789,7 +1789,7 @@ virtual_tools:
           kind: jq
           spec:
             from: $input
-            expr: '{comment: (.comment // "Temporary acknowledgement for emergency release remediation."), force: (.force // false), targets: .targets, allByDefault: (if .allByDefault == null then true else .allByDefault end)}' # ⚠️ 屏幕边缘截断，按上下文补全
+            expr: '{comment: (.comment // "Temporary acknowledgement for emergency release remediation."), force: (.force // false), targets: (.targets // []), allByDefault: (if .allByDefault == null then true else .allByDefault end)}'
         - id: csrfBootstrap
           kind: http
           spec:
@@ -1800,7 +1800,7 @@ virtual_tools:
           kind: jq
           spec:
             from: $csrfBootstrap.headers
-            expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] | split(";") | .[0]' # ⚠️ 屏幕边缘截断，按上下文补全
+            expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CRSF-TOKEN=(?<token>[^;]+)").token'
           require:
             nonEmpty: true
             message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
@@ -1881,7 +1881,7 @@ virtual_tools:
                       $securityPage.body.securityVulnerabilities[]? as $vulnerability
                       | $vulnerability
                       | select((.status // "" | ascii_downcase) == "open")
-                      | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId)) # ⚠️ 屏幕边缘截断，按上下文补全
+                      | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId))
                       | {id: .refId, source: (.source // "cve")}
                     ] as $issues
                     | select(($issues | length) > 0)
@@ -1961,4 +1961,4 @@ virtual_tools:
               force: $options.force
               requested: $options.targets
               acknowledgements: $acknowledgements
-            expr: '{applicationId: $applicationPublicId, scanId: $scanId, force: $force, requestedCount: ($requested | length), count: ($acknowledgements | length)}' # ⚠️ 屏幕边缘截断，按上下文补全
+            expr: '{applicationId: $applicationPublicId, scanId: $scanId, force: $force, requestedCount: ($requested | length), count: ($acknowledgements | length), issues: $acknowledgements}'
