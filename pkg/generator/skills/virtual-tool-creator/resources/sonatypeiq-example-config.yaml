@@ -127,16 +127,25 @@ native_tools:
     # the server to fail at startup.
     excludes: []
 
+# ---- Reusable HTTP Middleware Policies ----
+middleware:
+  http_client_pool:
+    large:
+      max_idle_conns: 128          # reusable idle connections across all upstream hosts
+      max_idle_conns_per_host: 32  # reusable idle connections retained per upstream host
+      max_conns_per_host: 64       # hard cap: active + dialing + idle connections per host
+      dial_timeout: 10s            # TCP connection establishment timeout
+      request_timeout: 60s         # complete attempt, including response-body reads
+
 # ---- Virtual Tools ----
 # Compose multiple native tools into a single virtual tool via a declarative
 # e.g: 5-step pipeline (call → jq → foreach → emit → return).
 # Schema: https://github.com/flowgent-labs/mcpfather/blob/main/.agents/skills/virtual-tool-creator/resources/dsl-schema.json
 virtual_tools:
-  - name: get_scan_violations_recommends
-    enabled: true
+  - name: get_scan_all_issues_recommends
     description: >
-      Retrieve policy violations for a scan, keep components at or above a
-      threat threshold, enrich each component with remediation suggestions.
+      Retrieve policy violations and Open security vulnerabilities for a scan,
+      then enrich affected components with remediation suggestions.
     annotations:
       readOnlyHint: true
       destructiveHint: false
@@ -147,48 +156,1165 @@ virtual_tools:
       required:
         - applicationPublicId
         - scanId
-
       properties:
         applicationPublicId:
           type: string
-          default: 12609073_rengine
+          default: your_project
           description: Sonatype IQ application public id.
-
         scanId:
           type: string
           default: b3a29500a885473ca6b4b5c759c39bf2
           description: Report id / scan id to inspect.
-
         minThreatLevel:
           type: integer
           default: 5
-          minimum: 0
+          minimum: 5
           maximum: 10
           description: Minimum policy threat level used to keep violations and components.
+        includeWaived:
+          type: boolean
+          default: false
+          description: Include waived policy violations and non-Open Security vulnerabilities. When false, return only current Open issues.
+    pipeline:
+      - id: policyPath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+          expr: '"/api/v2/applications/\($applicationPublicId)/reports/\($scanId)/policy"'
+      - id: policy
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: $policyPath
+          pool: large
+          parse: json
+          query:
+            includeViolationTimes: true
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $policy.body
+          expr: .application.id
+        require:
+          nonEmpty: true
+          message: Cannot find internal application id in policy response.
+      - id: history
+        kind: jq
+        spec:
+          vars:
+            appInternal: $appInternal
+          expr: '"/api/v2/reports/applications/\($appInternal)/history"'
+      - id: reportHistory
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: $history
+          pool: large
+          parse: json
+          query:
+            limit: 100
+      - id: stage
+        kind: jq
+        spec:
+          from: $reportHistory.body
+          vars:
+            scanId: $input.scanId
+          expr: |
+            ([.reports[]
+              | select(.scanId == $scanId)
+              | .stage][0] // null)
+        require:
+          nonEmpty: true
+          message: Cannot find stage for scanId=$input.scanId.
+      - id: securityPagePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '"/rest/ci/componentDetails/application/\($applicationPublicId)/vulnerabilities"'
+      - id: scanComponents
+        kind: jq
+        spec:
+          from: $policy.body
+          vars:
+            minThreatLevel: $input.minThreatLevel
+          expr: |
+            [
+              .components[]?
+              | [
+                  .violations[]?
+                  | select(.policyThreatLevel >= $minThreatLevel)
+                ] as $violations
+              | {
+                  displayName,
+                  packageUrl,
+                  hash,
+                  sha256,
+                  componentIdentifier,
+                  maxThreatLevel:
+                    ($violations | map(.policyThreatLevel) | max // 0),
+                  violations:
+                  [
+                    $violations[]
+                    | {
+                        type: "policyViolation",
+                        id: .policyViolationId,
+                        policy: .policyName,
+                        level: .policyThreatLevel,
+                        category: .policyThreatCategory,
+                        conditions:
+                          [.constraints[]?.conditions[]?.conditionReason]
+                      }
+                  ],
+                  componentIdentifierJSON:
+                    (.componentIdentifier | tojson),
+                  remediationRequest:
+                  {
+                    packageUrl,
+                    hash,
+                    sha256,
+                    componentIdentifier,
+                    displayName,
+                    proprietary,
+                    thirdParty,
+                    originalPurl
+                  }
+                }
+            ]
+      - id: policyViolationRefs
+        kind: jq
+        spec:
+          from: $scanComponents
+          expr: |
+            [
+              .[] as $component
+              | $component.violations[]?
+              | {
+                  hash: $component.hash,
+                  id: .id
+                }
+            ]
+            | unique_by(.hash + "|" + .id)
+      - id: policyWaiverStates
+        kind: foreach
+        spec:
+          in: $policyViolationRefs
+          as: violation
+          concurrency: 32
+          preserveOrder: true
+          pipeline:
+            - id: applicableWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $violation.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: applicableWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $applicableWaiverPath
+                pool: large
+                parse: json
+            - id: policyWaiverState
+              kind: emit
+              spec:
+                from: $violation
+                vars:
+                  applicableWaiver: $applicableWaiver.body
+                expr: '. + {waived: ((($applicableWaiver.activeWaivers // []) | length) > 0)}'
+      - id: policyWaiverMap
+        kind: jq
+        spec:
+          from: $policyWaiverStates
+          expr: |
+            reduce .[] as $violation (
+              {};
+              .[($violation.hash + "|" + $violation.id)] =
+                $violation.waived
+            )
+      - id: identifiableComponents
+        kind: jq
+        spec:
+          from: $scanComponents
+          expr: '[.[] | select(.componentIdentifier != null)]'
+      - id: policyOnlyComponents
+        kind: jq
+        spec:
+          from: $scanComponents
+          vars:
+            policyWaiverMap: $policyWaiverMap
+            includeWaived: $input.includeWaived
+          expr: |
+            [
+              .[] as $component
+              | [
+                  $component.violations[]? as $violation
+                  | $violation
+                    + {
+                        waived:
+                          (
+                            $policyWaiverMap[
+                              ($component.hash + "|" + $violation.id)
+                            ] // false
+                          )
+                      }
+                  | select($includeWaived or (.waived != true))
+                ] as $visiblePolicyViolations
+              | select(
+                  $component.componentIdentifier == null
+                  and ($visiblePolicyViolations | length) > 0
+                )
+              | $component + {
+                  violations: $visiblePolicyViolations,
+                  active: any($visiblePolicyViolations[]?; .waived != true),
+                  securityVulnerabilities: []
+                }
+            ]
+      - id: discoveredComponents
+        kind: foreach
+        spec:
+          in: $identifiableComponents
+          as: component
+          concurrency: 32
+          preserveOrder: true
+          pipeline:
+            - id: securityPage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $securityPagePath
+                pool: large
+                query:
+                  hash: $component.hash
+                  scanId: $input.scanId
+                  componentIdentifier: $component.componentIdentifierJSON
+                parse: json
+            - id: discoveredComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  securityPage: $securityPage
+                  policyWaiverMap: $policyWaiverMap
+                  includeWaived: $input.includeWaived
+                expr: |
+                  . as $component
+                  | [
+                      $component.violations[]? as $violation
+                      | $violation
+                        + {
+                            waived:
+                              (
+                                $policyWaiverMap[
+                                  ($component.hash + "|" + $violation.id)
+                                ] // false
+                              )
+                          }
+                      | select($includeWaived or (.waived != true))
+                    ]
+                    | unique_by(.id)
+                    as $visiblePolicyViolations
+                  | [
+                      $securityPage.body.securityVulnerabilities[]?
+                      | select(
+                          $includeWaived
+                          or ((.status // "" | ascii_downcase) == "open")
+                        )
+                      | {
+                          type: "securityVulnerability",
+                          id: .refId,
+                          source: (.source // "cve"),
+                          status: (.status // "Unknown"),
+                          severity,
+                          cwe,
+                          summary
+                        }
+                    ]
+                    | unique_by(.id)
+                    as $visibleVulnerabilities
+                  | $component + {
+                      violations: $visiblePolicyViolations,
+                      active:
+                        (
+                          any($visiblePolicyViolations[]?; .waived != true)
+                          or any(
+                            $visibleVulnerabilities[]?;
+                            (.status // "" | ascii_downcase) == "open"
+                          )
+                        ),
+                      securityVulnerabilities: $visibleVulnerabilities
+                    }
+      - id: reportComponents
+        kind: jq
+        spec:
+          from: $discoveredComponents
+          vars:
+            policyOnlyComponents: $policyOnlyComponents
+          expr: |
+            [
+              .[]
+              | select(
+                  (.violations | length) > 0
+                  or (.securityVulnerabilities | length) > 0
+                )
+            ]
+            + $policyOnlyComponents
+      - id: remediableReportComponents
+        kind: jq
+        spec:
+          from: $reportComponents
+          expr: '[.[] | select(.componentIdentifier != null or ((.packageUrl // "") | length) > 0)]'
+      - id: nonRemediableReportComponents
+        kind: jq
+        spec:
+          from: $reportComponents
+          expr: '[.[] | select(.componentIdentifier == null and ((.packageUrl // "") | length) == 0)]'
+      - id: remediatedComponents
+        kind: foreach
+        spec:
+          in: $remediableReportComponents
+          as: component
+          concurrency: 32
+          preserveOrder: true
+          pipeline:
+            - id: remediationPath
+              kind: jq
+              spec:
+                vars:
+                  appInternal: $appInternal
+                expr: '"/api/v2/components/remediation/application/\($appInternal)"'
+            - id: remediation
+              kind: http
+              spec:
+                upstream: default
+                method: POST
+                path: $remediationPath
+                pool: large
+                parse: json
+                query:
+                  stageId: $stage
+                  scanId: $input.scanId
+                  includeParentRemediation: true
+                body: $component.remediationRequest
+            - id: enrichedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation.body
+                  currentPackageUrl: $component.packageUrl
+                expr: |
+                  . as $component
+                  | ([
+                      $remediation.remediation.versionChanges[]?
+                      | select((.data.component.packageUrl // "") != $currentPackageUrl)
+                      | {
+                          version: .data.component.componentIdentifier.coordinates.version,
+                          type
+                        }
+                    ] | unique_by(.version + "|" + .type)) as $upgrades
+                  | {
+                      component: {
+                        hash: $component.hash,
+                        name: $component.displayName,
+                        purl: $component.packageUrl,
+                        format: $component.componentIdentifier.format,
+                        coordinates: $component.componentIdentifier.coordinates
+                      },
+                      active: $component.active,
+                      maxThreatLevel: $component.maxThreatLevel,
+                      policyViolations: $component.violations,
+                      securityVulnerabilities: $component.securityVulnerabilities,
+                      upgrade: {
+                        available: (($upgrades | length) > 0),
+                        recommendations: $upgrades
+                      }
+                    }
+      - id: nonRemediatedComponents
+        kind: jq
+        spec:
+          from: $nonRemediableReportComponents
+          expr: |
+            [
+              .[] as $component
+              | {
+                  component: {
+                    hash: $component.hash,
+                    name: $component.displayName,
+                    purl: $component.packageUrl,
+                    format: null,
+                    coordinates: null
+                  },
+                  active: $component.active,
+                  maxThreatLevel: $component.maxThreatLevel,
+                  policyViolations: $component.violations,
+                  securityVulnerabilities: $component.securityVulnerabilities,
+                  upgrade: {
+                    available: false,
+                    recommendations: []
+                  }
+                }
+            ]
+      - id: components
+        kind: jq
+        spec:
+          from: $remediatedComponents
+          vars:
+            nonRemediatedComponents: $nonRemediatedComponents
+          expr: '. + $nonRemediatedComponents'
+      - id: report
+        kind: return
+        spec:
+          from: $components
+          vars:
+            appPublic: $input.applicationPublicId
+            appInternal: $appInternal
+            scanId: $input.scanId
+            stage: $stage
+            includeWaived: $input.includeWaived
+          expr: |
+            [
+              .[]
+              | {
+                  hash: .component.hash,
+                  name: .component.name,
+                  purl: .component.purl,
+                  active,
+                  upgrade: .upgrade,
+                  issues:
+                    (
+                      [
+                        .policyViolations[]?
+                        | {
+                            type,
+                            id,
+                            status: (if .waived then "waived" else "open" end),
+                            severity: .level,
+                            category,
+                            policy,
+                            reasons: .conditions
+                          }
+                      ]
+                      +
+                      [
+                        .securityVulnerabilities[]?
+                        | {
+                            type,
+                            id,
+                            status: (.status | ascii_downcase),
+                            severity,
+                            source,
+                            cwe
+                          }
+                      ]
+                      | unique_by(.type + "|" + .id)
+                    )
+                }
+            ] as $compactComponents
+            | [
+                $compactComponents[] as $component
+                | $component.issues[]?
+                | . + {componentHash: $component.hash}
+              ]
+              | unique_by(.componentHash + "|" + .type + "|" + .id)
+            as $allIssues
+            | {
+                applicationId: $appPublic,
+                scanId: $scanId,
+                stage: $stage,
+                includeWaived: $includeWaived,
+                summary: {
+                  componentCount: ($compactComponents | length),
+                  issueCount: ($allIssues | length),
+                  openIssueCount:
+                    ([
+                      $allIssues[]
+                      | select(.status == "open")
+                    ] | length),
+                  policyViolationCount:
+                    ([
+                      $allIssues[]
+                      | select(.type == "policyViolation")
+                    ] | length),
+                  securityViolationCount:
+                    ([
+                      $allIssues[]
+                      | select(
+                          .type == "policyViolation"
+                          and .category == "SECURITY"
+                        )
+                    ] | length),
+                  securityVulnerabilityCount:
+                    ([
+                      $allIssues[]
+                      | select(.type == "securityVulnerability")
+                    ] | length)
+                },
+                components: $compactComponents
+              }
 
-        includeViolationTimes:
+  - name: trigger_reevaluate_report
+    description: Re-evaluate the latest report for its stage after policy or waiver changes.
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: false
+      openWorldHint: true
+    input_schema:
+      type: object
+      required: [applicationPublicId, scanId]
+      properties:
+        applicationPublicId:
+          type: string
+          description: Sonatype IQ application public id.
+        scanId:
+          type: string
+          description: Latest report id / scan id for its stage.
+        quick:
+          type: boolean
+          default: false
+          description: Skip auto-waiver updates for a faster reevaluation.
+    pipeline:
+      - id: applications
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /api/v2/applications
+          query:
+            publicId: $input.applicationPublicId
+            includeCategories: false
+          parse: json
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $applications.body
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '[.applications[]? | select(.publicId == $applicationPublicId) | .id][0]'
+        require:
+          nonEmpty: true
+          message: Cannot find applicationPublicId=$input.applicationPublicId.
+      - id: latestReports
+        kind: call
+        spec:
+          tool: GetByApplicationId
+          parse: json
+          args:
+            applicationId: $appInternal
+      - id: stage
+        kind: jq
+        spec:
+          from: $latestReports
+          vars:
+            scanId: $input.scanId
+          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endswith("/" + $scanId))) | .stage][0]'
+        require:
+          nonEmpty: true
+          message: Re-evaluation is allowed only for the latest scan of a stage; scanId=$input.scanId is not latest.
+      - id: options
+        kind: jq
+        spec:
+          from: $input
+          expr: '{quick: (.quick // false)}'
+      - id: csrfBootstrap
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /assets/index.html
+      - id: csrfToken
+        kind: jq
+        spec:
+          from: $csrfBootstrap.headers
+          expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CSRF-TOKEN=(?<token>[^;]+)").token)'
+        require:
+          nonEmpty: true
+          message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
+      - id: csrfCookie
+        kind: jq
+        spec:
+          vars:
+            csrfToken: $csrfToken
+          expr: '"CLM-CSRF-TOKEN=" + $csrfToken'
+      - id: reevaluatePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            quick: $options.quick
+          expr: '"/rest/report/\($applicationPublicId)/\($scanId)/reevaluatePolicy" + (if $quick then "?skipAutoWaivers=true" else "" end)'
+      - id: trigger
+        kind: http
+        spec:
+          upstream: default
+          method: POST
+          path: $reevaluatePath
+          headers:
+            Cookie: $csrfCookie
+            X-CSRF-TOKEN: $csrfToken
+          body: {}
+      - id: result
+        kind: return
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            stage: $stage
+            quick: $options.quick
+          expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered"}'
+
+  - name: add_waiver_policy_violations
+    description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: true
+      openWorldHint: true
+    input_schema:
+      type: object
+      required: [applicationPublicId, scanId]
+      properties:
+        applicationPublicId:
+          type: string
+          description: Sonatype IQ application public id.
+        scanId:
+          type: string
+          description: Report id / scan id used to identify the stage; the latest report for that stage is processed.
+        targets:
+          type: array
+          default: []
+          description: >-
+            Optional exact policy violation targets from get_scan_all_issues_recommends.
+            Example: [{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}].
+            In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}]'.
+            Empty or omitted processes all eligible issues when allByDefault=true.
+          items:
+            type: object
+            required: [hash, id]
+            properties:
+              hash:
+                type: string
+                description: Component hash from query output components[].hash.
+              id:
+                type: string
+                description: Policy violation id from query output components[].issues[].id.
+        allByDefault:
           type: boolean
           default: true
-          description: Include policy violation times in the policy report request.
-
-        historyLimit:
+          description: When targets is empty or omitted, process all eligible issues. Set false to require explicit targets.
+        waiverDays:
           type: integer
-          default: 100
+          default: 14
           minimum: 1
-          maximum: 100
-          description: Number of recent application reports used to resolve the scan stage.
+          maximum: 365
+          description: Number of days before the waivers expire.
+        comment:
+          type: string
+          default: Temporary waiver for emergency release remediation.
+          minLength: 1
+          description: Audit comment recorded on every waiver.
+        force:
+          type: boolean
+          default: false
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+    pipeline:
+      - id: applications
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /api/v2/applications
+          query:
+            publicId: $input.applicationPublicId
+            includeCategories: false
+          parse: json
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $applications.body
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '[.applications[]? | select(.publicId == $applicationPublicId) | .id][0]'
+        require:
+          nonEmpty: true
+          message: Cannot find applicationPublicId=$input.applicationPublicId.
+      - id: history
+        kind: call
+        spec:
+          tool: GetReportHistoryForApplication
+          parse: json
+          args:
+            applicationId: $appInternal
+            limit: 100
+      - id: latestReports
+        kind: call
+        spec:
+          tool: GetByApplicationId
+          parse: json
+          args:
+            applicationId: $appInternal
+      - id: stage
+        kind: jq
+        spec:
+          from: $history
+          vars:
+            scanId: $input.scanId
+            latestReports: $latestReports
+          expr: |
+            ([.reports[]? | select(.scanId == $scanId) | .stage][0])
+            // ([$latestReports[]?.stage] | unique | if length == 1 then .[0] else null end)
+        require:
+          nonEmpty: true
+          message: Cannot resolve stage for scanId=$input.scanId; the scan is absent from history and multiple latest stages exist.
+      - id: effectiveScanId
+        kind: jq
+        spec:
+          from: $latestReports
+          vars:
+            stage: $stage
+          expr: |
+            [
+              .[]?
+              | select(.stage == $stage)
+              | [.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]?
+              | strings
+              | capture("/reports?/(?<scanId>[^/]+)(/|$)")?
+              | .scanId
+            ][0]
+        require:
+          nonEmpty: true
+          message: Cannot find latest report for stage resolved from scanId=$input.scanId.
+      - id: policy
+        kind: call
+        spec:
+          tool: GetPolicyViolations1
+          parse: json
+          args:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $effectiveScanId
+            includeViolationTimes: true
+      - id: options
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              waiverDays: (.waiverDays // 14),
+              comment: (.comment // "Temporary waiver for emergency release remediation."),
+              concurrency: 4,
+              force: (.force // false),
+              allByDefault: (if .allByDefault == null then true else .allByDefault end),
+              expiryTime: (now + ((.waiverDays // 14) * 86400) | todateiso8601)
+            }
+      - id: selectedViolations
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+          expr: |
+            [
+              .components[]? as $component
+              | $component.violations[]? as $violation
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
+                )
+              | {id: $violation.policyViolationId, hash: $component.hash}
+            ] | unique_by(.id)
+      - id: waiverStates
+        kind: foreach
+        spec:
+          in: $selectedViolations
+          as: violation
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: applicableWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $violation.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: applicableWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $applicableWaiverPath
+                parse: json
+            - id: waiverState
+              kind: emit
+              spec:
+                from: $violation
+                vars:
+                  applicableWaiver: $applicableWaiver.body
+                expr: '. + {hasActiveWaiver: (($applicableWaiver.activeWaivers // []) | length) > 0}'
+      - id: activeWaivers
+        kind: jq
+        spec:
+          from: $waiverStates
+          expr: '[.[] | select(.hasActiveWaiver) | {policyViolationId: .id}]'
+      - id: componentsToCheck
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeWaivers
+          expr: |
+            [
+              .components[]? as $component
+              | select(
+                  [
+                    $component.violations[]? as $violation
+                    | select(
+                        (any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+                        and (
+                          (($targets | length) == 0 and $allByDefault)
+                          or any(
+                            $targets[]?;
+                            .hash == $component.hash
+                            and .id == $violation.policyViolationId
+                          )
+                        )
+                      )
+                  ] | length > 0
+                )
+              | $component
+              | {
+                  displayName,
+                  packageUrl,
+                  hash,
+                  componentIdentifier,
+                  violations,
+                  remediationRequest: {
+                    displayName,
+                    packageUrl,
+                    hash,
+                    componentIdentifier
+                  }
+                }
+            ]
+      - id: componentsForRemediation
+        kind: jq
+        spec:
+          from: $componentsToCheck
+          vars:
+            force: $options.force
+          expr: |
+            if $force
+            then []
+            else [
+              .[]
+              | select(
+                  .componentIdentifier != null
+                  or ((.packageUrl // "") | length) > 0
+                )
+            ]
+            end
+      - id: checkedComponents
+        kind: foreach
+        spec:
+          in: $componentsForRemediation
+          as: component
+          concurrency: $options.concurrency
+          preserveOrder: true
+          pipeline:
+            - id: remediation
+              kind: call
+              spec:
+                tool: GetSuggestedRemediationForComponent
+                parse: json
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  stageId: $stage
+                  scanId: $effectiveScanId
+                  includeParentRemediation: true
+                  body: $component.remediationRequest
+            - id: checkedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation
+                  currentPackageUrl: $component.packageUrl
+                expr: |
+                  (. | del(.remediationRequest))
+                  + {
+                      hasSuggestedVersion:
+                        any(
+                          $remediation.remediation.versionChanges[]?;
+                          (.data.component.packageUrl // "") != $currentPackageUrl
+                        )
+                    }
+      - id: eligibleComponents
+        kind: jq
+        spec:
+          from: $checkedComponents
+          vars:
+            force: $options.force
+            componentsToCheck: $componentsToCheck
+          expr: |
+            if $force
+            then $componentsToCheck
+            else [.[] | select(.hasSuggestedVersion != true)]
+            end
+      - id: skippedSuggestedRemediation
+        kind: jq
+        spec:
+          from: $checkedComponents
+          vars:
+            force: $options.force
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeWaivers
+          expr: |
+            if $force then [] else [
+              .[]
+              | select(.hasSuggestedVersion == true)
+              | . as $component
+              | $component.violations[]? as $violation
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any($targets[]?; .hash == $component.hash and .id == $violation.policyViolationId)
+                )
+              | {id: $violation.policyViolationId, hash: $component.hash}
+            ] | unique_by(.id) end
+      - id: candidates
+        kind: jq
+        spec:
+          from: $eligibleComponents
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeWaivers
+          expr: |
+            [
+              .[] as $component
+              | $component.violations[]? as $violation
+              | $violation
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
+                )
+              | {
+                  id: .policyViolationId,
+                  hash: $component.hash
+                }
+            ] | unique_by(.id)
+      - id: alreadyWaived
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeWaivers
+          expr: |
+            [
+              .components[]? as $component
+              | $component.violations[]? as $violation
+              | $violation
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId))
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
+                )
+            ] | length
+      - id: batches
+        kind: jq
+        spec:
+          from: $candidates
+          expr: |
+            [
+              range(0; length; 1000) as $offset
+              | .[$offset:($offset + 1000)]
+              | {
+                  violationIds: [.[].id],
+                  violations: .
+                }
+            ]
+      - id: waivers
+        kind: foreach
+        spec:
+          in: $batches
+          as: batch
+          concurrency: $options.concurrency
+          preserveOrder: true
+          pipeline:
+            - id: addWaiver
+              kind: call
+              spec:
+                tool: AddBulkPolicyWaivers
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  body:
+                    apiWaiverOptionsDTO:
+                      comment: $options.comment
+                      matcherStrategy: EXACT_COMPONENT
+                      expiryTime: $options.expiryTime
+                    violationIds: $batch.violationIds
+            - id: waivedViolation
+              kind: emit
+              spec:
+                from: $batch.violations
+                vars:
+                  expiryTime: $options.expiryTime
+                expr: 'map(. + {status: "waived"})'
+      - id: flattenedWaivers
+        kind: jq
+        spec:
+          from: $waivers
+          expr: flatten
+      - id: verifiedWaivers
+        kind: foreach
+        spec:
+          in: $flattenedWaivers
+          as: issue
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: verifyWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $issue.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: verifyWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $verifyWaiverPath
+                parse: json
+            - id: verifyWaiverAgain
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $verifyWaiverPath
+                parse: json
+            - id: verifiedWaiver
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  verifyWaiver: $verifyWaiverAgain.body
+                expr: 'select((($verifyWaiver.activeWaivers // []) | length) > 0)'
+      - id: result
+        kind: return
+        spec:
+          from: $verifiedWaivers
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            requestedScanId: $input.scanId
+            scanId: $effectiveScanId
+            expiryTime: $options.expiryTime
+            alreadyWaived: $alreadyWaived
+            attempted: $flattenedWaivers
+            skippedSuggestedRemediation: $skippedSuggestedRemediation
+          expr: |
+            {
+              scope: "policy-violations",
+              applicationPublicId: $applicationPublicId,
+              requestedScanId: $requestedScanId,
+              scanId: $scanId,
+              usedLatestReport: ($requestedScanId != $scanId),
+              expiresAt: $expiryTime,
+              alreadyWaived: $alreadyWaived,
+              attempted: ($attempted | length),
+              skippedSuggestedRemediation: ($skippedSuggestedRemediation | length),
+              skippedIssues: $skippedSuggestedRemediation,
+              apiVerifiedWaived: length,
+              apiUnverified: (($attempted | length) - length),
+              reportReevaluationRequired: (($alreadyWaived > 0) or (($attempted | length) > 0)),
+              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for the latest scan of this stage before checking UI status." end),
+              count: length,
+              issues: .
+            }
 
-        includeParentRemediation:
+  - name: add_waiver_security_violations
+    description: Create temporary SECURITY policy waivers. Waivers do not change the Security tab vulnerability status or scan-time 'Open' condition text.
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: true
+      openWorldHint: true
+    input_schema:
+      type: object
+      required: [applicationPublicId, scanId]
+      properties:
+        applicationPublicId:
+          type: string
+          description: Sonatype IQ application public id.
+        scanId:
+          type: string
+          description: Report id / scan id containing the violations.
+        targets:
+          type: array
+          default: []
+          description: >-
+            Optional exact Security policy violation targets from get_scan_all_issues_recommends.
+            Example: [{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}].
+            In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}]'.
+            Empty or omitted processes all eligible issues when allByDefault=true.
+          items:
+            type: object
+            required: [hash, id]
+            properties:
+              hash:
+                type: string
+                description: Component hash from query output components[].hash.
+              id:
+                type: string
+                description: Security policy violation id from query output components[].issues[].id.
+        allByDefault:
           type: boolean
           default: true
-          description: Include parent remediation suggestions for transitive dependencies.
-
-        remediationConcurrency:
+          description: When targets is empty or omitted, process all eligible issues. Set false to require explicit targets.
+        waiverDays:
           type: integer
-          default: 4
+          default: 14
           minimum: 1
-          maximum: 16
-          description: Maximum remediation lookups to run concurrently.
+          maximum: 365
+          description: Number of days before the waivers expire.
+        comment:
+          type: string
+          default: Temporary waiver for emergency release remediation.
+          minLength: 1
+          description: Audit comment recorded on every waiver.
+        force:
+          type: boolean
+          default: false
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
     pipeline:
       - id: policy
         kind: call
@@ -198,7 +1324,7 @@ virtual_tools:
           args:
             applicationPublicId: $input.applicationPublicId
             scanId: $input.scanId
-            includeViolationTimes: $input.includeViolationTimes
+            includeViolationTimes: true
       - id: appInternal
         kind: jq
         spec:
@@ -214,98 +1340,152 @@ virtual_tools:
           parse: json
           args:
             applicationId: $appInternal
-            limit: $input.historyLimit
+            limit: 100
       - id: stage
         kind: jq
         spec:
           from: $history
           vars:
             scanId: $input.scanId
-          expr: |
-            ([.reports[]
-              | select(.scanId == $scanId)
-              | .stage][0] // null)
+          expr: '[.reports[]? | select(.scanId == $scanId) | .stage][0]'
         require:
           nonEmpty: true
           message: Cannot find stage for scanId=$input.scanId.
-      - id: threatComponents
+      - id: options
+        kind: jq
+        spec:
+          from: $input
+          expr: |
+            {
+              waiverDays: (.waiverDays // 14),
+              comment: (.comment // "Temporary waiver for emergency release remediation."),
+              concurrency: 4,
+              force: (.force // false),
+              allByDefault: (if .allByDefault == null then true else .allByDefault end),
+              expiryTime: (now + ((.waiverDays // 14) * 86400) | todateiso8601)
+            }
+      - id: selectedSecurityViolations
         kind: jq
         spec:
           from: $policy
           vars:
-            minThreatLevel: $input.minThreatLevel
+            targets: $input.targets
+            allByDefault: $options.allByDefault
           expr: |
             [
-              .components[]?
+              .components[]? as $component
+              | $component.violations[]? as $violation
+              | select($violation.policyThreatCategory == "SECURITY")
               | select(
-                  (.violations // [])
-                  | any(.policyThreatLevel >= $minThreatLevel)
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
                 )
+              | {id: $violation.policyViolationId, hash: $component.hash}
+            ] | unique_by(.id)
+      - id: securityWaiverStates
+        kind: foreach
+        spec:
+          in: $selectedSecurityViolations
+          as: violation
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: applicableWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $violation.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: applicableWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $applicableWaiverPath
+                parse: json
+            - id: waiverState
+              kind: emit
+              spec:
+                from: $violation
+                vars:
+                  applicableWaiver: $applicableWaiver.body
+                expr: '. + {hasActiveWaiver: (($applicableWaiver.activeWaivers // []) | length) > 0}'
+      - id: activeSecurityWaivers
+        kind: jq
+        spec:
+          from: $securityWaiverStates
+          expr: '[.[] | select(.hasActiveWaiver) | {policyViolationId: .id}]'
+      - id: componentsToCheck
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeSecurityWaivers
+          expr: |
+            [
+              .components[]? as $component
+              | select(
+                  [
+                    $component.violations[]? as $violation
+                    | select(
+                        (any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+                        and $violation.policyThreatCategory == "SECURITY"
+                        and (
+                          (($targets | length) == 0 and $allByDefault)
+                          or any(
+                            $targets[]?;
+                            .hash == $component.hash
+                            and .id == $violation.policyViolationId
+                          )
+                        )
+                      )
+                  ] | length > 0
+                )
+              | $component
               | {
                   displayName,
                   packageUrl,
                   hash,
-                  sha256,
                   componentIdentifier,
-
-                  maxThreatLevel:
-                    ([.violations[]?.policyThreatLevel] | max),
-
-                  active:
-                    any(
-                      .violations[];
-                      .policyThreatLevel >= $minThreatLevel
-                      and (.waived != true)
-                    ),
-
-                  violations:
-                    [
-                      .violations[]?
-                      | select(.policyThreatLevel >= $minThreatLevel)
-                      | {
-                          policyViolationId,
-                          policyName,
-                          policyThreatLevel,
-                          policyThreatCategory,
-                          waived,
-
-                          constraints:
-                            [
-                              .constraints[]?
-                              | {
-                                  constraintName,
-                                  conditions:
-                                    [
-                                      .conditions[]?.conditionReason
-                                    ]
-                                }
-                            ]
-                        }
-                    ],
-
-                  remediationRequest:
-                    {
-                      packageUrl,
-                      hash,
-                      sha256,
-                      componentIdentifier,
-                      displayName,
-                      proprietary,
-                      thirdParty,
-                      originalPurl
-                    }
+                  violations,
+                  remediationRequest: {
+                    displayName,
+                    packageUrl,
+                    hash,
+                    componentIdentifier
+                  }
                 }
             ]
-      - id: components
+      - id: componentsForRemediation
+        kind: jq
+        spec:
+          from: $componentsToCheck
+          vars:
+            force: $options.force
+          expr: |
+            if $force then [] else
+            [
+              .[]
+              | select(
+                  .componentIdentifier != null
+                  or ((.packageUrl // "") | length) > 0
+                )
+            ]
+            end
+      - id: checkedComponents
         kind: foreach
         spec:
-          in: $threatComponents
+          in: $componentsForRemediation
           as: component
-          concurrency: $input.remediationConcurrency
+          concurrency: $options.concurrency
           preserveOrder: true
-
           pipeline:
-
             - id: remediation
               kind: call
               spec:
@@ -316,61 +1496,476 @@ virtual_tools:
                   ownerId: $appInternal
                   stageId: $stage
                   scanId: $input.scanId
-                  includeParentRemediation: $input.includeParentRemediation
+                  includeParentRemediation: true
                   body: $component.remediationRequest
-
-            - id: enrichedComponent
+            - id: checkedComponent
               kind: emit
               spec:
                 from: $component
                 vars:
                   remediation: $remediation
+                  currentPackageUrl: $component.packageUrl
                 expr: |
                   (. | del(.remediationRequest))
-                  +
-                  {
-                    remediation:
-                      [
-                        ($remediation.remediation.versionChanges // [])[]
-                        | {
-                            type,
-                            recommendedDisplayName:
-                              .data.component.displayName,
-                            recommendedPackageUrl:
-                              .data.component.packageUrl,
-                            recommendedVersion:
-                              .data.component.componentIdentifier.coordinates.version
-                          }
-                      ]
-                  }
-      - id: report
+                  + {
+                      hasSuggestedVersion:
+                        any(
+                          $remediation.remediation.versionChanges[]?;
+                          (.data.component.packageUrl // "") != $currentPackageUrl
+                        )
+                    }
+      - id: eligibleComponents
+        kind: jq
+        spec:
+          from: $checkedComponents
+          vars:
+            force: $options.force
+            componentsToCheck: $componentsToCheck
+          expr: |
+            if $force
+            then $componentsToCheck
+            else [.[] | select(.hasSuggestedVersion != true)]
+            end
+      - id: skippedSuggestedRemediation
+        kind: jq
+        spec:
+          from: $checkedComponents
+          vars:
+            force: $options.force
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeSecurityWaivers
+          expr: |
+            if $force then [] else [
+              .[]
+              | select(.hasSuggestedVersion == true)
+              | . as $component
+              | $component.violations[]? as $violation
+              | select(.policyThreatCategory == "SECURITY")
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any($targets[]?; .hash == $component.hash and .id == $violation.policyViolationId)
+                )
+              | {id: $violation.policyViolationId, hash: $component.hash}
+            ] | unique_by(.id) end
+      - id: candidates
+        kind: jq
+        spec:
+          from: $eligibleComponents
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeSecurityWaivers
+          expr: |
+            [
+              .[] as $component
+              | $component.violations[]? as $violation
+              | $violation
+              | select(.policyThreatCategory == "SECURITY")
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
+                )
+              | {
+                  id: .policyViolationId,
+                  hash: $component.hash
+                }
+            ] | unique_by(.id)
+      - id: alreadyWaived
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $input.targets
+            allByDefault: $options.allByDefault
+            activeWaivers: $activeSecurityWaivers
+          expr: |
+            [
+              .components[]? as $component
+              | $component.violations[]? as $violation
+              | $violation
+              | select(.policyThreatCategory == "SECURITY")
+              | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId))
+              | select(
+                  (($targets | length) == 0 and $allByDefault)
+                  or any(
+                    $targets[]?;
+                    .hash == $component.hash
+                    and .id == $violation.policyViolationId
+                  )
+                )
+            ] | length
+      - id: batches
+        kind: jq
+        spec:
+          from: $candidates
+          expr: |
+            [
+              range(0; length; 1000) as $offset
+              | .[$offset:($offset + 1000)]
+              | {
+                  violationIds: [.[].id],
+                  violations: .
+                }
+            ]
+      - id: waivers
+        kind: foreach
+        spec:
+          in: $batches
+          as: batch
+          concurrency: $options.concurrency
+          preserveOrder: true
+          pipeline:
+            - id: addWaiver
+              kind: call
+              spec:
+                tool: AddBulkPolicyWaivers
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  body:
+                    apiWaiverOptionsDTO:
+                      comment: $options.comment
+                      matcherStrategy: EXACT_COMPONENT
+                      expiryTime: $options.expiryTime
+                    violationIds: $batch.violationIds
+            - id: waivedViolation
+              kind: emit
+              spec:
+                from: $batch.violations
+                vars:
+                  expiryTime: $options.expiryTime
+                expr: 'map(. + {status: "waived"})'
+      - id: flattenedWaivers
+        kind: jq
+        spec:
+          from: $waivers
+          expr: flatten
+      - id: verifiedWaivers
+        kind: foreach
+        spec:
+          in: $flattenedWaivers
+          as: issue
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: verifyWaiverPath
+              kind: jq
+              spec:
+                vars:
+                  violationId: $issue.id
+                expr: '"/api/v2/policyViolations/\($violationId)/applicableWaivers"'
+            - id: verifyWaiver
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $verifyWaiverPath
+                parse: json
+            - id: verifyWaiverAgain
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $verifyWaiverPath
+                parse: json
+            - id: verifiedWaiver
+              kind: emit
+              spec:
+                from: $issue
+                vars:
+                  verifyWaiver: $verifyWaiverAgain.body
+                expr: 'select((($verifyWaiver.activeWaivers // []) | length) > 0)'
+      - id: result
         kind: return
         spec:
-          from: $components
+          from: $verifiedWaivers
           vars:
-            appPublic: $input.applicationPublicId
-            appInternal: $appInternal
+            applicationPublicId: $input.applicationPublicId
             scanId: $input.scanId
-            stage: $stage
+            expiryTime: $options.expiryTime
+            alreadyWaived: $alreadyWaived
+            attempted: $flattenedWaivers
+            skippedSuggestedRemediation: $skippedSuggestedRemediation
           expr: |
             {
-              application: {
-                publicId: $appPublic,
-                internalId: $appInternal
-              },
-
-              scan: {
-                scanId: $scanId,
-                stage: $stage
-              },
-
-              summary: {
-                threatComponentCount: length,
-                activeThreatComponentCount:
-                  ([ .[]
-                     | select(.active == true)
-                   ] | length)
-              },
-
-              components: .
+              scope: "security-violations",
+              applicationPublicId: $applicationPublicId,
+              scanId: $scanId,
+              expiresAt: $expiryTime,
+              alreadyWaived: $alreadyWaived,
+              attempted: ($attempted | length),
+              skippedSuggestedRemediation: ($skippedSuggestedRemediation | length),
+              skippedIssues: $skippedSuggestedRemediation,
+              apiVerifiedWaived: length,
+              apiUnverified: (($attempted | length) - length),
+              reportReevaluationRequired: (($alreadyWaived > 0) or (($attempted | length) > 0)),
+              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for the latest scan of this stage before checking UI status." end),
+              count: length,
+              issues: .
             }
+
+  - name: add_acknowledge_security_vulnerabilities
+    description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggested upgrade.
+    annotations:
+      readOnlyHint: false
+      destructiveHint: true
+      idempotentHint: true
+      openWorldHint: true
+    input_schema:
+      type: object
+      required: [applicationPublicId, scanId]
+      properties:
+        applicationPublicId:
+          type: string
+        scanId:
+          type: string
+        targets:
+          type: array
+          default: []
+          description: >-
+            Optional exact Open vulnerability targets from get_scan_all_issues_recommends.
+            Example: [{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}].
+            In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}]'.
+            Empty or omitted processes all eligible issues when allByDefault=true.
+          items:
+            type: object
+            required: [hash, id]
+            properties:
+              hash:
+                type: string
+                description: Component hash from query output components[].hash.
+              id:
+                type: string
+                description: Vulnerability id from query output components[].issues[].id, for example CVE-2026-86350.
+        allByDefault:
+          type: boolean
+          default: true
+          description: When targets is empty or omitted, process all eligible Open vulnerabilities. Set false to require explicit targets.
+        comment:
+          type: string
+          default: Temporary acknowledgement for emergency release remediation.
+          minLength: 1
+        force:
+          type: boolean
+          default: false
+          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+    pipeline:
+      - id: policy
+        kind: call
+        spec:
+          tool: GetPolicyViolations1
+          parse: json
+          args:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            includeViolationTimes: true
+      - id: appInternal
+        kind: jq
+        spec:
+          from: $policy
+          expr: .application.id
+        require:
+          nonEmpty: true
+          message: Cannot find internal application id in policy response.
+      - id: history
+        kind: call
+        spec:
+          tool: GetReportHistoryForApplication
+          parse: json
+          args:
+            applicationId: $appInternal
+            limit: 100
+      - id: stage
+        kind: jq
+        spec:
+          from: $history
+          vars:
+            scanId: $input.scanId
+          expr: '[.reports[]? | select(.scanId == $scanId) | .stage][0]'
+        require:
+          nonEmpty: true
+          message: Cannot find stage for scanId=$input.scanId.
+      - id: options
+        kind: jq
+        spec:
+          from: $input
+          expr: '{comment: (.comment // "Temporary acknowledgement for emergency release remediation."), force: (.force // false), targets: (.targets // []), allByDefault: (if .allByDefault == null then true else .allByDefault end)}'
+      - id: csrfBootstrap
+        kind: http
+        spec:
+          upstream: default
+          method: GET
+          path: /assets/index.html
+      - id: csrfToken
+        kind: jq
+        spec:
+          from: $csrfBootstrap.headers
+          expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CSRF-TOKEN=(?<token>[^;]+)").token)'
+        require:
+          nonEmpty: true
+          message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
+      - id: csrfCookie
+        kind: jq
+        spec:
+          vars:
+            csrfToken: $csrfToken
+          expr: '"CLM-CSRF-TOKEN=" + $csrfToken'
+      - id: securityPagePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '"/rest/ci/componentDetails/application/\($applicationPublicId)/vulnerabilities"'
+      - id: acknowledgePath
+        kind: jq
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+          expr: '"/rest/securityVulnerabilityOverride/application/\($applicationPublicId)"'
+      - id: componentsToScan
+        kind: jq
+        spec:
+          from: $policy
+          vars:
+            targets: $options.targets
+            allByDefault: $options.allByDefault
+          expr: |
+            [
+              .components[]? | . as $component
+              | select(.componentIdentifier != null and .hash != null)
+              | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash))
+              | {
+                  hash: .hash,
+                  name: .displayName,
+                  purl: .packageUrl,
+                  componentIdentifier: .componentIdentifier,
+                  componentIdentifierJSON: (.componentIdentifier | tojson),
+                  remediationRequest: {
+                    displayName,
+                    packageUrl,
+                    hash,
+                    componentIdentifier
+                  }
+                }
+            ]
+      - id: securityComponents
+        kind: foreach
+        spec:
+          in: $componentsToScan
+          as: component
+          concurrency: 16
+          preserveOrder: true
+          pipeline:
+            - id: securityPage
+              kind: http
+              spec:
+                upstream: default
+                method: GET
+                path: $securityPagePath
+                query:
+                  hash: $component.hash
+                  scanId: $input.scanId
+                  componentIdentifier: $component.componentIdentifierJSON
+                parse: json
+            - id: securityComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  component: $component
+                  securityPage: $securityPage
+                  targets: $options.targets
+                  allByDefault: $options.allByDefault
+                expr: |
+                  [
+                    $securityPage.body.securityVulnerabilities[]? as $vulnerability
+                    | $vulnerability
+                    | select((.status // "" | ascii_downcase) == "open")
+                    | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId))
+                    | {id: .refId, source: (.source // "cve")}
+                  ] as $issues
+                  | select(($issues | length) > 0)
+                  | . + {issues: $issues}
+      - id: checkedComponents
+        kind: foreach
+        spec:
+          in: $securityComponents
+          as: component
+          concurrency: 4
+          preserveOrder: true
+          pipeline:
+            - id: remediation
+              kind: call
+              spec:
+                tool: GetSuggestedRemediationForComponent
+                parse: json
+                args:
+                  ownerType: application
+                  ownerId: $appInternal
+                  stageId: $stage
+                  scanId: $input.scanId
+                  includeParentRemediation: true
+                  body: $component.remediationRequest
+            - id: checkedComponent
+              kind: emit
+              spec:
+                from: $component
+                vars:
+                  remediation: $remediation
+                  force: $options.force
+                  currentPackageUrl: $component.purl
+                expr: |
+                  any($remediation.remediation.versionChanges[]?; (.data.component.packageUrl // "") != $currentPackageUrl) as $hasUpgrade
+                  | select($force or ($hasUpgrade != true))
+                  | (. | del(.remediationRequest, .componentIdentifier, .componentIdentifierJSON))
+      - id: candidates
+        kind: jq
+        spec:
+          from: $checkedComponents
+          expr: '[.[] as $component | $component.issues[] | {hash: $component.hash, id, source}] | unique_by(.hash + "|" + .id + "|" + .source)'
+      - id: acknowledgements
+        kind: foreach
+        spec:
+          in: $candidates
+          as: target
+          concurrency: 8
+          preserveOrder: true
+          pipeline:
+            - id: acknowledge
+              kind: http
+              spec:
+                upstream: default
+                method: PUT
+                path: $acknowledgePath
+                headers:
+                  Cookie: $csrfCookie
+                  X-CSRF-TOKEN: $csrfToken
+                body:
+                  status: ACKNOWLEDGED
+                  comment: $options.comment
+                  referenceId: $target.id
+                  hash: $target.hash
+                  source: $target.source
+                parse: json
+            - id: acknowledged
+              kind: emit
+              spec:
+                from: $target
+                expr: '. + {status: "acknowledged"}'
+      - id: result
+        kind: return
+        spec:
+          vars:
+            applicationPublicId: $input.applicationPublicId
+            scanId: $input.scanId
+            force: $options.force
+            requested: $options.targets
+            acknowledgements: $acknowledgements
+          expr: '{applicationId: $applicationPublicId, scanId: $scanId, force: $force, requestedCount: ($requested | length), count: ($acknowledgements | length), issues: $acknowledgements}'
