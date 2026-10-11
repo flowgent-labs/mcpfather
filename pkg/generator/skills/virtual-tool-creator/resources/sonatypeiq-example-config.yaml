@@ -711,7 +711,7 @@ virtual_tools:
           from: $latestReports
           vars:
             scanId: $input.scanId
-          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endwith("/") | .step][0]'
+          expr: '[.[]? | select(any([.reportHtmlUrl, .reportDataUrl, .reportPdfUrl, .embeddableReportHtmlUrl][]? | strings; contains("/" + $scanId + "/") or endwith("/" + $scanId))) | .stage][0]'
         require:
           nonEmpty: true
           message: Re-evaluation is allowed only for the latest scan of a stage; scanId=$input.scanId is not latest.
@@ -766,7 +766,7 @@ virtual_tools:
             scanId: $input.scanId
             stage: $stage
             quick: $options.quick
-          expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered")'
+          expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered"}'
   - name: add_waiver_policy_violations
     description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
     annotations:
@@ -1700,7 +1700,7 @@ virtual_tools:
               apiVerifiedWaived: length,
               apiUnverified: (($attempted | length) - length),
               reportReevaluationRequired: (($alreadyWaived > 0) or (($attempted | length) > 0)),
-              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for latest scan of this stage before checking UI status." end),
+              nextAction: (if ($skippedSuggestedRemediation | length) > 0 then "Review suggested upgrades or rerun with --force true to waive skipped violations." else "Run trigger_reevaluate_report for the latest scan of this stage before checking UI status." end),
               count: length,
               issues: .
             }
@@ -1748,7 +1748,7 @@ virtual_tools:
           force:
             type: boolean
             default: false
-            description: If set to true, all components are included, this means that components or dependencies with upgrade recommendat... # ⚠️ 截图截断
+            description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
       pipeline:
         - id: policy
           kind: call
@@ -1800,7 +1800,7 @@ virtual_tools:
           kind: jq
           spec:
             from: $csrfBootstrap.headers
-            expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CRSF-TOKEN=(?<token>[^;]+)").token'
+            expr: '((."Set-Cookie" // ."set-cookie" // []) | if type == "array" then . else [.] end | map(select(startswith("CLM-CSRF-TOKEN="))) | .[0] // "" | capture("^CLM-CRSF-TOKEN=(?<token>[^;]+)").token)'
           require:
             nonEmpty: true
             message: Cannot obtain CLM-CSRF-TOKEN from IQ UI bootstrap response.
