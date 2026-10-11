@@ -27,6 +27,7 @@ func (g *Generator) GenerateCommonTestFiles() error {
 		{"client_test.templ", "pkg/helpers", "client_test.go"},
 		{"config_test.templ", "pkg/helpers", "config_test.go"},
 		{"resource_server_test.templ", "pkg/helpers", "resource_server_test.go"},
+		{"mcptools_test_helpers.templ", "pkg/mcptools", "test_helpers_test.go"},
 		{"registry_test.templ", "pkg/mcptools", "registry_test.go"},
 		{"server_test.templ", "pkg/mcpserver", "server_test.go"},
 	}

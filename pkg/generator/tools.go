@@ -247,22 +247,19 @@ func (g *Generator) GenerateToolTestFiles(config *converter.MCPConfig) error {
 		return fmt.Errorf("failed to parse tool test template: %w", err)
 	}
 
-	helpersImportPath := BuildModuleName(g.outputDir) + "/pkg/helpers"
 	serviceName := filepath.Base(g.outputDir)
 
 	for _, tool := range config.Tools {
 		capitalizedName := capitalizeFirstLetter(tool.Name)
 
 		data := struct {
-			ToolNameOriginal  string
-			ToolHandlerName   string
-			HelpersImportPath string
-			ServiceName       string
+			ToolNameOriginal string
+			ToolHandlerName  string
+			ServiceName      string
 		}{
-			ToolNameOriginal:  capitalizedName,
-			ToolHandlerName:   capitalizedName + "Handler",
-			HelpersImportPath: helpersImportPath,
-			ServiceName:       serviceName,
+			ToolNameOriginal: capitalizedName,
+			ToolHandlerName:  capitalizedName + "Handler",
+			ServiceName:      serviceName,
 		}
 
 		var buf bytes.Buffer

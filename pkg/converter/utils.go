@@ -102,15 +102,19 @@ func getResponseDescription(responseRef *openapi3.ResponseRef) string {
 	return ""
 }
 
-// getDescription returns a description for an operation.
-func getDescription(operation *openapi3.Operation) string {
+// getDescription returns a description for an operation, falling back to the
+// operation ID when the OpenAPI document omits both summary and description.
+func getDescription(operation *openapi3.Operation, operationID string) string {
 	if operation.Summary != "" {
 		if operation.Description != "" {
 			return fmt.Sprintf("%s - %s", operation.Summary, operation.Description)
 		}
 		return operation.Summary
 	}
-	return operation.Description
+	if operation.Description != "" {
+		return operation.Description
+	}
+	return fmt.Sprintf("Invoke %s", operationID)
 }
 
 // contains checks if a string slice contains a string.
