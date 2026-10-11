@@ -119,7 +119,7 @@ func (c *Converter) convertOperation(path, method string, operation *openapi3.Op
 	tool := &Tool{
 		Name:        toolName,
 		OperationID: operationID,
-		Description: getDescription(operation),
+		Description: getDescription(operation, operationID),
 		Args:        []Arg{},
 	}
 

@@ -15,6 +15,7 @@ func TestCommonTemplateNamesMatchGeneratedFiles(t *testing.T) {
 		"client_test.templ",
 		"config.templ",
 		"config_test.templ",
+		"mcptools_test_helpers.templ",
 		"resource_server.templ",
 		"resource_server_test.templ",
 	} {
@@ -33,6 +34,53 @@ func TestCommonTemplateNamesMatchGeneratedFiles(t *testing.T) {
 		if _, err := templatesFS.ReadFile("templates/" + legacyName); !errors.Is(err, fs.ErrNotExist) {
 			t.Errorf("legacy template %s still exists or returned an unexpected error: %v", legacyName, err)
 		}
+	}
+}
+
+func TestGeneratedMCPToolTestsInstallLoadedConfig(t *testing.T) {
+	outputDir := t.TempDir()
+	g := &Generator{outputDir: outputDir}
+	if err := g.GenerateCommonTestFiles(); err != nil {
+		t.Fatalf("GenerateCommonTestFiles: %v", err)
+	}
+
+	helperPath := filepath.Join(outputDir, "pkg", "mcptools", "test_helpers_test.go")
+	helper, err := os.ReadFile(helperPath)
+	if err != nil {
+		t.Fatalf("read generated test helper: %v", err)
+	}
+	helperText := string(helper)
+	for _, expected := range []string{
+		`t.Setenv("HOME", t.TempDir())`,
+		"cfg, err := mcputils.LoadConfig(serviceName)",
+		"mcputils.SetConfig(cfg)",
+		"t.Cleanup(func()",
+		"mcputils.SetConfig(previous)",
+	} {
+		if !strings.Contains(helperText, expected) {
+			t.Errorf("generated test helper is missing %q", expected)
+		}
+	}
+
+	registryPath := filepath.Join(outputDir, "pkg", "mcptools", "registry_test.go")
+	registry, err := os.ReadFile(registryPath)
+	if err != nil {
+		t.Fatalf("read generated registry test: %v", err)
+	}
+	if got := strings.Count(string(registry), "installTestConfig(t,"); got != 3 {
+		t.Fatalf("registry test installs config %d times, want 3", got)
+	}
+
+	toolTemplate, err := templatesFS.ReadFile("templates/tool_test.templ")
+	if err != nil {
+		t.Fatalf("read tool test template: %v", err)
+	}
+	toolTemplateText := string(toolTemplate)
+	if got := strings.Count(toolTemplateText, "installTestConfig(t,"); got != 3 {
+		t.Fatalf("tool test template installs config %d times, want 3", got)
+	}
+	if strings.Contains(toolTemplateText, "mcputils.LoadConfig(") {
+		t.Fatal("tool test template discards a loaded config")
 	}
 }
 

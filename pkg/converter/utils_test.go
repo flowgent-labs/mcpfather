@@ -242,13 +242,13 @@ func TestGetDescription(t *testing.T) {
 		{
 			name:      "neither",
 			operation: &openapi3.Operation{},
-			want:      "",
+			want:      "Invoke testOperation",
 		},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got := getDescription(c.operation)
+			got := getDescription(c.operation, "testOperation")
 			if got != c.want {
 				t.Errorf("getDescription(%v) = %q, want %q", c.operation, got, c.want)
 			}

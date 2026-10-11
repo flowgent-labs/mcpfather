@@ -56,7 +56,7 @@ func SetConfig(cfg *Config) {
 	globalCfg = cfg
 }
 
-// GetConfig returns the global config. May be nil before LoadConfig is called.
+// GetConfig returns the global config. May be nil before SetConfig is called.
 func GetConfig() *Config {
 	globalCfgMu.RLock()
 	defer globalCfgMu.RUnlock()

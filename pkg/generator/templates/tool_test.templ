@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcputils "{{.HelpersImportPath}}"
 )
 
 func TestNew{{.ToolNameOriginal}}MCPTool(t *testing.T) {
@@ -48,7 +47,7 @@ func Test{{.ToolNameOriginal}}Handler(t *testing.T) {
 		defer ts.Close()
 
 		t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-		mcputils.LoadConfig("{{.ServiceName}}")
+		installTestConfig(t, "{{.ServiceName}}")
 
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
@@ -74,7 +73,7 @@ func Test{{.ToolNameOriginal}}Handler(t *testing.T) {
 		defer ts.Close()
 
 		t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-		mcputils.LoadConfig("{{.ServiceName}}")
+		installTestConfig(t, "{{.ServiceName}}")
 
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{
@@ -98,7 +97,7 @@ func Test{{.ToolNameOriginal}}Handler(t *testing.T) {
 		defer ts.Close()
 
 		t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-		mcputils.LoadConfig("{{.ServiceName}}")
+		installTestConfig(t, "{{.ServiceName}}")
 
 		req := mcp.CallToolRequest{
 			Params: mcp.CallToolParams{

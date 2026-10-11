@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	"github.com/mark3labs/mcp-go/mcp"
-	mcputils "{{.ModuleName}}/pkg/helpers"
 )
 
 func TestRegistry_AllEntriesValid(t *testing.T) {
@@ -52,7 +51,7 @@ func TestRegistry_AllHandlersWork(t *testing.T) {
 	defer ts.Close()
 
 	t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-	mcputils.LoadConfig("{{.ServiceName}}")
+	installTestConfig(t, "{{.ServiceName}}")
 
 	for name, entry := range Registry {
 		t.Run(name, func(t *testing.T) {
@@ -82,7 +81,7 @@ func TestRegistry_AllHandlersNilArgs(t *testing.T) {
 	defer ts.Close()
 
 	t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-	mcputils.LoadConfig("{{.ServiceName}}")
+	installTestConfig(t, "{{.ServiceName}}")
 
 	for name, entry := range Registry {
 		t.Run(name, func(t *testing.T) {
@@ -110,7 +109,7 @@ func TestRegistry_AllHandlersUpstreamError(t *testing.T) {
 	defer ts.Close()
 
 	t.Setenv("MCP__UPSTREAM__DEFAULT__ENDPOINT", ts.URL)
-	mcputils.LoadConfig("{{.ServiceName}}")
+	installTestConfig(t, "{{.ServiceName}}")
 
 	count := 0
 	for name, entry := range Registry {
