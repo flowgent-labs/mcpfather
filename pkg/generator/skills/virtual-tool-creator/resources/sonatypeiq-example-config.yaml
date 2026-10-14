@@ -773,7 +773,7 @@ virtual_tools:
           expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered"}'
 
   - name: add_waiver_policy_violations
-    description: Create temporary policy waivers for Medium/Moderate, High/Severe, and Critical issues (policyThreatLevel 4-10). Low (1-3) is always excluded. Targets and force do not bypass this severity filter. waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
+    description: Create temporary policy waivers for Medium/Moderate, High/Severe, and Critical issues (policyThreatLevel 4-10). Low (1-3) is always excluded. Targets and force do not bypass this severity filter. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -1305,7 +1305,7 @@ virtual_tools:
             Optional exact Security policy violation targets from get_scan_all_issues_recommends.
             Example: [{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}].
             In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}]'.
-            Empty or omitted processes all eligible issues when allByDefault=true. Only policyThreatLevel 4-10 is eligible, even for explicit targets; Low (1-3) is always excluded.
+            Empty or omitted processes all eligible issues when allByDefault=true. Only policyThreatLevel 4-10 is eligible; Low (1-3) is always excluded.
           items:
             type: object
             required: [hash, id]
