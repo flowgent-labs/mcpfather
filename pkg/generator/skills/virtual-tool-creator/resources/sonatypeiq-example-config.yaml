@@ -773,7 +773,7 @@ virtual_tools:
           expr: '{applicationId: $applicationPublicId, scanId: $scanId, stage: $stage, mode: (if $quick then "quick" else "full" end), status: "triggered"}'
 
   - name: add_waiver_policy_violations
-    description: Create temporary policy waivers. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
+    description: Create temporary policy waivers for Medium/Moderate, High/Severe, and Critical issues (policyThreatLevel 4-10). Low (1-3) is always excluded. Targets and force do not bypass this severity filter. Waivers do not rewrite scan-time condition reasons such as vulnerability status 'Open'.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -796,7 +796,7 @@ virtual_tools:
             Optional exact policy violation targets from get_scan_all_issues_recommends.
             Example: [{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}].
             In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}]'.
-            Empty or omitted processes all eligible issues when allByDefault=true.
+            Empty or omitted processes all eligible issues when allByDefault=true. Only policyThreatLevel 4-10 is eligible, even for explicit targets. Low (1-3) is always excluded.
           items:
             type: object
             required: [hash, id]
@@ -810,7 +810,7 @@ virtual_tools:
         allByDefault:
           type: boolean
           default: true
-          description: When targets is empty or omitted, process all eligible issues. Set false to require explicit targets.
+          description: When targets is empty or omitted, process all eligible Medium/Moderate, High/Severe, and Critical issues (policyThreatLevel 4-10). Set false to require explicit targets; Low (1-3) is always excluded.
         waiverDays:
           type: integer
           default: 14
@@ -825,7 +825,7 @@ virtual_tools:
         force:
           type: boolean
           default: false
-          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+          description: Include eligible components even when upgrade recommendations exist. Does not bypass the policyThreatLevel 4-10 filter, explicit target selection, or active-waiver checks.
     pipeline:
       - id: applications
         kind: http
@@ -893,7 +893,7 @@ virtual_tools:
         require:
           nonEmpty: true
           message: Cannot find latest report for stage resolved from scanId=$input.scanId.
-      - id: policy
+      - id: rawPolicy
         kind: call
         spec:
           tool: GetPolicyViolations1
@@ -902,6 +902,26 @@ virtual_tools:
             applicationPublicId: $input.applicationPublicId
             scanId: $effectiveScanId
             includeViolationTimes: true
+      - id: policy
+        kind: jq
+        spec:
+          from: $rawPolicy
+          expr: |
+            # IQ policy threat bands: Low 1-3, Medium/Moderate 4-7,
+            # High/Severe 8-9, Critical 10. This is not CVSS severity.
+            # Filter once before all selection, checks, writes, and counts.
+            .components = [
+              .components[]?
+              | .violations = [
+                .violations[]?
+                | select(
+                    .policyThreatLevel
+                    | numbers
+                    | . >= 4 and . <= 10
+                  )
+              ]
+              | select((.violations | length) > 0)
+            ]
       - id: options
         kind: jq
         spec:
@@ -1262,7 +1282,7 @@ virtual_tools:
             }
 
   - name: add_waiver_security_violations
-    description: Create temporary SECURITY policy waivers. Waivers do not change the Security tab vulnerability status or scan-time 'Open' condition text.
+    description: Create temporary SECURITY policy waivers for policyThreatLevel 4-10. Low (1-3) is always excluded. Waivers do not change the Security tab vulnerability status or scan-time 'Open' condition text.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -1285,7 +1305,7 @@ virtual_tools:
             Optional exact Security policy violation targets from get_scan_all_issues_recommends.
             Example: [{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}].
             In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"df5044470b6a4027b949e90132a1f2ad"}]'.
-            Empty or omitted processes all eligible issues when allByDefault=true.
+            Empty or omitted processes all eligible issues when allByDefault=true. Only policyThreatLevel 4-10 is eligible; Low (1-3) is always excluded.
           items:
             type: object
             required: [hash, id]
@@ -1299,7 +1319,7 @@ virtual_tools:
         allByDefault:
           type: boolean
           default: true
-          description: When targets is empty or omitted, process all eligible issues. Set false to require explicit targets.
+          description: When targets is empty or omitted, process all eligible policyThreatLevel 4-10 issues. Set false to require explicit targets; Low (1-3) is always excluded.
         waiverDays:
           type: integer
           default: 14
@@ -1314,7 +1334,7 @@ virtual_tools:
         force:
           type: boolean
           default: false
-          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+          description: Include eligible components even when upgrade recommendations exist. Does not bypass the policyThreatLevel 4-10 filter, explicit target selection, or active-waiver checks.
     pipeline:
       - id: policy
         kind: call
@@ -1376,6 +1396,7 @@ virtual_tools:
               .components[]? as $component
               | $component.violations[]? as $violation
               | select($violation.policyThreatCategory == "SECURITY")
+              | select($violation.policyThreatLevel | numbers | . >= 4 and . <= 10)
               | select(
                   (($targets | length) == 0 and $allByDefault)
                   or any(
@@ -1436,6 +1457,7 @@ virtual_tools:
                     | select(
                         (any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
                         and $violation.policyThreatCategory == "SECURITY"
+                        and ($violation.policyThreatLevel | numbers | . >= 4 and . <= 10)
                         and (
                           (($targets | length) == 0 and $allByDefault)
                           or any(
@@ -1542,6 +1564,7 @@ virtual_tools:
               | . as $component
               | $component.violations[]? as $violation
               | select(.policyThreatCategory == "SECURITY")
+              | select(.policyThreatLevel | numbers | . >= 4 and . <= 10)
               | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
               | select(
                   (($targets | length) == 0 and $allByDefault)
@@ -1563,6 +1586,7 @@ virtual_tools:
               | $component.violations[]? as $violation
               | $violation
               | select(.policyThreatCategory == "SECURITY")
+              | select(.policyThreatLevel | numbers | . >= 4 and . <= 10)
               | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId) | not)
               | select(
                   (($targets | length) == 0 and $allByDefault)
@@ -1591,6 +1615,7 @@ virtual_tools:
               | $component.violations[]? as $violation
               | $violation
               | select(.policyThreatCategory == "SECURITY")
+              | select(.policyThreatLevel | numbers | . >= 4 and . <= 10)
               | select(any($activeWaivers[]?; .policyViolationId == $violation.policyViolationId))
               | select(
                   (($targets | length) == 0 and $allByDefault)
@@ -1712,7 +1737,7 @@ virtual_tools:
             }
 
   - name: add_acknowledge_security_vulnerabilities
-    description: Change current Open vulnerabilities to Acknowledged on the Security tab; defaults to all components without a suggested upgrade.
+    description: Change current Open Medium-or-higher vulnerabilities (severity 4-10) to Acknowledged on the Security tab. Low severity below 4 is always excluded; defaults to all components without a suggested upgrade.
     annotations:
       readOnlyHint: false
       destructiveHint: true
@@ -1730,7 +1755,7 @@ virtual_tools:
           type: array
           default: []
           description: >-
-            Optional exact Open vulnerability targets from get_scan_all_issues_recommends.
+            Optional exact Open vulnerability targets from get_scan_all_issues_recommends. Only severity 4-10 is eligible; Low severity below 4 is always excluded.
             Example: [{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}].
             In Bash or PowerShell: --targets '[{"hash":"d4f3c448998c6cf8267f","id":"CVE-2026-86350"}]'.
             Empty or omitted processes all eligible issues when allByDefault=true.
@@ -1747,7 +1772,7 @@ virtual_tools:
         allByDefault:
           type: boolean
           default: true
-          description: When targets is empty or omitted, process all eligible Open vulnerabilities. Set false to require explicit targets.
+          description: When targets is empty or omitted, process all eligible Open vulnerabilities with severity 4-10. Set false to require explicit targets; Low severity below 4 is always excluded.
         comment:
           type: string
           default: Temporary acknowledgement for emergency release remediation.
@@ -1755,7 +1780,7 @@ virtual_tools:
         force:
           type: boolean
           default: false
-          description: If set to true, all components are included, this means that components or dependencies with upgrade recommendations will also be execute to add the waiver or acknowledge.
+          description: Include eligible components even when upgrade recommendations exist. Does not bypass the severity 4-10 filter or explicit target selection.
     pipeline:
       - id: policy
         kind: call
@@ -1888,6 +1913,7 @@ virtual_tools:
                     $securityPage.body.securityVulnerabilities[]? as $vulnerability
                     | $vulnerability
                     | select((.status // "" | ascii_downcase) == "open")
+                    | select(.severity | numbers | . >= 4 and . <= 10)
                     | select((($targets | length) == 0 and $allByDefault) or any($targets[]?; .hash == $component.hash and .id == $vulnerability.refId))
                     | {id: .refId, source: (.source // "cve")}
                   ] as $issues
